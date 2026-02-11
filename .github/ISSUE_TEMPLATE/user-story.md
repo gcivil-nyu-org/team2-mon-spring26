@@ -7,6 +7,10 @@ assignees: ''
 
 ---
 
+|User story| User | As a User, I want to be able to chose a place to eat with my group easily  |
+|--|--|--|
+|  |  |  |
+
 **User story**
 
 **Acceptance criteria**
