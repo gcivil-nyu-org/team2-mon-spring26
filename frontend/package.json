@@ -1,0 +1,10 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "echo \"React app scaffold created. Install your preferred setup next.\"",
+    "build": "echo \"No build configured yet.\"",
+    "test": "echo \"No tests configured yet.\""
+  }
+}
