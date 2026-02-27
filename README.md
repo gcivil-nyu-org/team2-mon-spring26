@@ -1,1 +1,120 @@
-# Team Project repo
+# Git & Repository Guidelines
+
+## 1. Git Workflow Strategy
+
+We follow a simplified **Gitflow** with `main` and `develop` as long-running branches.
+
+### Branch Roles
+
+| Branch    | Purpose                                                                         |
+| --------- | ------------------------------------------------------------------------------- |
+| `main`    | Production-ready code only. Updated via releases.                               |
+| `develop` | Integration branch where all features come together. Day-to-day working branch. |
+
+### The Rules
+
+- Create feature branches off `develop`, e.g. `feature/swipe-ui` or `fix/auth-bug`
+- When done, open a Pull Request (PR) into `develop`
+- At least one teammate reviews and approves before merging
+- When the team agrees a set of features is ready for release, `develop` is merged into `main` via a PR
+- Delete feature branches after merging
+
+### Reducing Merge Conflicts
+
+- Pull from `develop` frequently into your working branch: `git pull origin develop`
+- Keep feature branches short-lived — don't let them diverge for too long
+- Agree on who owns which areas (e.g., one person on backend auth, another on frontend)
+- Use `.editorconfig` and formatters to avoid style conflicts:
+  - **React**: Prettier
+  - **Django**: Black
+
+---
+
+## 2. Repo Directory Structure
+
+```
+repo-root/
+├── backend/                  # Django project
+│   ├── manage.py
+│   ├── requirements.txt
+│   ├── app/
+│   ├── tests/                # Backend tests (pytest/Django test runner)
+│   └── ...
+├── frontend/                 # React project
+│   ├── package.json
+│   ├── src/
+│   ├── tests/                # Frontend tests (Jest + React Testing Library)
+│   └── ...
+├── .prettierrc               # Prettier rules for frontend/JS formatting
+├── pyproject.toml            # Black rules for backend/Python formatting
+├── .vscode/
+│   ├── settings.json         # Workspace format-on-save defaults
+│   └── extensions.json       # Recommended VS Code extensions for the team
+├── .editorconfig
+├── .gitignore
+└── README.md
+```
+
+---
+
+## 3. Formatting Configuration (Prettier + Black)
+
+Use all three files together for consistent formatting across editors and CI.
+
+- `.editorconfig`: editor-level defaults (indentation, line endings, final newline, whitespace)
+- `.prettierrc`: formatting rules for JS/TS/React and other files handled by Prettier
+- `pyproject.toml`: Black-specific Python formatting rules
+
+### Key Notes
+
+- Prettier reads `.editorconfig` unless values are explicitly overridden in `.prettierrc`
+- Black does **not** read `.editorconfig`; it reads only `pyproject.toml`
+- Line length is aligned to `88` in both `.prettierrc` and `pyproject.toml` to reduce style conflicts
+
+### VS Code Team Setup
+
+- `.vscode/settings.json` enables format-on-save and sets default formatters by language
+- `.vscode/extensions.json` recommends Prettier and Python/Black extensions for consistent setup
+- Team members should install workspace-recommended extensions when prompted by VS Code
+
+---
+
+## 4. Branch Protection Policies
+
+Apply these rules to both `main` and `develop` via **Settings → Branches → Branch Protection Rules** on GitHub.
+
+| Policy                          | Reason                                            |
+| ------------------------------- | ------------------------------------------------- |
+| Require PR before merging       | No one pushes directly to `main` or `develop`     |
+| Require at least 1 approval     | Ensures code is reviewed before integration       |
+| Require status checks to pass   | CI tests must be green before merging             |
+| Require branch to be up to date | Forces pulling latest changes, reducing conflicts |
+| Disallow force pushes           | Protects commit history on long-running branches  |
+
+---
+
+## 5. Test Case Guidelines
+
+Keep tests close to feature work and treat them as part of every PR.
+
+### Backend (`backend/tests/`)
+
+- Use clear file naming: `test_<feature>.py`
+- Prefer one behavior per test function and descriptive names, e.g. `test_login_rejects_invalid_password`
+- Cover both success and failure cases (validation errors, permissions, and missing data)
+- Mock external services (email, payment, third-party APIs) to keep tests deterministic
+- Keep fixtures minimal and reusable
+
+### Frontend (`frontend/tests/`)
+
+- Use file naming like `<Component>.test.js` or `<feature>.test.js`
+- Test user-visible behavior (rendering, interactions, state changes), not implementation details
+- Prefer queries users rely on (`getByRole`, `getByText`) over brittle selectors
+- Cover loading, empty, error, and success UI states where applicable
+- Keep tests isolated and avoid shared mutable state between test cases
+
+### Team Expectations
+
+- Every feature/fix PR should include or update tests
+- If a bug is fixed, add a test that fails before the fix and passes after
+- Keep tests fast so they can run often during development
