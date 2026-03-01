@@ -526,7 +526,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (response.ok && data.success) {
         setCurrentUser(data.user);
       } else {
-        throw new Error(data.error || 'Registration failed');
+        let errorMessage = data.error || 'Registration failed';
+        if (data.errors && typeof data.errors === 'object') {
+          const firstKey = Object.keys(data.errors)[0];
+          if (firstKey && data.errors[firstKey]?.length > 0) {
+            errorMessage = data.errors[firstKey][0];
+          }
+        }
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('Register error:', error);
