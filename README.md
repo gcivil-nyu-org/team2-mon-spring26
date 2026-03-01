@@ -97,7 +97,9 @@ Apply these rules to both `main` and `develop` via **Settings → Branches → B
 
 Keep tests close to feature work and treat them as part of every PR.
 
-### Backend (`backend/tests/`)
+### 5.1 Standards & Best Practices
+
+#### Backend (`backend/tests/`)
 
 - Use clear file naming: `test_<feature>.py`
 - Prefer one behavior per test function and descriptive names, e.g. `test_login_rejects_invalid_password`
@@ -105,7 +107,7 @@ Keep tests close to feature work and treat them as part of every PR.
 - Mock external services (email, payment, third-party APIs) to keep tests deterministic
 - Keep fixtures minimal and reusable
 
-### Frontend (`frontend/tests/`)
+#### Frontend (`frontend/tests/`)
 
 - Use file naming like `<Component>.test.js` or `<feature>.test.js`
 - Test user-visible behavior (rendering, interactions, state changes), not implementation details
@@ -113,8 +115,30 @@ Keep tests close to feature work and treat them as part of every PR.
 - Cover loading, empty, error, and success UI states where applicable
 - Keep tests isolated and avoid shared mutable state between test cases
 
-### Team Expectations
+#### Team Expectations
 
 - Every feature/fix PR should include or update tests
 - If a bug is fixed, add a test that fails before the fix and passes after
 - Keep tests fast so they can run often during development
+
+### 5.2 Feature Test Suites (Progress & Coverage)
+
+#### 📦 Authentication & permissions tests
+
+For the user‑auth work (login/logout, password reset, staff pages, etc.) we
+use Django’s built‑in `TestCase`/`Client` to simulate user behaviour.  The
+following high‑level scenarios are already covered in `backend/tests/test_auth_integration.py`:
+
+1. **login_success** – valid credentials redirect to the dashboard/profile
+2. **login_invalid_credentials** – bad passwords show form errors and do not
+  authenticate
+3. **redirect_unauthenticated_user** – protected views automatically redirect
+  anonymous users to the login page
+4. **staff_only_view** – regular users receive a 403 or redirect when
+  accessing staff‑only pages
+5. **logout_behavior** – logging out clears the session and prevents back‑button
+  access to secured data
+
+Add additional cases here as the tutorial is expanded (password change,
+reset tokens, permission checks, etc.).  Coordinating with Karine on edge cases
+helps ensure the demo is rock‑solid.
