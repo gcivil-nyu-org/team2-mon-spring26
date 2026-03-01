@@ -21,13 +21,19 @@ export function LoginPage() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [resetError, setResetError] = useState('');
+  const [loginError, setLoginError] = useState('');
   const { login, getAllUsers } = useApp();
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    login(email, password);
-    navigate('/home');
+    setLoginError('');
+    try {
+      await login(email, password);
+      navigate('/home');
+    } catch (err: any) {
+      setLoginError(err.message || 'Login failed. Please check your credentials.');
+    }
   };
 
   const handleForgotPassword = (e: React.FormEvent) => {
@@ -107,6 +113,7 @@ export function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+              {loginError && <p className="text-sm text-red-600">{loginError}</p>}
             </div>
             <Button type="submit" className="w-full bg-purple-700 hover:bg-purple-800 text-white shadow-lg">
               Sign In

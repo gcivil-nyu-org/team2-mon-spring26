@@ -32,8 +32,11 @@ const CUISINE_OPTIONS = [
   'Vietnamese',
 ];
 
+import { useApp } from '@/app/contexts/app-context';
+
 export function RegisterPage() {
   const navigate = useNavigate();
+  const { register } = useApp();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -95,30 +98,24 @@ export function RegisterPage() {
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Create new user object
-    const newUser = {
-      id: `user-${Date.now()}`,
-      name: formData.name,
-      email: formData.email,
-      preferences: {
-        cuisines: selectedCuisines,
-        dietary: selectedDietary,
-      },
-    };
-
-    // Store in localStorage (simulating registration)
-    const existingUsers = JSON.parse(localStorage.getItem('mealswipe_registered_users') || '[]');
-    localStorage.setItem('mealswipe_registered_users', JSON.stringify([...existingUsers, newUser]));
-
-    // Auto-login the new user
-    localStorage.setItem('mealswipe_user', JSON.stringify(newUser));
-
-    // Navigate to home
-    navigate('/home');
-    window.location.reload(); // Reload to update context
+    try {
+      await register({
+        first_name: formData.name.split(' ')[0] || '',
+        last_name: formData.name.split(' ').slice(1).join(' ') || '',
+        email: formData.email,
+        password: formData.password,
+        preferences: {
+          cuisines: selectedCuisines,
+          dietary: selectedDietary,
+        }
+      });
+      navigate('/home');
+    } catch (err: any) {
+      setErrors({ form: err.message || 'Registration failed' });
+    }
   };
 
   return (
@@ -277,6 +274,8 @@ export function RegisterPage() {
                   Complete Registration
                 </Button>
               </div>
+              
+              {errors.form && <p className="text-sm text-red-600 text-center">{errors.form}</p>}
 
               <p className="text-xs text-center text-muted-foreground">
                 You can always update your preferences later

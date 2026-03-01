@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 
 export interface User {
   id: string;
@@ -69,8 +70,9 @@ export interface Notification {
 
 interface AppContextType {
   currentUser: User | null;
-  login: (email: string, password: string) => void;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  register: (data: any) => Promise<void>;
   groups: Group[];
   createGroup: (name: string) => Group;
   joinGroup: (groupId: string) => void;
@@ -146,8 +148,25 @@ const mockUsers: User[] = [
   }
 ];
 
+// CSRF token helper
+function getCookie(name: string) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isInitializingAuth, setIsInitializingAuth] = useState(true);
   const [groups, setGroups] = useState<Group[]>([]);
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [swipeEvents, setSwipeEvents] = useState<SwipeEvent[]>([]);
@@ -438,12 +457,106 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Save to localStorage when data changes
+  // ---------------------------------------------------------------------------
+  // ACTUAL API AUTHENTICATION LOGIC (Django Session Auth via Vite Proxy)
+  // ---------------------------------------------------------------------------
+  
+  // Check session on mount
   useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('mealswipe_user', JSON.stringify(currentUser));
+    const checkSession = async () => {
+      try {
+        // We use fetch so the browser automatically includes cookies
+        const response = await fetch('/api/auth/me/', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.authenticated && data.user) {
+            setCurrentUser(data.user);
+          }
+        }
+      } catch (error) {
+        console.error("Session check failed:", error);
+      } finally {
+        setIsInitializingAuth(false);
+      }
+    };
+    checkSession();
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch('/api/auth/login/', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setCurrentUser(data.user);
+      } else {
+        throw new Error(data.error || 'Login failed');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
     }
-  }, [currentUser]);
+  };
+
+  const register = async (userData: any) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch('/api/auth/register/', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify(userData),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setCurrentUser(data.user);
+      } else {
+        throw new Error(data.error || 'Registration failed');
+      }
+    } catch (error) {
+      console.error('Register error:', error);
+      throw error;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      await fetch('/api/auth/logout/', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+      });
+      setCurrentUser(null);
+      setCurrentGroup(null);
+      setCurrentSwipeEvent(null);
+      localStorage.removeItem('mealswipe_user'); // Still clean up local storage just in case
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // APP / UI STATE SAVING LOGIC
+  // ---------------------------------------------------------------------------
 
   useEffect(() => {
     localStorage.setItem('mealswipe_groups', JSON.stringify(groups));
@@ -469,18 +582,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('mealswipe_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  const login = (email: string, _password: string) => {
-    // Simple mock login
-    const user = mockUsers.find(u => u.email === email) || mockUsers[0];
-    setCurrentUser(user);
-  };
-
-  const logout = () => {
-    setCurrentUser(null);
-    setCurrentGroup(null);
-    setCurrentSwipeEvent(null);
-    localStorage.removeItem('mealswipe_user');
-  };
+  useEffect(() => {
+    localStorage.setItem('mealswipe_notifications', JSON.stringify(notifications));
+  }, [notifications]);
 
   const createGroup = (name: string): Group => {
     if (!currentUser) throw new Error('Must be logged in');
@@ -597,9 +701,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       type: 'group_invite',
       title: 'Group Invitation',
       message: `${currentUser.name} invited you to join "${group?.name}"`,
-      groupId: group?.id,
-      read: false,
-      timestamp: new Date().toISOString()
+      groupId: group?.id
     });
   };
 
@@ -712,11 +814,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotifications([]);
   };
 
+  // Skip rendering the rest of the application until we've checked the auth state
+  if (isInitializingAuth) {
+    return null; // Or a loading spinner
+  }
+
   return (
     <AppContext.Provider
       value={{
         currentUser,
         login,
+        register,
         logout,
         groups,
         createGroup,
