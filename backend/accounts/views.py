@@ -3,6 +3,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import login, logout, authenticate
 from django.views import View
 from django.http import JsonResponse
+from django.core.cache import cache
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils.decorators import method_decorator
 
@@ -56,18 +57,28 @@ def api_register(request):
 
 def api_login(request):
     if request.method == 'POST':
+        # basic brute force mitigation: limit by IP and email
+        ip = request.META.get('REMOTE_ADDR')
+        cache_key = f"login_attempts_{ip}"
+        attempts = cache.get(cache_key, 0)
+        
+        if attempts >= 10:
+            return JsonResponse({'success': False, 'error': 'Too many failed attempts. Please try again in 5 minutes.'}, status=429)
+
         try:
             data = json.loads(request.body)
             email = data.get('email')
             password = data.get('password')
             user = authenticate(request, username=email, password=password)
             if user is not None:
+                cache.delete(cache_key) # reset attempts on success
                 login(request, user)
                 return JsonResponse({
                     'success': True,
                     'user': {'id': user.id, 'email': user.email, 'name': f"{user.first_name} {user.last_name}".strip()}
                 })
             else:
+                cache.set(cache_key, attempts + 1, timeout=300) # 5 min lockout
                 return JsonResponse({'success': False, 'error': 'Invalid credentials'}, status=401)
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
