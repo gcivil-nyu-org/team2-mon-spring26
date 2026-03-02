@@ -91,9 +91,15 @@ interface AppContextType {
   addChatMessage: (conversationId: string, message: ChatMessage) => void;
   dmConversations: DMConversation[];
   createDMConversation: (participantId: string) => DMConversation;
-  updateSwipeEventStatus: (eventId: string, status: SwipeEvent['status'], matchedId?: string) => void;
+  updateSwipeEventStatus: (
+    eventId: string,
+    status: SwipeEvent['status'],
+    matchedId?: string
+  ) => void;
   notifications: Notification[];
-  addNotification: (notification: Omit<Notification, 'id' | 'read' | 'timestamp'>) => void;
+  addNotification: (
+    notification: Omit<Notification, 'id' | 'read' | 'timestamp'>
+  ) => void;
   markNotificationAsRead: (notificationId: string) => void;
   clearAllNotifications: () => void;
 }
@@ -108,8 +114,8 @@ const mockUsers: User[] = [
     email: 'alex@nyu.edu',
     preferences: {
       cuisines: ['Italian', 'Japanese', 'Mexican'],
-      dietary: ['Vegetarian']
-    }
+      dietary: ['Vegetarian'],
+    },
   },
   {
     id: '2',
@@ -117,8 +123,8 @@ const mockUsers: User[] = [
     email: 'sarah@nyu.edu',
     preferences: {
       cuisines: ['Korean', 'Chinese', 'Thai'],
-      dietary: ['Halal']
-    }
+      dietary: ['Halal'],
+    },
   },
   {
     id: '3',
@@ -126,8 +132,8 @@ const mockUsers: User[] = [
     email: 'jordan@nyu.edu',
     preferences: {
       cuisines: ['American', 'Mediterranean'],
-      dietary: []
-    }
+      dietary: [],
+    },
   },
   {
     id: '4',
@@ -135,8 +141,8 @@ const mockUsers: User[] = [
     email: 'emma@nyu.edu',
     preferences: {
       cuisines: ['Mexican', 'Italian', 'Mediterranean'],
-      dietary: ['Vegan', 'Gluten-Free']
-    }
+      dietary: ['Vegan', 'Gluten-Free'],
+    },
   },
   {
     id: '5',
@@ -144,9 +150,9 @@ const mockUsers: User[] = [
     email: 'michael@nyu.edu',
     preferences: {
       cuisines: ['Chinese', 'Japanese', 'Vietnamese'],
-      dietary: ['Dairy-Free']
-    }
-  }
+      dietary: ['Dairy-Free'],
+    },
+  },
 ];
 
 // CSRF token helper
@@ -156,13 +162,21 @@ function getCookie(name: string) {
     const cookies = document.cookie.split(';');
     for (let i = 0; i < cookies.length; i++) {
       const cookie = cookies[i].trim();
-      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+      if (cookie.substring(0, name.length + 1) === name + '=') {
         cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
         break;
       }
     }
   }
   return cookieValue;
+}
+
+const API_BASE_URL =
+  'http://mealswipe-backend-env-1.eba-8akuzyp3.us-east-2.elasticbeanstalk.com';
+
+function apiUrl(path: string) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -182,7 +196,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const hasSeeded = localStorage.getItem('mealswipe_seeded');
     const currentVersion = localStorage.getItem('mealswipe_version');
     const CURRENT_VERSION = '3'; // Increment when schema changes
-    
+
     // Reset data if version changed (for schema updates like isLeader field)
     if (currentVersion !== CURRENT_VERSION) {
       localStorage.removeItem('mealswipe_groups');
@@ -192,20 +206,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('mealswipe_notifications');
       localStorage.removeItem('mealswipe_seeded');
     }
-    
+
     if (!hasSeeded || currentVersion !== CURRENT_VERSION) {
       // Create a pre-existing group for Feb 7, 2026
       const feb7Group: Group = {
         id: 'group-feb7-2026',
         name: 'Friday Night Dinner Club',
         members: [
-          { userId: '1', userName: 'Alex Chen', hasFinishedSwiping: false, isLeader: true },
-          { userId: '2', userName: 'Sarah Kim', hasFinishedSwiping: false, isLeader: false },
-          { userId: '3', userName: 'Jordan Lee', hasFinishedSwiping: false, isLeader: false },
-          { userId: '4', userName: 'Emma Rodriguez', hasFinishedSwiping: false, isLeader: false },
+          {
+            userId: '1',
+            userName: 'Alex Chen',
+            hasFinishedSwiping: false,
+            isLeader: true,
+          },
+          {
+            userId: '2',
+            userName: 'Sarah Kim',
+            hasFinishedSwiping: false,
+            isLeader: false,
+          },
+          {
+            userId: '3',
+            userName: 'Jordan Lee',
+            hasFinishedSwiping: false,
+            isLeader: false,
+          },
+          {
+            userId: '4',
+            userName: 'Emma Rodriguez',
+            hasFinishedSwiping: false,
+            isLeader: false,
+          },
         ],
         createdBy: '1',
-        createdAt: '2026-02-01T10:00:00.000Z'
+        createdAt: '2026-02-01T10:00:00.000Z',
       };
 
       // Create a swipe event for Feb 7
@@ -214,7 +248,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         groupId: 'group-feb7-2026',
         name: 'Friday Dinner - Feb 7',
         status: 'pending',
-        createdAt: '2026-02-01T10:00:00.000Z'
+        createdAt: '2026-02-01T10:00:00.000Z',
       };
 
       // Add some initial notifications
@@ -226,7 +260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           message: 'Alex Chen invited you to join "Friday Night Dinner Club"',
           groupId: 'group-feb7-2026',
           read: false,
-          timestamp: '2026-02-01T10:00:00.000Z'
+          timestamp: '2026-02-01T10:00:00.000Z',
         },
         {
           id: 'notif-2',
@@ -236,8 +270,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           groupId: 'group-feb7-2026',
           eventId: 'event-feb7-2026',
           read: false,
-          timestamp: '2026-02-04T09:00:00.000Z'
-        }
+          timestamp: '2026-02-04T09:00:00.000Z',
+        },
       ];
 
       // Add initial chat messages
@@ -247,25 +281,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
             id: 'msg-1',
             type: 'system',
             message: 'Alex Chen created the group',
-            timestamp: '2026-02-01T10:00:00.000Z'
+            timestamp: '2026-02-01T10:00:00.000Z',
           },
           {
             id: 'msg-2',
             type: 'system',
             message: 'Sarah Kim joined the group',
-            timestamp: '2026-02-01T10:15:00.000Z'
+            timestamp: '2026-02-01T10:15:00.000Z',
           },
           {
             id: 'msg-3',
             type: 'system',
             message: 'Jordan Lee joined the group',
-            timestamp: '2026-02-01T11:30:00.000Z'
+            timestamp: '2026-02-01T11:30:00.000Z',
           },
           {
             id: 'msg-4',
             type: 'system',
             message: 'Emma Rodriguez joined the group',
-            timestamp: '2026-02-01T14:20:00.000Z'
+            timestamp: '2026-02-01T14:20:00.000Z',
           },
           {
             id: 'msg-5',
@@ -273,7 +307,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             userId: '1',
             userName: 'Alex Chen',
             message: 'Hey everyone! Looking forward to dinner on Friday!',
-            timestamp: '2026-02-02T18:00:00.000Z'
+            timestamp: '2026-02-02T18:00:00.000Z',
           },
           {
             id: 'msg-6',
@@ -281,15 +315,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             userId: '2',
             userName: 'Sarah Kim',
             message: 'Me too! Any preferences on cuisine?',
-            timestamp: '2026-02-02T18:15:00.000Z'
+            timestamp: '2026-02-02T18:15:00.000Z',
           },
           {
             id: 'msg-7',
             type: 'user',
             userId: '3',
             userName: 'Jordan Lee',
-            message: 'I\'m down for anything! Maybe Italian or Thai?',
-            timestamp: '2026-02-03T09:30:00.000Z'
+            message: "I'm down for anything! Maybe Italian or Thai?",
+            timestamp: '2026-02-03T09:30:00.000Z',
           },
           {
             id: 'msg-8',
@@ -297,15 +331,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             userId: '4',
             userName: 'Emma Rodriguez',
             message: 'Thai sounds great! 🍜',
-            timestamp: '2026-02-03T10:15:00.000Z'
+            timestamp: '2026-02-03T10:15:00.000Z',
           },
           {
             id: 'msg-9',
             type: 'user',
             userId: '1',
             userName: 'Alex Chen',
-            message: 'Perfect! Let\'s start swiping soon so we can make a reservation',
-            timestamp: '2026-02-04T14:20:00.000Z'
+            message: "Perfect! Let's start swiping soon so we can make a reservation",
+            timestamp: '2026-02-04T14:20:00.000Z',
           },
           {
             id: 'msg-10',
@@ -313,7 +347,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             userId: '2',
             userName: 'Sarah Kim',
             message: 'Should we aim for 7pm or 8pm?',
-            timestamp: '2026-02-05T16:45:00.000Z'
+            timestamp: '2026-02-05T16:45:00.000Z',
           },
           {
             id: 'msg-11',
@@ -321,7 +355,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             userId: '3',
             userName: 'Jordan Lee',
             message: '8pm works better for me, I have class until 6:30',
-            timestamp: '2026-02-05T17:00:00.000Z'
+            timestamp: '2026-02-05T17:00:00.000Z',
           },
           {
             id: 'msg-12',
@@ -329,8 +363,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             userId: '4',
             userName: 'Emma Rodriguez',
             message: '8pm is perfect!',
-            timestamp: '2026-02-05T17:10:00.000Z'
-          }
+            timestamp: '2026-02-05T17:10:00.000Z',
+          },
         ],
         // DM with Jordan Lee
         'dm-jordan-init': [
@@ -339,16 +373,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
             type: 'user',
             userId: '3',
             userName: 'Jordan Lee',
-            message: 'Hey! Are you free this Saturday too? Thinking of checking out that new ramen place',
-            timestamp: '2026-02-06T11:30:00.000Z'
+            message:
+              'Hey! Are you free this Saturday too? Thinking of checking out that new ramen place',
+            timestamp: '2026-02-06T11:30:00.000Z',
           },
           {
             id: 'dm-msg-2',
             type: 'user',
             userId: '1',
             userName: 'Alex Chen',
-            message: 'Oh that sounds great! I\'ve been wanting to try that place. What time?',
-            timestamp: '2026-02-06T11:45:00.000Z'
+            message:
+              "Oh that sounds great! I've been wanting to try that place. What time?",
+            timestamp: '2026-02-06T11:45:00.000Z',
           },
           {
             id: 'dm-msg-3',
@@ -356,8 +392,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             userId: '3',
             userName: 'Jordan Lee',
             message: 'Maybe 1pm? We could walk there from campus',
-            timestamp: '2026-02-06T12:00:00.000Z'
-          }
+            timestamp: '2026-02-06T12:00:00.000Z',
+          },
         ],
         // DM with Sarah Kim
         'dm-sarah-init': [
@@ -366,16 +402,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
             type: 'user',
             userId: '2',
             userName: 'Sarah Kim',
-            message: 'Hey! Quick question - do you have the notes from yesterday\'s lecture?',
-            timestamp: '2026-02-07T09:15:00.000Z'
+            message:
+              "Hey! Quick question - do you have the notes from yesterday's lecture?",
+            timestamp: '2026-02-07T09:15:00.000Z',
           },
           {
             id: 'dm-msg-5',
             type: 'user',
             userId: '1',
             userName: 'Alex Chen',
-            message: 'Yeah I do! I\'ll send them over in a bit',
-            timestamp: '2026-02-07T09:20:00.000Z'
+            message: "Yeah I do! I'll send them over in a bit",
+            timestamp: '2026-02-07T09:20:00.000Z',
           },
           {
             id: 'dm-msg-6',
@@ -383,9 +420,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             userId: '2',
             userName: 'Sarah Kim',
             message: 'Thanks! Also super excited for dinner tonight!',
-            timestamp: '2026-02-07T09:25:00.000Z'
-          }
-        ]
+            timestamp: '2026-02-07T09:25:00.000Z',
+          },
+        ],
       };
 
       // Add initial DM conversations
@@ -394,21 +431,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
           id: 'dm-jordan-init',
           participants: ['1', '3'], // Alex and Jordan
           participantNames: ['Alex Chen', 'Jordan Lee'],
-          lastMessageTime: '2026-02-06T12:00:00.000Z'
+          lastMessageTime: '2026-02-06T12:00:00.000Z',
         },
         {
           id: 'dm-sarah-init',
           participants: ['1', '2'], // Alex and Sarah
           participantNames: ['Alex Chen', 'Sarah Kim'],
-          lastMessageTime: '2026-02-07T09:25:00.000Z'
-        }
+          lastMessageTime: '2026-02-07T09:25:00.000Z',
+        },
       ];
 
       localStorage.setItem('mealswipe_groups', JSON.stringify([feb7Group]));
       localStorage.setItem('mealswipe_events', JSON.stringify([feb7Event]));
-      localStorage.setItem('mealswipe_notifications', JSON.stringify(initialNotifications));
+      localStorage.setItem(
+        'mealswipe_notifications',
+        JSON.stringify(initialNotifications)
+      );
       localStorage.setItem('mealswipe_messages', JSON.stringify(initialMessages));
-      localStorage.setItem('mealswipe_dm_conversations', JSON.stringify(initialDMConversations));
+      localStorage.setItem(
+        'mealswipe_dm_conversations',
+        JSON.stringify(initialDMConversations)
+      );
       localStorage.setItem('mealswipe_seeded', 'true');
       localStorage.setItem('mealswipe_version', CURRENT_VERSION);
 
@@ -459,16 +502,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // ACTUAL API AUTHENTICATION LOGIC (Django Session Auth via Vite Proxy)
+  // ACTUAL API AUTHENTICATION LOGIC (Django Session Auth)
   // ---------------------------------------------------------------------------
-  
+
   // Check session on mount
   useEffect(() => {
     const checkSession = async () => {
       try {
         // We use fetch so the browser automatically includes cookies
-        const response = await fetch('/api/auth/me/', {
-          credentials: 'include'
+        const response = await fetch(apiUrl('/api/auth/me/'), {
+          credentials: 'include',
         });
         if (response.ok) {
           const data = await response.json();
@@ -477,7 +520,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch (error) {
-        console.error("Session check failed:", error);
+        console.error('Session check failed:', error);
       } finally {
         setIsInitializingAuth(false);
       }
@@ -488,7 +531,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch('/api/auth/login/', {
+      const response = await fetch(apiUrl('/api/auth/login/'), {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -513,7 +556,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const register = async (userData: any) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch('/api/auth/register/', {
+      const response = await fetch(apiUrl('/api/auth/register/'), {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -545,7 +588,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const requestPasswordReset = async (email: string) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch('/api/auth/request-password-reset/', {
+      const response = await fetch(apiUrl('/api/auth/request-password-reset/'), {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -568,7 +611,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      await fetch('/api/auth/logout/', {
+      await fetch(apiUrl('/api/auth/logout/'), {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -619,7 +662,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const createGroup = (name: string): Group => {
     if (!currentUser) throw new Error('Must be logged in');
-    
+
     const newGroup: Group = {
       id: `group-${Date.now()}`,
       name,
@@ -628,26 +671,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
           userId: currentUser.id,
           userName: currentUser.name,
           hasFinishedSwiping: false,
-          isLeader: true
-        }
+          isLeader: true,
+        },
       ],
       createdBy: currentUser.id,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
     setGroups([...groups, newGroup]);
-    
+
     // Initialize chat for this group
-    setChatMessages(prev => ({
+    setChatMessages((prev) => ({
       ...prev,
       [newGroup.id]: [
         {
           id: `msg-${Date.now()}`,
           type: 'system',
           message: `${currentUser.name} created the group`,
-          timestamp: new Date().toISOString()
-        }
-      ]
+          timestamp: new Date().toISOString(),
+        },
+      ],
     }));
 
     return newGroup;
@@ -656,35 +699,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const joinGroup = (groupId: string) => {
     if (!currentUser) return;
 
-    setGroups(groups.map(group => {
-      if (group.id === groupId) {
-        const isMember = group.members.some(m => m.userId === currentUser.id);
-        if (!isMember) {
-          return {
-            ...group,
-            members: [
-              ...group.members,
-              {
-                userId: currentUser.id,
-                userName: currentUser.name,
-                hasFinishedSwiping: false,
-                isLeader: false
-              }
-            ]
-          };
+    setGroups(
+      groups.map((group) => {
+        if (group.id === groupId) {
+          const isMember = group.members.some((m) => m.userId === currentUser.id);
+          if (!isMember) {
+            return {
+              ...group,
+              members: [
+                ...group.members,
+                {
+                  userId: currentUser.id,
+                  userName: currentUser.name,
+                  hasFinishedSwiping: false,
+                  isLeader: false,
+                },
+              ],
+            };
+          }
         }
-      }
-      return group;
-    }));
+        return group;
+      })
+    );
 
     // Add system message
-    const group = groups.find(g => g.id === groupId);
+    const group = groups.find((g) => g.id === groupId);
     if (group) {
       addChatMessage(groupId, {
         id: `msg-${Date.now()}`,
         type: 'system',
         message: `${currentUser.name} joined the group`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
   };
@@ -692,38 +737,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const inviteMember = (groupId: string, userEmail: string) => {
     if (!currentUser) return;
 
-    const user = mockUsers.find(u => u.email === userEmail);
+    const user = mockUsers.find((u) => u.email === userEmail);
     if (!user) return;
 
-    setGroups(groups.map(group => {
-      if (group.id === groupId) {
-        const isMember = group.members.some(m => m.userId === user.id);
-        if (!isMember) {
-          return {
-            ...group,
-            members: [
-              ...group.members,
-              {
-                userId: user.id,
-                userName: user.name,
-                hasFinishedSwiping: false,
-                isLeader: false
-              }
-            ]
-          };
+    setGroups(
+      groups.map((group) => {
+        if (group.id === groupId) {
+          const isMember = group.members.some((m) => m.userId === user.id);
+          if (!isMember) {
+            return {
+              ...group,
+              members: [
+                ...group.members,
+                {
+                  userId: user.id,
+                  userName: user.name,
+                  hasFinishedSwiping: false,
+                  isLeader: false,
+                },
+              ],
+            };
+          }
         }
-      }
-      return group;
-    }));
+        return group;
+      })
+    );
 
     // Add system message
-    const group = groups.find(g => g.id === groupId);
+    const group = groups.find((g) => g.id === groupId);
     if (group) {
       addChatMessage(groupId, {
         id: `msg-${Date.now()}`,
         type: 'system',
         message: `${currentUser.name} invited ${user.name} to the group`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
 
@@ -732,7 +779,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       type: 'group_invite',
       title: 'Group Invitation',
       message: `${currentUser.name} invited you to join "${group?.name}"`,
-      groupId: group?.id
+      groupId: group?.id,
     });
   };
 
@@ -746,15 +793,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       groupId,
       name,
       status: 'active',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
     setSwipeEvents([...swipeEvents, newEvent]);
-    
+
     // Initialize swipes array for this event
-    setSwipes(prev => ({
+    setSwipes((prev) => ({
       ...prev,
-      [newEvent.id]: []
+      [newEvent.id]: [],
     }));
 
     // Add system message
@@ -762,83 +809,93 @@ export function AppProvider({ children }: { children: ReactNode }) {
       id: `msg-${Date.now()}`,
       type: 'system',
       message: `New swipe session started: ${name}`,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     return newEvent;
   };
 
   const addSwipe = (eventId: string, swipe: Swipe) => {
-    setSwipes(prev => ({
+    setSwipes((prev) => ({
       ...prev,
-      [eventId]: [...(prev[eventId] || []), swipe]
+      [eventId]: [...(prev[eventId] || []), swipe],
     }));
   };
 
   const addChatMessage = (conversationId: string, message: ChatMessage) => {
-    setChatMessages(prev => ({
+    setChatMessages((prev) => ({
       ...prev,
-      [conversationId]: [...(prev[conversationId] || []), message]
+      [conversationId]: [...(prev[conversationId] || []), message],
     }));
   };
 
   const createDMConversation = (participantId: string): DMConversation => {
     if (!currentUser) throw new Error('Must be logged in');
-    
-    const participant = mockUsers.find(u => u.id === participantId);
+
+    const participant = mockUsers.find((u) => u.id === participantId);
     if (!participant) throw new Error('Participant not found');
-    
+
     const newConversation: DMConversation = {
       id: `dm-${Date.now()}`,
       participants: [currentUser.id, participantId],
       participantNames: [currentUser.name, participant.name],
-      lastMessageTime: new Date().toISOString()
+      lastMessageTime: new Date().toISOString(),
     };
 
     setDMConversations([...dmConversations, newConversation]);
-    
+
     // Initialize chat for this DM conversation
-    setChatMessages(prev => ({
+    setChatMessages((prev) => ({
       ...prev,
       [newConversation.id]: [
         {
           id: `msg-${Date.now()}`,
           type: 'system',
           message: `${currentUser.name} started a conversation with ${participant.name}`,
-          timestamp: new Date().toISOString()
-        }
-      ]
+          timestamp: new Date().toISOString(),
+        },
+      ],
     }));
 
     return newConversation;
   };
 
-  const updateSwipeEventStatus = (eventId: string, status: SwipeEvent['status'], matchedId?: string) => {
-    setSwipeEvents(events => events.map(event => 
-      event.id === eventId 
-        ? { ...event, status, matchedRestaurantId: matchedId }
-        : event
-    ));
+  const updateSwipeEventStatus = (
+    eventId: string,
+    status: SwipeEvent['status'],
+    matchedId?: string
+  ) => {
+    setSwipeEvents((events) =>
+      events.map((event) =>
+        event.id === eventId
+          ? { ...event, status, matchedRestaurantId: matchedId }
+          : event
+      )
+    );
   };
 
-  const addNotification = (notification: Omit<Notification, 'id' | 'read' | 'timestamp'>) => {
-    setNotifications(prev => [
+  const addNotification = (
+    notification: Omit<Notification, 'id' | 'read' | 'timestamp'>
+  ) => {
+    setNotifications((prev) => [
       ...prev,
       {
         ...notification,
         id: `notification-${Date.now()}`,
         read: false,
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      },
     ]);
   };
 
   const markNotificationAsRead = (notificationId: string) => {
-    setNotifications(prev => prev.map(notification => 
-      notification.id === notificationId 
-        ? { ...notification, read: true }
-        : notification
-    ));
+    setNotifications((prev) =>
+      prev.map((notification) =>
+        notification.id === notificationId
+          ? { ...notification, read: true }
+          : notification
+      )
+    );
   };
 
   const clearAllNotifications = () => {
@@ -879,7 +936,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         notifications,
         addNotification,
         markNotificationAsRead,
-        clearAllNotifications
+        clearAllNotifications,
       }}
     >
       {children}
