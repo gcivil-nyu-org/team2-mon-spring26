@@ -71,8 +71,9 @@ export interface Notification {
 interface AppContextType {
   currentUser: User | null;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
   register: (data: any) => Promise<void>;
+  logout: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
   groups: Group[];
   createGroup: (name: string) => Group;
   joinGroup: (groupId: string) => void;
@@ -541,6 +542,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const requestPasswordReset = async (email: string) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch('/api/auth/request-password-reset/', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Request failed');
+      }
+    } catch (error) {
+      console.error('Password reset error:', error);
+      throw error;
+    }
+  };
+
   const logout = async () => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
@@ -833,6 +857,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        requestPasswordReset,
         groups,
         createGroup,
         joinGroup,
