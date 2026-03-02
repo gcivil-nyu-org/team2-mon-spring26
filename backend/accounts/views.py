@@ -103,6 +103,7 @@ def api_me(request):
             'authenticated': True,
             'user': {'id': request.user.id, 'email': request.user.email, 'name': f"{request.user.first_name} {request.user.last_name}".strip()}
         })
+    return JsonResponse({'authenticated': False}, status=401)
 
 def api_request_password_reset(request):
     if request.method == 'POST':
