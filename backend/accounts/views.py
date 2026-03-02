@@ -1,13 +1,17 @@
 import json
+import logging
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, logout, authenticate
 from django.views import View
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.core.cache import cache
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.utils.decorators import method_decorator
 
 from .forms import UserCreationForm
+
+logger = logging.getLogger(__name__)
 
 
 class SignUpView(View):
@@ -52,7 +56,8 @@ def api_register(request):
             else:
                 return JsonResponse({'success': False, 'errors': form.errors}, status=400)
         except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+            logger.error(f"Registration error: {str(e)}", exc_info=True)
+            return JsonResponse({'success': False, 'error': 'An unexpected error occurred during registration. Please try again.'}, status=500)
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 def api_login(request):
@@ -81,7 +86,8 @@ def api_login(request):
                 cache.set(cache_key, attempts + 1, timeout=300) # 5 min lockout
                 return JsonResponse({'success': False, 'error': 'Invalid credentials'}, status=401)
         except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+            logger.error(f"Login error: {str(e)}", exc_info=True)
+            return JsonResponse({'success': False, 'error': 'An unexpected error occurred during login. Please try again.'}, status=500)
     return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 def api_logout(request):
@@ -98,3 +104,30 @@ def api_me(request):
             'user': {'id': request.user.id, 'email': request.user.email, 'name': f"{request.user.first_name} {request.user.last_name}".strip()}
         })
     return JsonResponse({'authenticated': False}, status=401)
+
+def api_request_password_reset(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            email = data.get('email', '')
+            
+            if not email:
+                return JsonResponse({'success': False, 'error': 'Email is required'}, status=400)
+                
+            # Server-side email validation
+            validate_email(email)
+            
+            # NOTE: We do not check if the user exists or send the email yet.
+            # Returning a neutral response prevents user enumeration attacks.
+            return JsonResponse({
+                'success': True, 
+                'message': 'If an account with this email exists, a password reset link has been sent.'
+            })
+            
+        except ValidationError:
+            return JsonResponse({'success': False, 'error': 'Invalid email format'}, status=400)
+        except Exception as e:
+            logger.error(f"Password reset error: {str(e)}", exc_info=True)
+            return JsonResponse({'success': False, 'error': 'An unexpected error occurred. Please try again.'}, status=500)
+            
+    return JsonResponse({'error': 'Method not allowed'}, status=405)

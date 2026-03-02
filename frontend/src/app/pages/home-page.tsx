@@ -2,16 +2,14 @@ import { useNavigate } from 'react-router';
 import { useApp } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { UtensilsCrossed, Users, UserPlus, LogOut, Settings, Bell } from 'lucide-react';
+import { UtensilsCrossed, Users, LogOut, Settings, Bell } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
 import { ScrollArea } from '@/app/components/ui/scroll-area';
-import { useState } from 'react';
 
 export function HomePage() {
   const { currentUser, groups, logout, notifications, markNotificationAsRead, joinGroup } = useApp();
   const navigate = useNavigate();
-  const [showNotifications, setShowNotifications] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -26,7 +24,6 @@ export function HomePage() {
       joinGroup(notification.groupId);
       navigate(`/group/${notification.groupId}`);
     }
-    setShowNotifications(false);
   };
 
   const getNotificationIcon = (type: string) => {
@@ -188,7 +185,7 @@ export function HomePage() {
                   </CardHeader>
                   <CardContent>
                     <div className="flex -space-x-2">
-                      {group.members.slice(0, 5).map((member, idx) => (
+                      {group.members.slice(0, 5).map((member) => (
                         <div
                           key={member.userId}
                           className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 border-2 border-white flex items-center justify-center text-white text-xs"

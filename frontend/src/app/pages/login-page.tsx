@@ -22,7 +22,7 @@ export function LoginPage() {
   const [resetSent, setResetSent] = useState(false);
   const [resetError, setResetError] = useState('');
   const [loginError, setLoginError] = useState('');
-  const { login, getAllUsers } = useApp();
+  const { login, requestPasswordReset } = useApp();
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -36,21 +36,21 @@ export function LoginPage() {
     }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setResetError('');
     
-    // Check if email exists in mock users
-    const users = getAllUsers();
-    const userExists = users.some(u => u.email === resetEmail);
-    
-    if (!userExists) {
-      setResetError('No account found with this email address.');
+    if (!resetEmail) {
+      setResetError('Please enter your email address.');
       return;
     }
     
-    // Simulate sending reset email
-    setResetSent(true);
+    try {
+      await requestPasswordReset(resetEmail);
+      setResetSent(true);
+    } catch (err: any) {
+      setResetError(err.message || 'Failed to request password reset. Please try again.');
+    }
   };
 
   const handleCloseForgotPassword = () => {

@@ -28,15 +28,28 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-# CSRF Trusted Origins for React frontend development
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:5174',
-    'http://127.0.0.1:5175',
-]
+# CSRF Trusted Origins configuration
+# In development (DEBUG=True), trust common localhost frontend ports.
+# In non-debug environments, optionally configure trusted origins via
+# the CSRF_TRUSTED_ORIGINS environment variable (comma-separated list).
+CSRF_TRUSTED_ORIGINS = []
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS = [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://localhost:5175',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
+        'http://127.0.0.1:5175',
+    ]
+else:
+    _csrf_trusted_origins_env = os.getenv("CSRF_TRUSTED_ORIGINS")
+    if _csrf_trusted_origins_env:
+        CSRF_TRUSTED_ORIGINS = [
+            origin.strip()
+            for origin in _csrf_trusted_origins_env.split(",")
+            if origin.strip()
+        ]
 
 
 # Application definition
