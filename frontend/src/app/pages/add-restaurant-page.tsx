@@ -82,7 +82,7 @@ export function AddRestaurantPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const newRestaurant = addRestaurant({
+    addRestaurant({
       name,
       address,
       borough,

@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 
 export function VenueDashboardPage() {
-  const { restaurants, currentManager, logoutVenueManager, deleteRestaurant } = useVenue();
+  const { restaurants, logoutVenueManager, deleteRestaurant } = useVenue();
   const navigate = useNavigate();
   const [restaurantToDelete, setRestaurantToDelete] = useState<string | null>(null);
 

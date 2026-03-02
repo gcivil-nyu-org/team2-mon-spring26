@@ -5,7 +5,7 @@ import { mockRestaurants, type Restaurant } from '@/app/data/mock-restaurants';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
-import { MapPin, AlertTriangle, ExternalLink, PartyPopper, Users, ArrowLeft, Star, Heart, Ticket, Navigation } from 'lucide-react';
+import { MapPin, AlertTriangle, ExternalLink, PartyPopper, Users, ArrowLeft, Star, Ticket, Navigation } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Confetti from 'react-confetti';
 import { Separator } from '@/app/components/ui/separator';
@@ -13,7 +13,7 @@ import { Separator } from '@/app/components/ui/separator';
 export function MatchPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const { currentGroup, swipes, groups, swipeEvents, currentUser } = useApp();
+  const { currentGroup, swipes, groups, swipeEvents } = useApp();
   
   const [matchedRestaurant, setMatchedRestaurant] = useState<Restaurant | null>(null);
   const [showMatch, setShowMatch] = useState(false);
