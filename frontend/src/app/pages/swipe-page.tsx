@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useApp } from "@/app/contexts/app-context";
 import { mockRestaurants } from "@/app/data/mock-restaurants";
@@ -6,7 +6,7 @@ import { RestaurantCard } from "@/app/components/restaurant-card";
 import { ChatSidebar } from "@/app/components/chat-sidebar";
 import { Button } from "@/app/components/ui/button";
 import { Progress } from "@/app/components/ui/progress";
-import { ArrowLeft, MessageCircle, Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, MessageCircle, Users } from "lucide-react";
 
 export function SwipePage() {
   const { eventId } = useParams();
@@ -15,7 +15,6 @@ export function SwipePage() {
     currentUser,
     currentGroup,
     currentSwipeEvent,
-    swipes,
     addSwipe,
     addChatMessage,
     groups,
@@ -24,9 +23,6 @@ export function SwipePage() {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showChat, setShowChat] = useState(false);
-  const [userSwipes, setUserSwipes] = useState<
-    Record<string, "left" | "right">
-  >({});
 
   // Find event and group if not in context
   const event =
@@ -36,14 +32,6 @@ export function SwipePage() {
     currentGroup ||
     (event ? groups.find((g) => g.id === event.groupId) : null);
 
-  useEffect(() => {
-    if (event && group && currentUser) {
-      // Load initial restaurants if needed
-      if (restaurants.length === 0) {
-        // In a real app, fetch restaurants based on event preferences
-      }
-    }
-  }, [event, group, currentUser]);
 
   if (!event || !group || !currentUser) {
     return (
@@ -76,12 +64,6 @@ export function SwipePage() {
 
   const handleSwipe = (direction: "left" | "right") => {
     const restaurant = mockRestaurants[currentIndex];
-
-    // Record swipe
-    setUserSwipes((prev) => ({
-      ...prev,
-      [restaurant.id]: direction,
-    }));
 
     addSwipe(event.id, {
       userId: currentUser.id,
