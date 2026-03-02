@@ -34,16 +34,16 @@ We follow a simplified **Gitflow** with `main` and `develop` as long-running bra
 
 ```
 repo-root/
-├── backend/                  # Django project
+├── backend/                  # Django project (uses config.settings)
 │   ├── manage.py
 │   ├── requirements.txt
-│   ├── app/
-│   ├── tests/                # Backend tests (pytest/Django test runner)
+│   ├── config/               # Settings, urls, wsgi
+│   ├── accounts/            # Auth app (API views, models)
+│   ├── tests/                # Backend tests (Django test runner)
 │   └── ...
-├── frontend/                 # React project
+├── frontend/                 # React + Vite + TypeScript
 │   ├── package.json
 │   ├── src/
-│   ├── tests/                # Frontend tests (Jest + React Testing Library)
 │   └── ...
 ├── .prettierrc               # Prettier rules for frontend/JS formatting
 ├── pyproject.toml            # Black rules for backend/Python formatting
@@ -107,13 +107,14 @@ Keep tests close to feature work and treat them as part of every PR.
 - Mock external services (email, payment, third-party APIs) to keep tests deterministic
 - Keep fixtures minimal and reusable
 
-#### Frontend (`frontend/tests/`)
+#### Frontend (when adding tests)
 
-- Use file naming like `<Component>.test.js` or `<feature>.test.js`
-- Test user-visible behavior (rendering, interactions, state changes), not implementation details
-- Prefer queries users rely on (`getByRole`, `getByText`) over brittle selectors
-- Cover loading, empty, error, and success UI states where applicable
-- Keep tests isolated and avoid shared mutable state between test cases
+- Use file naming like `<Component>.test.tsx` or `<feature>.test.tsx` (project is TypeScript).
+- Test user-visible behavior (rendering, interactions, state changes), not implementation details.
+- Prefer queries users rely on (`getByRole`, `getByText`) over brittle selectors.
+- Cover loading, empty, error, and success UI states where applicable.
+- Keep tests isolated and avoid shared mutable state between test cases.
+- *Note:* Frontend test setup (e.g. Vitest + React Testing Library) is not in place yet; see `docs/TEST_RESULTS.md` for recommendations.
 
 #### Team Expectations
 
@@ -121,24 +122,32 @@ Keep tests close to feature work and treat them as part of every PR.
 - If a bug is fixed, add a test that fails before the fix and passes after
 - Keep tests fast so they can run often during development
 
+### ✨ Running backend tests locally
+
+From the `backend/` directory (with `config.settings`):
+
+```sh
+python manage.py test                              # run everything
+python manage.py test tests.test_auth_integration -v 2   # auth suite only
+
+# Run a single test method (use `tests.` as the module prefix, not `backend.tests.`):
+python manage.py test tests.test_auth_integration.AuthIntegrationTests.test_login_success -v 2
+```
+
+Use the module path **`tests.test_auth_integration`** (not `backend.tests...`). Django treats the first segment as an app name; we have no app called `backend`, so `backend.tests.test_auth_integration` raises `ModuleNotFoundError`.
+
+
 ### 5.2 Feature Test Suites (Progress & Coverage)
 
-#### 📦 Authentication & permissions tests
+#### 📦 Authentication (API) tests
 
-For the user‑auth work (login/logout, password reset, staff pages, etc.) we
-use Django’s built‑in `TestCase`/`Client` to simulate user behaviour.  The
-following high‑level scenarios are already covered in `backend/tests/test_auth_integration.py`:
+Auth is tested against the **JSON API** under `/api/auth/` in `backend/tests/test_auth_integration.py`:
 
-1. **login_success** – valid credentials redirect to the dashboard/profile
-2. **login_invalid_credentials** – bad passwords show form errors and do not
-  authenticate
-3. **redirect_unauthenticated_user** – protected views automatically redirect
-  anonymous users to the login page
-4. **staff_only_view** – regular users receive a 403 or redirect when
-  accessing staff‑only pages
-5. **logout_behavior** – logging out clears the session and prevents back‑button
-  access to secured data
+1. **Registration** – success (hashed password, auto-login), duplicate email, invalid email, method not allowed
+2. **Login** – success (session + current user), invalid credentials → 401, method not allowed
+3. **Logout** – POST clears session; unauthenticated current-user returns 401
+4. **Current user** – authenticated returns profile (id, email, name); unauthenticated → 401
+5. **Password reset request** – valid email → 200 + neutral message; invalid/missing email → 400
+6. **Rate limiting** – 10+ failed logins → 429; successful login resets counter
 
-Add additional cases here as the tutorial is expanded (password change,
-reset tokens, permission checks, etc.).  Coordinating with Karine on edge cases
-helps ensure the demo is rock‑solid.
+See **`docs/TEST_RESULTS.md`** for a full test summary and how to run a single test.
