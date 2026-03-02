@@ -9,7 +9,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/app/components/ui/select';
 import { Send, MessageCircle, ChevronDown } from 'lucide-react';
 
