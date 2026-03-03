@@ -67,7 +67,7 @@ class AuthIntegrationTests(TestCase):
         self.assertIn("_auth_user_id", self.client.session)
 
     def test_registration_duplicate_email(self):
-        """Duplicate email returns error response (no account enumeration)."""
+        """Duplicate email returns a 400 error response with an email field validation error."""
         User.objects.create_user(email="dup@example.com", password="x")
         data = api_register_payload("dup@example.com", "Aaa123!")
         resp = self.client.post(
