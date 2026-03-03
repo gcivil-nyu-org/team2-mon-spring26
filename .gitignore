@@ -19,7 +19,14 @@ db.sqlite3
 venv/
 env/
 .env
-.env.*
+.env.local
+.env.*.local
+# Allow committed examples and frontend mode defaults (no secrets)
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+!frontend/.env.development
+!frontend/.env.production
 
 .pytest_cache/
 .mypy_cache/

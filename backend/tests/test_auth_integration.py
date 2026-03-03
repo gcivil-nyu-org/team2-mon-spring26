@@ -38,6 +38,7 @@ class AuthIntegrationTests(TestCase):
         self.login_url = reverse("api_login")
         self.logout_url = reverse("api_logout")
         self.current_user_url = reverse("api_me")
+        self.preferences_url = reverse("api_preferences_update")
         self.password_reset_request_url = reverse("api_request_password_reset")
 
     # -------------------------------------------------------------------------
@@ -65,6 +66,40 @@ class AuthIntegrationTests(TestCase):
 
         # Auto-login: session should have user
         self.assertIn("_auth_user_id", self.client.session)
+
+    def test_registration_with_preferences_persists_and_returns(self):
+        """api_register with preferences payload persists all four preference fields and returns them."""
+        data = {
+            "email": "pref@example.com",
+            "password": "StrongPass!1",
+            "first_name": "Pref",
+            "last_name": "User",
+            "preferences": {
+                "dietary": ["Vegetarian", "Vegan"],
+                "cuisines": ["Italian", "Japanese"],
+                "foodTypes": ["Pizza", "Salads"],
+                "minimum_sanitation_grade": "A",
+            },
+        }
+        resp = self.client.post(
+            self.register_url,
+            data=json.dumps(data),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body.get("success"), body)
+        self.assertIn("preferences", body["user"])
+        self.assertEqual(body["user"]["preferences"]["dietary"], ["Vegetarian", "Vegan"])
+        self.assertEqual(body["user"]["preferences"]["cuisines"], ["Italian", "Japanese"])
+        self.assertEqual(body["user"]["preferences"]["foodTypes"], ["Pizza", "Salads"])
+        self.assertEqual(body["user"]["preferences"]["minimum_sanitation_grade"], "A")
+
+        usr = User.objects.get(email="pref@example.com")
+        self.assertEqual(usr.dietary_preferences, ["Vegetarian", "Vegan"])
+        self.assertEqual(usr.cuisine_preferences, ["Italian", "Japanese"])
+        self.assertEqual(usr.food_type_preferences, ["Pizza", "Salads"])
+        self.assertEqual(usr.minimum_sanitation_grade, "A")
 
     def test_registration_duplicate_email(self):
         """Duplicate email returns a 400 error response with an email field validation error."""
@@ -115,6 +150,8 @@ class AuthIntegrationTests(TestCase):
         self.assertTrue(body.get("success"), body)
         self.assertEqual(body["user"]["email"], "reg@example.com")
         self.assertIn("_auth_user_id", self.client.session)
+        self.assertIn("preferences", body["user"])
+        self.assertIn("foodTypes", body["user"]["preferences"])
 
         me = self.client.get(self.current_user_url)
         self.assertEqual(me.status_code, 200)
@@ -180,6 +217,23 @@ class AuthIntegrationTests(TestCase):
         self.assertIn("name", body["user"])
         self.assertIn("id", body["user"])
 
+    def test_get_current_user_returns_preferences(self):
+        """api_me returns preferences (dietary, cuisines, foodTypes, minimum_sanitation_grade)."""
+        self.client.force_login(self.user)
+        resp = self.client.get(self.current_user_url)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn("user", body)
+        self.assertIn("preferences", body["user"])
+        prefs = body["user"]["preferences"]
+        self.assertIn("dietary", prefs)
+        self.assertIn("cuisines", prefs)
+        self.assertIn("foodTypes", prefs)
+        self.assertIn("minimum_sanitation_grade", prefs)
+        self.assertIsInstance(prefs["dietary"], list)
+        self.assertIsInstance(prefs["cuisines"], list)
+        self.assertIsInstance(prefs["foodTypes"], list)
+
     def test_get_current_user_unauthenticated(self):
         """GET current-user when not logged in returns 401."""
         resp = self.client.get(self.current_user_url)
@@ -231,6 +285,49 @@ class AuthIntegrationTests(TestCase):
         """GET on request-password-reset returns 405."""
         resp = self.client.get(self.password_reset_request_url)
         self.assertEqual(resp.status_code, 405)
+
+    # -------------------------------------------------------------------------
+    # Preferences update (PATCH)
+    # -------------------------------------------------------------------------
+
+    def test_preferences_update_authenticated(self):
+        """Authenticated user can update all four preference fields via PATCH."""
+        self.client.force_login(self.user)
+        payload = {
+            "dietary": ["Vegan"],
+            "cuisines": ["Korean", "Thai"],
+            "foodTypes": ["Seafood", "Coffee/Tea"],
+            "minimum_sanitation_grade": "B",
+        }
+        resp = self.client.patch(
+            self.preferences_url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn("user", body)
+        prefs = body["user"]["preferences"]
+        self.assertEqual(prefs["dietary"], ["Vegan"])
+        self.assertEqual(prefs["cuisines"], ["Korean", "Thai"])
+        self.assertEqual(prefs["foodTypes"], ["Seafood", "Coffee/Tea"])
+        self.assertEqual(prefs["minimum_sanitation_grade"], "B")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.dietary_preferences, ["Vegan"])
+        self.assertEqual(self.user.cuisine_preferences, ["Korean", "Thai"])
+        self.assertEqual(self.user.food_type_preferences, ["Seafood", "Coffee/Tea"])
+        self.assertEqual(self.user.minimum_sanitation_grade, "B")
+
+    def test_preferences_update_unauthenticated_returns_401(self):
+        """PATCH preferences when not logged in returns 401."""
+        payload = {"dietary": [], "cuisines": [], "foodTypes": [], "minimum_sanitation_grade": "C"}
+        resp = self.client.patch(
+            self.preferences_url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 401)
 
 
 class LoginRateLimitTests(TestCase):

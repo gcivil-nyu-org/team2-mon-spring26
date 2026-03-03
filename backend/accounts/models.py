@@ -33,6 +33,16 @@ class UserManager(BaseUserManager):
         return self._create_user(email, password, **extra_fields)
 
 
+SANITATION_GRADE_CHOICES = [
+    ('', 'Not Graded'),
+    ('N', 'N'),
+    ('A', 'A'),
+    ('Z', 'Z'),
+    ('B', 'B'),
+    ('C', 'C'),
+]
+
+
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=150, blank=True)
@@ -40,6 +50,17 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(default=timezone.now)
+
+    # Preference fields (User Story #71)
+    dietary_preferences = models.JSONField(default=list)  # list of strings
+    cuisine_preferences = models.JSONField(default=list)
+    food_type_preferences = models.JSONField(default=list)
+    minimum_sanitation_grade = models.CharField(
+        max_length=10,
+        choices=SANITATION_GRADE_CHOICES,
+        default='C',
+        blank=True,
+    )
 
     objects = UserManager()
 

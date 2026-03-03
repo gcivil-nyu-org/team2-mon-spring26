@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 
+const DEFAULT_PREFERENCES = {
+  cuisines: [] as string[],
+  dietary: [] as string[],
+  foodTypes: [] as string[],
+  minimumSanitationGrade: 'C' as string,
+};
+
 export interface User {
   id: string;
   name: string;
@@ -8,6 +15,40 @@ export interface User {
   preferences: {
     cuisines: string[];
     dietary: string[];
+    foodTypes: string[];
+    minimumSanitationGrade?: string;
+  };
+}
+
+/** Normalize API user payload to User (fill missing/partial preferences). */
+export function normalizeApiUser(apiUser: {
+  id: number | string;
+  email: string;
+  name: string;
+  preferences?: {
+    dietary?: string[];
+    cuisines?: string[];
+    foodTypes?: string[];
+    minimum_sanitation_grade?: string;
+  };
+}): User {
+  const prefs = apiUser.preferences ?? {};
+  const grade = prefs.minimum_sanitation_grade ?? 'C';
+  return {
+    id: String(apiUser.id),
+    email: apiUser.email,
+    name: apiUser.name,
+    preferences: {
+      cuisines: Array.isArray(prefs.cuisines) ? prefs.cuisines : DEFAULT_PREFERENCES.cuisines,
+      dietary: Array.isArray(prefs.dietary) ? prefs.dietary : DEFAULT_PREFERENCES.dietary,
+      foodTypes: Array.isArray(prefs.foodTypes) ? prefs.foodTypes : DEFAULT_PREFERENCES.foodTypes,
+      minimumSanitationGrade:
+        grade === ''
+          ? 'Not Graded'
+          : grade === 'P'
+            ? 'Pending'
+            : grade,
+    },
   };
 }
 
@@ -74,6 +115,12 @@ interface AppContextType {
   register: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
+  updatePreferences: (preferences: {
+    dietary?: string[];
+    cuisines?: string[];
+    foodTypes?: string[];
+    minimumSanitationGrade?: string;
+  }) => Promise<void>;
   groups: Group[];
   createGroup: (name: string) => Group;
   joinGroup: (groupId: string) => void;
@@ -115,6 +162,8 @@ const mockUsers: User[] = [
     preferences: {
       cuisines: ['Italian', 'Japanese', 'Mexican'],
       dietary: ['Vegetarian'],
+      foodTypes: [],
+      minimumSanitationGrade: 'C',
     },
   },
   {
@@ -124,6 +173,8 @@ const mockUsers: User[] = [
     preferences: {
       cuisines: ['Korean', 'Chinese', 'Thai'],
       dietary: ['Halal'],
+      foodTypes: [],
+      minimumSanitationGrade: 'C',
     },
   },
   {
@@ -133,6 +184,8 @@ const mockUsers: User[] = [
     preferences: {
       cuisines: ['American', 'Mediterranean'],
       dietary: [],
+      foodTypes: [],
+      minimumSanitationGrade: 'C',
     },
   },
   {
@@ -142,6 +195,8 @@ const mockUsers: User[] = [
     preferences: {
       cuisines: ['Mexican', 'Italian', 'Mediterranean'],
       dietary: ['Vegan', 'Gluten-Free'],
+      foodTypes: [],
+      minimumSanitationGrade: 'C',
     },
   },
   {
@@ -151,6 +206,8 @@ const mockUsers: User[] = [
     preferences: {
       cuisines: ['Chinese', 'Japanese', 'Vietnamese'],
       dietary: ['Dairy-Free'],
+      foodTypes: [],
+      minimumSanitationGrade: 'C',
     },
   },
 ];
@@ -172,7 +229,7 @@ function getCookie(name: string) {
 }
 
 const API_BASE_URL =
-  'http://mealswipe-backend-env-1.eba-8akuzyp3.us-east-2.elasticbeanstalk.com';
+  import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 function apiUrl(path: string) {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -516,7 +573,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const data = await response.json();
           if (data.authenticated && data.user) {
-            setCurrentUser(data.user);
+            setCurrentUser(normalizeApiUser(data.user));
           }
         }
       } catch (error) {
@@ -543,7 +600,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const data = await response.json();
       if (response.ok && data.success) {
-        setCurrentUser(data.user);
+        setCurrentUser(normalizeApiUser(data.user));
       } else {
         throw new Error(data.error || 'Login failed');
       }
@@ -551,6 +608,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error('Login error:', error);
       throw error;
     }
+  };
+
+  const updatePreferences = async (preferences: {
+    dietary?: string[];
+    cuisines?: string[];
+    foodTypes?: string[];
+    minimumSanitationGrade?: string;
+  }) => {
+    const csrftoken = getCookie('csrftoken') || '';
+    const body: Record<string, unknown> = {};
+    if (preferences.dietary !== undefined) body.dietary = preferences.dietary;
+    if (preferences.cuisines !== undefined) body.cuisines = preferences.cuisines;
+    if (preferences.foodTypes !== undefined) body.foodTypes = preferences.foodTypes;
+    if (preferences.minimumSanitationGrade !== undefined) {
+      const g = preferences.minimumSanitationGrade;
+      body.minimum_sanitation_grade =
+        g === 'Not Graded' ? '' : g === 'Pending' ? 'Z' : g;
+    }
+    const response = await fetch(apiUrl('/api/auth/preferences/'), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error || 'Failed to update preferences');
+    }
+    const data = await response.json();
+    if (data.user) setCurrentUser(normalizeApiUser(data.user));
   };
 
   const register = async (userData: any) => {
@@ -568,7 +658,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const data = await response.json();
       if (response.ok && data.success) {
-        setCurrentUser(data.user);
+        setCurrentUser(normalizeApiUser(data.user));
       } else {
         let errorMessage = data.error || 'Registration failed';
         if (data.errors && typeof data.errors === 'object') {
@@ -915,6 +1005,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         requestPasswordReset,
+        updatePreferences,
         groups,
         createGroup,
         joinGroup,

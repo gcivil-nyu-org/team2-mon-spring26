@@ -10,8 +10,26 @@ from django.core.cache import cache
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 
 from .forms import UserCreationForm
+from .models import SANITATION_GRADE_CHOICES
 
 logger = logging.getLogger(__name__)
+
+VALID_SANITATION_GRADES = {choice[0] for choice in SANITATION_GRADE_CHOICES}
+
+
+def _user_to_json(user):
+    """Build user payload with preferences for API responses."""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": f"{user.first_name} {user.last_name}".strip(),
+        "preferences": {
+            "dietary": user.dietary_preferences or [],
+            "cuisines": user.cuisine_preferences or [],
+            "foodTypes": user.food_type_preferences or [],
+            "minimum_sanitation_grade": user.minimum_sanitation_grade,
+        },
+    }
 
 
 class SignUpView(View):
@@ -51,16 +69,20 @@ def api_register(request):
             form = UserCreationForm(post_data)
             if form.is_valid():
                 user = form.save()
+                prefs = data.get("preferences")
+                if prefs is not None:
+                    if isinstance(prefs.get("dietary"), list):
+                        user.dietary_preferences = prefs["dietary"]
+                    if isinstance(prefs.get("cuisines"), list):
+                        user.cuisine_preferences = prefs["cuisines"]
+                    if isinstance(prefs.get("foodTypes"), list):
+                        user.food_type_preferences = prefs["foodTypes"]
+                    if prefs.get("minimum_sanitation_grade") in VALID_SANITATION_GRADES:
+                        user.minimum_sanitation_grade = prefs["minimum_sanitation_grade"]
+                    user.save()
                 login(request, user)
                 return JsonResponse(
-                    {
-                        "success": True,
-                        "user": {
-                            "id": user.id,
-                            "email": user.email,
-                            "name": f"{user.first_name} {user.last_name}".strip(),
-                        },
-                    }
+                    {"success": True, "user": _user_to_json(user)}
                 )
             else:
                 return JsonResponse(
@@ -104,14 +126,7 @@ def api_login(request):
                 cache.delete(cache_key)  # reset attempts on success
                 login(request, user)
                 return JsonResponse(
-                    {
-                        "success": True,
-                        "user": {
-                            "id": user.id,
-                            "email": user.email,
-                            "name": f"{user.first_name} {user.last_name}".strip(),
-                        },
-                    }
+                    {"success": True, "user": _user_to_json(user)}
                 )
             else:
                 cache.set(cache_key, attempts + 1, timeout=300)  # 5 min lockout
@@ -144,14 +159,37 @@ def api_me(request):
         return JsonResponse(
             {
                 "authenticated": True,
-                "user": {
-                    "id": request.user.id,
-                    "email": request.user.email,
-                    "name": f"{request.user.first_name} {request.user.last_name}".strip(),
-                },
+                "user": _user_to_json(request.user),
             }
         )
     return JsonResponse({"authenticated": False}, status=401)
+
+
+@csrf_exempt
+def api_preferences_update(request):
+    if request.method not in ("PATCH", "PUT"):
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+    try:
+        data = json.loads(request.body)
+        user = request.user
+        if isinstance(data.get("dietary"), list):
+            user.dietary_preferences = data["dietary"]
+        if isinstance(data.get("cuisines"), list):
+            user.cuisine_preferences = data["cuisines"]
+        if isinstance(data.get("foodTypes"), list):
+            user.food_type_preferences = data["foodTypes"]
+        grade = data.get("minimum_sanitation_grade")
+        if grade is not None and grade in VALID_SANITATION_GRADES:
+            user.minimum_sanitation_grade = grade
+        user.save()
+        return JsonResponse({"user": _user_to_json(user)})
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse(
+            {"error": "Invalid JSON body"},
+            status=400,
+        )
 
 
 @csrf_exempt

@@ -57,7 +57,52 @@ repo-root/
 
 ---
 
-## 3. Formatting Configuration (Prettier + Black)
+## 3. Environment Setup (Development vs Production)
+
+Environment configuration is split so that **development** uses your local backend and **production** builds use the deployed API.
+
+### Backend Setup
+
+1. Copy the example env file:
+
+   ```sh
+   cp backend/.env.example backend/.env
+   ```
+
+2. Update the following values in `backend/.env` as needed:
+
+   - `DEBUG` — e.g. `True` for local dev, `False` in production
+   - `ALLOWED_HOSTS` — e.g. `localhost,127.0.0.1` for dev; your domain(s) for production
+   - `SECRET_KEY` — **required for production**; keep it secret (see `backend/.env.example` for a generate command)
+
+Note: `backend/.env` is in `.gitignore`. Create it locally; it will not be committed.
+
+### Frontend Setup
+
+No file copying is required.
+
+- **`npm run dev`** → uses `frontend/.env.development`. With the default (empty `VITE_API_BASE_URL`), API requests go to the same origin and are proxied to the backend by Vite, so session cookies work for login and preferences.
+- **`npm run build`** → uses `frontend/.env.production` (API: deployed backend URL)
+
+### Optional: Local Override
+
+To override the API base URL only on your machine, create:
+
+```sh
+frontend/.env.local
+```
+
+Example:
+
+```
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+This file is in `.gitignore`; each developer creates their own if needed.
+
+---
+
+## 4. Formatting Configuration (Prettier + Black)
 
 Use all three files together for consistent formatting across editors and CI.
 
@@ -79,7 +124,7 @@ Use all three files together for consistent formatting across editors and CI.
 
 ---
 
-## 4. Branch Protection Policies
+## 5. Branch Protection Policies
 
 Apply these rules to both `main` and `develop` via **Settings → Branches → Branch Protection Rules** on GitHub.
 
@@ -93,11 +138,11 @@ Apply these rules to both `main` and `develop` via **Settings → Branches → B
 
 ---
 
-## 5. Test Case Guidelines
+## 6. Test Case Guidelines
 
 Keep tests close to feature work and treat them as part of every PR.
 
-### 5.1 Standards & Best Practices
+### 6.1 Standards & Best Practices
 
 #### Backend (`backend/tests/`)
 
@@ -137,7 +182,7 @@ python manage.py test tests.test_auth_integration.AuthIntegrationTests.test_logi
 Use the module path **`tests.test_auth_integration`** (not `backend.tests...`). Django treats the first segment as an app name; we have no app called `backend`, so `backend.tests.test_auth_integration` raises `ModuleNotFoundError`.
 
 
-### 5.2 Feature Test Suites (Progress & Coverage)
+### 6.2 Feature Test Suites (Progress & Coverage)
 
 #### 📦 Authentication (API) tests
 
