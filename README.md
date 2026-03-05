@@ -259,7 +259,7 @@ The backend URL is set via `VITE_API_BASE_URL` in `frontend/.env.production` (se
 ### 7.5 Architecture notes
 
 - **CORS** is handled by `django-cors-headers`. Allowed origins are set via the `CORS_ALLOWED_ORIGINS` env var on the backend EB environment.
-- **CSRF** is disabled on the JSON API endpoints (`@csrf_exempt`) since they are protected by CORS. The Django template-based views still use CSRF.
+- **CSRF** protection must not be disabled for cookie-authenticated JSON API endpoints. Do not rely on CORS as a substitute for CSRF; either keep Django's CSRF protection enabled (remove any `@csrf_exempt` on cookie-based views) or use token/bearer authentication instead of cookies for those APIs. The Django template-based views also use CSRF.
 - **SQLite** is stored at `/var/app/db/db.sqlite3` on the EB instance (a writable directory created during deploy). Data is **ephemeral** — it is lost when the instance is replaced. For persistent data, switch to RDS.
 - **Instance type** is `t3.small` for the frontend (to avoid deploy timeouts). The backend uses the default instance type.
 
@@ -286,7 +286,7 @@ Keep tests close to feature work and treat them as part of every PR.
 - Prefer queries users rely on (`getByRole`, `getByText`) over brittle selectors.
 - Cover loading, empty, error, and success UI states where applicable.
 - Keep tests isolated and avoid shared mutable state between test cases.
-- *Note:* Frontend test setup (e.g. Vitest + React Testing Library) is not in place yet; see `docs/TEST_RESULTS.md` for recommendations.
+- *Note:* Frontend test setup (Vitest + React Testing Library) is in place, but tests may not pass under Vite 8 beta without version/config alignment; see `docs/TEST_RESULTS.md` for current status and recommendations.
 
 #### Team Expectations
 
