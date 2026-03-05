@@ -622,9 +622,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (preferences.cuisines !== undefined) body.cuisines = preferences.cuisines;
     if (preferences.foodTypes !== undefined) body.foodTypes = preferences.foodTypes;
     if (preferences.minimumSanitationGrade !== undefined) {
-      const g = preferences.minimumSanitationGrade;
-      body.minimum_sanitation_grade =
-        g === 'Not Graded' ? '' : g === 'Pending' ? 'Z' : g;
+      body.minimum_sanitation_grade = preferences.minimumSanitationGrade;
     }
     const response = await fetch(apiUrl('/api/auth/preferences/'), {
       method: 'PATCH',
