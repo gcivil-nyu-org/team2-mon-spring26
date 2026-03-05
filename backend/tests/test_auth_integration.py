@@ -13,6 +13,17 @@ from django.core.cache import cache
 User = get_user_model()
 
 
+def _pref_lists(user):
+    """Return (dietary_names, cuisine_names, food_type_names, grade) from UserPreference."""
+    pref = user.preference
+    return (
+        list(pref.dietary_tags.values_list("name", flat=True)),
+        list(pref.cuisine_types.values_list("name", flat=True)),
+        list(pref.food_type_tags.values_list("name", flat=True)),
+        pref.minimum_sanitation_grade,
+    )
+
+
 def api_register_payload(email, password, first_name="", last_name=""):
     return {
         "email": email,
@@ -96,10 +107,11 @@ class AuthIntegrationTests(TestCase):
         self.assertEqual(body["user"]["preferences"]["minimum_sanitation_grade"], "A")
 
         usr = User.objects.get(email="pref@example.com")
-        self.assertEqual(usr.dietary_preferences, ["Vegetarian", "Vegan"])
-        self.assertEqual(usr.cuisine_preferences, ["Italian", "Japanese"])
-        self.assertEqual(usr.food_type_preferences, ["Pizza", "Salads"])
-        self.assertEqual(usr.minimum_sanitation_grade, "A")
+        dietary, cuisines, food_types, grade = _pref_lists(usr)
+        self.assertEqual(dietary, ["Vegetarian", "Vegan"])
+        self.assertEqual(cuisines, ["Italian", "Japanese"])
+        self.assertEqual(food_types, ["Pizza", "Salads"])
+        self.assertEqual(grade, "A")
 
     def test_registration_duplicate_email(self):
         """Duplicate email returns a 400 error response with an email field validation error."""
@@ -314,10 +326,11 @@ class AuthIntegrationTests(TestCase):
         self.assertEqual(prefs["minimum_sanitation_grade"], "B")
 
         self.user.refresh_from_db()
-        self.assertEqual(self.user.dietary_preferences, ["Vegan"])
-        self.assertEqual(self.user.cuisine_preferences, ["Korean", "Thai"])
-        self.assertEqual(self.user.food_type_preferences, ["Seafood", "Coffee/Tea"])
-        self.assertEqual(self.user.minimum_sanitation_grade, "B")
+        dietary, cuisines, food_types, grade = _pref_lists(self.user)
+        self.assertEqual(dietary, ["Vegan"])
+        self.assertEqual(cuisines, ["Korean", "Thai"])
+        self.assertEqual(food_types, ["Seafood", "Coffee/Tea"])
+        self.assertEqual(grade, "B")
 
     def test_preferences_update_unauthenticated_returns_401(self):
         """PATCH preferences when not logged in returns 401."""

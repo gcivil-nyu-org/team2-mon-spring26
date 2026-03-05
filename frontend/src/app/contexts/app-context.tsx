@@ -5,7 +5,7 @@ const DEFAULT_PREFERENCES = {
   cuisines: [] as string[],
   dietary: [] as string[],
   foodTypes: [] as string[],
-  minimumSanitationGrade: 'C' as string,
+  minimumSanitationGrade: 'A' as string,
 };
 
 export interface User {
@@ -33,7 +33,7 @@ export function normalizeApiUser(apiUser: {
   };
 }): User {
   const prefs = apiUser.preferences ?? {};
-  const grade = prefs.minimum_sanitation_grade ?? 'C';
+  const grade = prefs.minimum_sanitation_grade ?? 'A';
   return {
     id: String(apiUser.id),
     email: apiUser.email,
@@ -163,7 +163,7 @@ const mockUsers: User[] = [
       cuisines: ['Italian', 'Japanese', 'Mexican'],
       dietary: ['Vegetarian'],
       foodTypes: [],
-      minimumSanitationGrade: 'C',
+      minimumSanitationGrade: 'A',
     },
   },
   {
@@ -174,7 +174,7 @@ const mockUsers: User[] = [
       cuisines: ['Korean', 'Chinese', 'Thai'],
       dietary: ['Halal'],
       foodTypes: [],
-      minimumSanitationGrade: 'C',
+      minimumSanitationGrade: 'A',
     },
   },
   {
@@ -185,7 +185,7 @@ const mockUsers: User[] = [
       cuisines: ['American', 'Mediterranean'],
       dietary: [],
       foodTypes: [],
-      minimumSanitationGrade: 'C',
+      minimumSanitationGrade: 'A',
     },
   },
   {
@@ -196,7 +196,7 @@ const mockUsers: User[] = [
       cuisines: ['Mexican', 'Italian', 'Mediterranean'],
       dietary: ['Vegan', 'Gluten-Free'],
       foodTypes: [],
-      minimumSanitationGrade: 'C',
+      minimumSanitationGrade: 'A',
     },
   },
   {
@@ -207,7 +207,7 @@ const mockUsers: User[] = [
       cuisines: ['Chinese', 'Japanese', 'Vietnamese'],
       dietary: ['Dairy-Free'],
       foodTypes: [],
-      minimumSanitationGrade: 'C',
+      minimumSanitationGrade: 'A',
     },
   },
 ];

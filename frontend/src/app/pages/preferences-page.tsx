@@ -33,7 +33,7 @@ export function PreferencesPage() {
   const [dietary, setDietary] = useState<string[]>([]);
   const [cuisines, setCuisines] = useState<string[]>([]);
   const [foodTypes, setFoodTypes] = useState<string[]>([]);
-  const [minimumSanitationGrade, setMinimumSanitationGrade] = useState<string>('C');
+  const [minimumSanitationGrade, setMinimumSanitationGrade] = useState<string>('A');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +46,7 @@ export function PreferencesPage() {
       setDietary(currentUser.preferences.dietary ?? []);
       setCuisines(currentUser.preferences.cuisines ?? []);
       setFoodTypes(currentUser.preferences.foodTypes ?? []);
-      setMinimumSanitationGrade(currentUser.preferences.minimumSanitationGrade ?? 'C');
+      setMinimumSanitationGrade(currentUser.preferences.minimumSanitationGrade ?? 'A');
     }
   }, [currentUser]);
 

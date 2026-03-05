@@ -10,11 +10,74 @@ from django.core.cache import cache
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 
 from .forms import UserCreationForm
-from .models import SANITATION_GRADE_CHOICES
+from .models import (
+    SANITATION_GRADE_CHOICES,
+    UserPreference,
+    DietaryTag,
+    CuisineType,
+    FoodTypeTag,
+)
+from django.utils.text import slugify
 
 logger = logging.getLogger(__name__)
 
 VALID_SANITATION_GRADES = {choice[0] for choice in SANITATION_GRADE_CHOICES}
+
+
+def _get_preferences_dict(user):
+    """Return API-shaped preferences from UserPreference (M2M tag names). Creates preference if missing."""
+    pref, _ = UserPreference.objects.get_or_create(
+        user=user,
+        defaults={"minimum_sanitation_grade": "A"},
+    )
+    return {
+        "dietary": list(pref.dietary_tags.values_list("name", flat=True)),
+        "cuisines": list(pref.cuisine_types.values_list("name", flat=True)),
+        "foodTypes": list(pref.food_type_tags.values_list("name", flat=True)),
+        "minimum_sanitation_grade": pref.minimum_sanitation_grade or "",
+    }
+
+
+def _set_preferences_from_payload(user, payload):
+    """Create/update UserPreference from API payload (list of tag names + minimum_sanitation_grade)."""
+    pref, _ = UserPreference.objects.get_or_create(
+        user=user,
+        defaults={"minimum_sanitation_grade": "A"},
+    )
+    if isinstance(payload.get("dietary"), list):
+        tags = []
+        for name in payload["dietary"]:
+            if name:
+                tag, _ = DietaryTag.objects.get_or_create(
+                    name=name.strip(),
+                    defaults={"slug": slugify(name.strip()) or name.strip().lower()},
+                )
+                tags.append(tag)
+        pref.dietary_tags.set(tags)
+    if isinstance(payload.get("cuisines"), list):
+        tags = []
+        for name in payload["cuisines"]:
+            if name:
+                tag, _ = CuisineType.objects.get_or_create(
+                    name=name.strip(),
+                    defaults={"slug": slugify(name.strip()) or name.strip().lower()},
+                )
+                tags.append(tag)
+        pref.cuisine_types.set(tags)
+    if isinstance(payload.get("foodTypes"), list):
+        tags = []
+        for name in payload["foodTypes"]:
+            if name:
+                tag, _ = FoodTypeTag.objects.get_or_create(
+                    name=name.strip(),
+                    defaults={"slug": slugify(name.strip()) or name.strip().lower()},
+                )
+                tags.append(tag)
+        pref.food_type_tags.set(tags)
+    grade = payload.get("minimum_sanitation_grade")
+    if grade is not None and grade in VALID_SANITATION_GRADES:
+        pref.minimum_sanitation_grade = grade
+        pref.save(update_fields=["minimum_sanitation_grade", "updated_at"])
 
 
 def _user_to_json(user):
@@ -23,12 +86,7 @@ def _user_to_json(user):
         "id": user.id,
         "email": user.email,
         "name": f"{user.first_name} {user.last_name}".strip(),
-        "preferences": {
-            "dietary": user.dietary_preferences or [],
-            "cuisines": user.cuisine_preferences or [],
-            "foodTypes": user.food_type_preferences or [],
-            "minimum_sanitation_grade": user.minimum_sanitation_grade,
-        },
+        "preferences": _get_preferences_dict(user),
     }
 
 
@@ -71,15 +129,7 @@ def api_register(request):
                 user = form.save()
                 prefs = data.get("preferences")
                 if prefs is not None:
-                    if isinstance(prefs.get("dietary"), list):
-                        user.dietary_preferences = prefs["dietary"]
-                    if isinstance(prefs.get("cuisines"), list):
-                        user.cuisine_preferences = prefs["cuisines"]
-                    if isinstance(prefs.get("foodTypes"), list):
-                        user.food_type_preferences = prefs["foodTypes"]
-                    if prefs.get("minimum_sanitation_grade") in VALID_SANITATION_GRADES:
-                        user.minimum_sanitation_grade = prefs["minimum_sanitation_grade"]
-                    user.save()
+                    _set_preferences_from_payload(user, prefs)
                 login(request, user)
                 return JsonResponse(
                     {"success": True, "user": _user_to_json(user)}
@@ -174,16 +224,7 @@ def api_preferences_update(request):
     try:
         data = json.loads(request.body)
         user = request.user
-        if isinstance(data.get("dietary"), list):
-            user.dietary_preferences = data["dietary"]
-        if isinstance(data.get("cuisines"), list):
-            user.cuisine_preferences = data["cuisines"]
-        if isinstance(data.get("foodTypes"), list):
-            user.food_type_preferences = data["foodTypes"]
-        grade = data.get("minimum_sanitation_grade")
-        if grade is not None and grade in VALID_SANITATION_GRADES:
-            user.minimum_sanitation_grade = grade
-        user.save()
+        _set_preferences_from_payload(user, data)
         return JsonResponse({"user": _user_to_json(user)})
     except (json.JSONDecodeError, TypeError):
         return JsonResponse(
