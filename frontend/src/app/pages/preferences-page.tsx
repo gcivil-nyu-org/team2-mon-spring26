@@ -108,11 +108,18 @@ export function PreferencesPage() {
               {cuisinesList.map((cuisine) => (
                 <Badge
                   key={cuisine}
+                  asChild
                   variant={cuisines.includes(cuisine) ? 'default' : 'secondary'}
-                  className="cursor-pointer text-sm"
-                  onClick={() => toggleCuisine(cuisine)}
+                  className="text-sm"
                 >
-                  {cuisine}
+                  <button
+                    type="button"
+                    onClick={() => toggleCuisine(cuisine)}
+                    aria-pressed={cuisines.includes(cuisine)}
+                    className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
+                  >
+                    {cuisine}
+                  </button>
                 </Badge>
               ))}
             </div>
@@ -129,11 +136,18 @@ export function PreferencesPage() {
               {dietaryList.map((diet) => (
                 <Badge
                   key={diet}
+                  asChild
                   variant={dietary.includes(diet) ? 'default' : 'secondary'}
-                  className="cursor-pointer text-sm"
-                  onClick={() => toggleDietary(diet)}
+                  className="text-sm"
                 >
-                  {diet}
+                  <button
+                    type="button"
+                    onClick={() => toggleDietary(diet)}
+                    aria-pressed={dietary.includes(diet)}
+                    className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
+                  >
+                    {diet}
+                  </button>
                 </Badge>
               ))}
             </div>
@@ -150,11 +164,18 @@ export function PreferencesPage() {
               {foodTypesList.map((type) => (
                 <Badge
                   key={type}
+                  asChild
                   variant={foodTypes.includes(type) ? 'default' : 'secondary'}
-                  className="cursor-pointer text-sm"
-                  onClick={() => toggleFoodType(type)}
+                  className="text-sm"
                 >
-                  {type}
+                  <button
+                    type="button"
+                    onClick={() => toggleFoodType(type)}
+                    aria-pressed={foodTypes.includes(type)}
+                    className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
+                  >
+                    {type}
+                  </button>
                 </Badge>
               ))}
             </div>

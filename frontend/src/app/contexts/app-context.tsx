@@ -45,7 +45,7 @@ export function normalizeApiUser(apiUser: {
       minimumSanitationGrade:
         grade === ''
           ? 'Not Graded'
-          : grade === 'P'
+          : grade === 'P' || grade === 'Z'
             ? 'Pending'
             : grade,
     },

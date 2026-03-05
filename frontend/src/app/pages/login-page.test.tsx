@@ -9,7 +9,7 @@
  * these tests: use Vite 5 for tests (set "vite": "^5.4.11" in devDependencies) or
  * configure Vitest to disable SSR transform for tests. See docs/TEST_RESULTS.md.
  */
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactElement } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
