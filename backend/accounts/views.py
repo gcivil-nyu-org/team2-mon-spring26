@@ -47,32 +47,44 @@ def _set_preferences_from_payload(user, payload):
     if isinstance(payload.get("dietary"), list):
         tags = []
         for name in payload["dietary"]:
-            if name:
-                tag, _ = DietaryTag.objects.get_or_create(
-                    name=name.strip(),
-                    defaults={"slug": slugify(name.strip()) or name.strip().lower()},
-                )
-                tags.append(tag)
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            tag, _ = DietaryTag.objects.get_or_create(
+                name=clean_name,
+                defaults={"slug": slugify(clean_name) or clean_name.lower()},
+            )
+            tags.append(tag)
         pref.dietary_tags.set(tags)
     if isinstance(payload.get("cuisines"), list):
         tags = []
         for name in payload["cuisines"]:
-            if name:
-                tag, _ = CuisineType.objects.get_or_create(
-                    name=name.strip(),
-                    defaults={"slug": slugify(name.strip()) or name.strip().lower()},
-                )
-                tags.append(tag)
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            tag, _ = CuisineType.objects.get_or_create(
+                name=clean_name,
+                defaults={"slug": slugify(clean_name) or clean_name.lower()},
+            )
+            tags.append(tag)
         pref.cuisine_types.set(tags)
     if isinstance(payload.get("foodTypes"), list):
         tags = []
         for name in payload["foodTypes"]:
-            if name:
-                tag, _ = FoodTypeTag.objects.get_or_create(
-                    name=name.strip(),
-                    defaults={"slug": slugify(name.strip()) or name.strip().lower()},
-                )
-                tags.append(tag)
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            tag, _ = FoodTypeTag.objects.get_or_create(
+                name=clean_name,
+                defaults={"slug": slugify(clean_name) or clean_name.lower()},
+            )
+            tags.append(tag)
         pref.food_type_tags.set(tags)
     grade = payload.get("minimum_sanitation_grade")
     if grade is not None and grade in VALID_SANITATION_GRADES:
