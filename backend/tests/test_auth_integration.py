@@ -114,7 +114,8 @@ class AuthIntegrationTests(TestCase):
         self.assertEqual(grade, "A")
 
     def test_registration_duplicate_email(self):
-        """Duplicate email returns a 400 error response with an email field validation error."""
+        """Duplicate email returns 400 with email field error (registration exposes this for UX).
+        Contrast: password reset uses a neutral message to avoid account enumeration."""
         User.objects.create_user(email="dup@example.com", password="x")
         data = api_register_payload("dup@example.com", "Aaa123!")
         resp = self.client.post(
@@ -347,7 +348,8 @@ class LoginRateLimitTests(TestCase):
     """Brute-force mitigation: rate limiting on login attempts."""
 
     def setUp(self):
-        cache.clear()  # isolate from other tests so rate-limit count is fresh
+        # Isolate rate-limit: delete only the key this test uses (test client uses 127.0.0.1)
+        cache.delete("login_attempts_127.0.0.1")
         self.user = User.objects.create_user(email="rate@example.com", password="secret")
         self.login_url = reverse("api_login")
 

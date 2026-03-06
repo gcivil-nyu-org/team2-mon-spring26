@@ -7,35 +7,28 @@
  * (SSR-like transform), not due to this code. Use Vite 5 for tests or fix config;
  * see docs/TEST_RESULTS.md.
  */
-import type { ReactElement } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '@/test/test-utils';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
-import { AppProvider } from '@/app/contexts/app-context';
-import { VenueProvider } from '@/app/contexts/venue-context';
 import { RegisterPage } from './register-page';
 
-function renderWithProviders(ui: ReactElement, initialRoute = '/register') {
-  return render(
-    <MemoryRouter initialEntries={[initialRoute]}>
-      <AppProvider>
-        <VenueProvider>{ui}</VenueProvider>
-      </AppProvider>
-    </MemoryRouter>
-  );
+function getFetchUrl(input: Parameters<typeof fetch>[0]): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return (input as Request).url;
 }
 
 describe('RegisterPage', () => {
   beforeEach(() => {
-    vi.mocked(fetch).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/auth/me/')) {
+    vi.mocked(fetch).mockImplementation((input: Parameters<typeof fetch>[0]) => {
+      const url = getFetchUrl(input);
+      if (url.includes('/api/auth/me/')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ authenticated: false }),
         } as Response);
       }
-      if (typeof url === 'string' && url.includes('/api/auth/register/')) {
+      if (url.includes('/api/auth/register/')) {
         return Promise.resolve({
           ok: true,
           json: () =>
@@ -50,7 +43,7 @@ describe('RegisterPage', () => {
   });
 
   it('renders account step with name, email, password fields', () => {
-    renderWithProviders(<RegisterPage />);
+    render(<RegisterPage />, { initialRoute: '/register' });
     expect(screen.getByRole('heading', { name: /create account/i })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /full name/i })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /nyu email/i })).toBeInTheDocument();
@@ -62,14 +55,14 @@ describe('RegisterPage', () => {
 
   it('shows validation error when name is empty', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RegisterPage />);
+    render(<RegisterPage />, { initialRoute: '/register' });
     await user.click(screen.getByRole('button', { name: /continue/i }));
     expect(await screen.findByText(/name is required/i)).toBeInTheDocument();
   });
 
   it('shows validation error for invalid email', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RegisterPage />);
+    render(<RegisterPage />, { initialRoute: '/register' });
     await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'not-an-email');
     await user.type(screen.getByLabelText(/^password$/i), 'ValidPass1!');
@@ -80,7 +73,7 @@ describe('RegisterPage', () => {
 
   it('shows validation error when password is too short', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RegisterPage />);
+    render(<RegisterPage />, { initialRoute: '/register' });
     await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'jane@nyu.edu');
     await user.type(screen.getByLabelText(/^password$/i), '12345');
@@ -91,7 +84,7 @@ describe('RegisterPage', () => {
 
   it('shows validation error when passwords do not match', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RegisterPage />);
+    render(<RegisterPage />, { initialRoute: '/register' });
     await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'jane@nyu.edu');
     await user.type(screen.getByLabelText(/^password$/i), 'ValidPass1!');
@@ -102,7 +95,7 @@ describe('RegisterPage', () => {
 
   it('moves to preferences step when account form is valid', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<RegisterPage />);
+    render(<RegisterPage />, { initialRoute: '/register' });
     await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'jane@nyu.edu');
     await user.type(screen.getByLabelText(/^password$/i), 'ValidPass1!');
@@ -114,7 +107,8 @@ describe('RegisterPage', () => {
   });
 
   it('shows registration error when API returns error', async () => {
-    vi.mocked(fetch).mockImplementation((url: string) => {
+    vi.mocked(fetch).mockImplementation((input: Parameters<typeof fetch>[0]) => {
+      const url = getFetchUrl(input);
       if (url.includes('/api/auth/me/')) {
         return Promise.resolve({
           ok: true,
@@ -135,7 +129,7 @@ describe('RegisterPage', () => {
     });
 
     const user = userEvent.setup();
-    renderWithProviders(<RegisterPage />);
+    render(<RegisterPage />, { initialRoute: '/register' });
     await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'jane@nyu.edu');
     await user.type(screen.getByLabelText(/^password$/i), 'ValidPass1!');

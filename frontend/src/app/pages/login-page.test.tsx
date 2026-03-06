@@ -9,35 +9,28 @@
  * these tests: use Vite 5 for tests (set "vite": "^5.4.11" in devDependencies) or
  * configure Vitest to disable SSR transform for tests. See docs/TEST_RESULTS.md.
  */
-import type { ReactElement } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@/test/test-utils';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
-import { AppProvider } from '@/app/contexts/app-context';
-import { VenueProvider } from '@/app/contexts/venue-context';
 import { LoginPage } from './login-page';
 
-function renderWithProviders(ui: ReactElement) {
-  return render(
-    <MemoryRouter>
-      <AppProvider>
-        <VenueProvider>{ui}</VenueProvider>
-      </AppProvider>
-    </MemoryRouter>
-  );
+function getFetchUrl(input: Parameters<typeof fetch>[0]): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return (input as Request).url;
 }
 
 describe('LoginPage', () => {
   beforeEach(() => {
-    vi.mocked(fetch).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/auth/me/')) {
+    vi.mocked(fetch).mockImplementation((input: Parameters<typeof fetch>[0]) => {
+      const url = getFetchUrl(input);
+      if (url.includes('/api/auth/me/')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ authenticated: false }),
         } as Response);
       }
-      if (typeof url === 'string' && url.includes('/api/auth/login/')) {
+      if (url.includes('/api/auth/login/')) {
         return Promise.resolve({
           ok: true,
           json: () =>
@@ -52,7 +45,7 @@ describe('LoginPage', () => {
   });
 
   it('renders login form with title and main actions', () => {
-    renderWithProviders(<LoginPage />);
+    render(<LoginPage />);
     expect(screen.getByRole('heading', { name: /meal swipe/i })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /email/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
@@ -62,7 +55,8 @@ describe('LoginPage', () => {
   });
 
   it('shows login error when credentials are invalid', async () => {
-    vi.mocked(fetch).mockImplementation((url: string) => {
+    vi.mocked(fetch).mockImplementation((input: Parameters<typeof fetch>[0]) => {
+      const url = getFetchUrl(input);
       if (url.includes('/api/auth/me/')) {
         return Promise.resolve({
           ok: true,
@@ -79,7 +73,7 @@ describe('LoginPage', () => {
     });
 
     const user = userEvent.setup();
-    renderWithProviders(<LoginPage />);
+    render(<LoginPage />);
     const email = screen.getByRole('textbox', { name: /email/i });
     const password = screen.getByLabelText(/password/i);
     await user.clear(email);
@@ -92,7 +86,7 @@ describe('LoginPage', () => {
 
   it('opens forgot password dialog when Forgot Password is clicked', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<LoginPage />);
+    render(<LoginPage />);
     await user.click(screen.getByRole('button', { name: /forgot password/i }));
 
     expect(screen.getByRole('dialog', { name: /forgot password/i })).toBeInTheDocument();
@@ -102,7 +96,7 @@ describe('LoginPage', () => {
 
   it('shows validation message when reset is submitted without email', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<LoginPage />);
+    render(<LoginPage />);
     await user.click(screen.getByRole('button', { name: /forgot password/i }));
 
     const dialog = screen.getByRole('dialog', { name: /forgot password/i });
@@ -112,7 +106,8 @@ describe('LoginPage', () => {
   });
 
   it('shows success message after password reset request', async () => {
-    vi.mocked(fetch).mockImplementation((url: string) => {
+    vi.mocked(fetch).mockImplementation((input: Parameters<typeof fetch>[0]) => {
+      const url = getFetchUrl(input);
       if (url.includes('/api/auth/me/')) {
         return Promise.resolve({
           ok: true,
@@ -133,7 +128,7 @@ describe('LoginPage', () => {
     });
 
     const user = userEvent.setup();
-    renderWithProviders(<LoginPage />);
+    render(<LoginPage />);
     await user.click(screen.getByRole('button', { name: /forgot password/i }));
 
     const dialog = screen.getByRole('dialog', { name: /forgot password/i });

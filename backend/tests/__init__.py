@@ -1,8 +1,7 @@
 """Package marker for backend tests.
 
-Having this file makes the ``tests`` directory a Python package so that
-test modules under it can be imported. Note that ``backend.tests`` is only
-importable if ``backend`` itself is a Python package (i.e., has
-``backend/__init__.py``). Historically this directory contained only a
-``.gitkeep`` file, which is no longer needed.
+Use the module path ``tests.test_<name>`` (not ``backend.tests.test_<name>``)
+when running Django tests, e.g. ``python manage.py test tests.test_auth_integration``.
+Django treats the first path segment as an app name; there is no app named
+``backend``, so ``backend.tests.*`` would raise ModuleNotFoundError.
 """
