@@ -15,8 +15,8 @@ import {
 import { UtensilsCrossed, Mail, CheckCircle2 } from 'lucide-react';
 
 export function LoginPage() {
-  const [email, setEmail] = useState('alex@nyu.edu');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
@@ -31,8 +31,13 @@ export function LoginPage() {
     try {
       await login(email, password);
       navigate('/home');
-    } catch (err: any) {
-      setLoginError(err.message || 'Login failed. Please check your credentials.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Login failed.';
+      setLoginError(
+        message === 'Invalid credentials'
+          ? 'Invalid email or password. If you don\'t have an account, please register first.'
+          : message
+      );
     }
   };
 

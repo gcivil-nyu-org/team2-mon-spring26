@@ -10,8 +10,96 @@ from django.core.cache import cache
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 
 from .forms import UserCreationForm
+from .models import (
+    SANITATION_GRADE_CHOICES,
+    UserPreference,
+    DietaryTag,
+    CuisineType,
+    FoodTypeTag,
+)
+from django.utils.text import slugify
 
 logger = logging.getLogger(__name__)
+
+VALID_SANITATION_GRADES = {choice[0] for choice in SANITATION_GRADE_CHOICES}
+
+
+def _get_preferences_dict(user):
+    """Return API-shaped preferences from UserPreference (M2M tag names). Creates preference if missing."""
+    pref, _ = UserPreference.objects.get_or_create(
+        user=user,
+        defaults={"minimum_sanitation_grade": "A"},
+    )
+    return {
+        "dietary": list(pref.dietary_tags.values_list("name", flat=True)),
+        "cuisines": list(pref.cuisine_types.values_list("name", flat=True)),
+        "foodTypes": list(pref.food_type_tags.values_list("name", flat=True)),
+        "minimum_sanitation_grade": pref.minimum_sanitation_grade or "",
+    }
+
+
+def _set_preferences_from_payload(user, payload):
+    """Create/update UserPreference from API payload (list of tag names + minimum_sanitation_grade)."""
+    pref, _ = UserPreference.objects.get_or_create(
+        user=user,
+        defaults={"minimum_sanitation_grade": "A"},
+    )
+    if isinstance(payload.get("dietary"), list):
+        tags = []
+        for name in payload["dietary"]:
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            tag, _ = DietaryTag.objects.get_or_create(
+                name=clean_name,
+                defaults={"slug": slugify(clean_name) or clean_name.lower()},
+            )
+            tags.append(tag)
+        pref.dietary_tags.set(tags)
+    if isinstance(payload.get("cuisines"), list):
+        tags = []
+        for name in payload["cuisines"]:
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            tag, _ = CuisineType.objects.get_or_create(
+                name=clean_name,
+                defaults={"slug": slugify(clean_name) or clean_name.lower()},
+            )
+            tags.append(tag)
+        pref.cuisine_types.set(tags)
+    if isinstance(payload.get("foodTypes"), list):
+        tags = []
+        for name in payload["foodTypes"]:
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            tag, _ = FoodTypeTag.objects.get_or_create(
+                name=clean_name,
+                defaults={"slug": slugify(clean_name) or clean_name.lower()},
+            )
+            tags.append(tag)
+        pref.food_type_tags.set(tags)
+    grade = payload.get("minimum_sanitation_grade")
+    if grade is not None and grade in VALID_SANITATION_GRADES:
+        pref.minimum_sanitation_grade = grade
+        pref.save(update_fields=["minimum_sanitation_grade", "updated_at"])
+
+
+def _user_to_json(user):
+    """Build user payload with preferences for API responses."""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": f"{user.first_name} {user.last_name}".strip(),
+        "preferences": _get_preferences_dict(user),
+    }
 
 
 class SignUpView(View):
@@ -51,16 +139,12 @@ def api_register(request):
             form = UserCreationForm(post_data)
             if form.is_valid():
                 user = form.save()
+                prefs = data.get("preferences")
+                if prefs is not None:
+                    _set_preferences_from_payload(user, prefs)
                 login(request, user)
                 return JsonResponse(
-                    {
-                        "success": True,
-                        "user": {
-                            "id": user.id,
-                            "email": user.email,
-                            "name": f"{user.first_name} {user.last_name}".strip(),
-                        },
-                    }
+                    {"success": True, "user": _user_to_json(user)}
                 )
             else:
                 return JsonResponse(
@@ -104,14 +188,7 @@ def api_login(request):
                 cache.delete(cache_key)  # reset attempts on success
                 login(request, user)
                 return JsonResponse(
-                    {
-                        "success": True,
-                        "user": {
-                            "id": user.id,
-                            "email": user.email,
-                            "name": f"{user.first_name} {user.last_name}".strip(),
-                        },
-                    }
+                    {"success": True, "user": _user_to_json(user)}
                 )
             else:
                 cache.set(cache_key, attempts + 1, timeout=300)  # 5 min lockout
@@ -144,14 +221,28 @@ def api_me(request):
         return JsonResponse(
             {
                 "authenticated": True,
-                "user": {
-                    "id": request.user.id,
-                    "email": request.user.email,
-                    "name": f"{request.user.first_name} {request.user.last_name}".strip(),
-                },
+                "user": _user_to_json(request.user),
             }
         )
     return JsonResponse({"authenticated": False}, status=401)
+
+
+@csrf_exempt
+def api_preferences_update(request):
+    if request.method not in ("PATCH", "PUT"):
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+    try:
+        data = json.loads(request.body)
+        user = request.user
+        _set_preferences_from_payload(user, data)
+        return JsonResponse({"user": _user_to_json(user)})
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse(
+            {"error": "Invalid JSON body"},
+            status=400,
+        )
 
 
 @csrf_exempt
