@@ -39,9 +39,15 @@ export function normalizeApiUser(apiUser: {
     email: apiUser.email,
     name: apiUser.name,
     preferences: {
-      cuisines: Array.isArray(prefs.cuisines) ? prefs.cuisines : DEFAULT_PREFERENCES.cuisines,
-      dietary: Array.isArray(prefs.dietary) ? prefs.dietary : DEFAULT_PREFERENCES.dietary,
-      foodTypes: Array.isArray(prefs.foodTypes) ? prefs.foodTypes : DEFAULT_PREFERENCES.foodTypes,
+      cuisines: Array.isArray(prefs.cuisines)
+        ? prefs.cuisines
+        : DEFAULT_PREFERENCES.cuisines,
+      dietary: Array.isArray(prefs.dietary)
+        ? prefs.dietary
+        : DEFAULT_PREFERENCES.dietary,
+      foodTypes: Array.isArray(prefs.foodTypes)
+        ? prefs.foodTypes
+        : DEFAULT_PREFERENCES.foodTypes,
       minimumSanitationGrade:
         grade === ''
           ? 'Not Graded'
@@ -228,8 +234,7 @@ function getCookie(name: string) {
   return cookieValue;
 }
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 function apiUrl(path: string) {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -635,7 +640,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error((err as { error?: string }).error || 'Failed to update preferences');
+      throw new Error(
+        (err as { error?: string }).error || 'Failed to update preferences'
+      );
     }
     const data = await response.json();
     if (data.user) setCurrentUser(normalizeApiUser(data.user));
