@@ -70,7 +70,6 @@ Environment configuration is split so that **development** uses your local backe
    ```
 
 2. Update the following values in `backend/.env` as needed:
-
    - `DEBUG` — e.g. `True` for local dev, `False` in production
    - `ALLOWED_HOSTS` — e.g. `localhost,127.0.0.1` for dev; your domain(s) for production
    - `SECRET_KEY` — **required for production**; keep it secret (see `backend/.env.example` for a generate command)
@@ -287,7 +286,7 @@ Keep tests close to feature work and treat them as part of every PR.
 - Prefer queries users rely on (`getByRole`, `getByText`) over brittle selectors.
 - Cover loading, empty, error, and success UI states where applicable.
 - Keep tests isolated and avoid shared mutable state between test cases.
-- *Note:* Frontend test setup (Vitest + React Testing Library) is in place, but tests may not pass under Vite 8 beta without version/config alignment; see `docs/TEST_RESULTS.md` for current status and recommendations.
+- _Note:_ Frontend test setup (Vitest + React Testing Library) is in place, but tests may not pass under Vite 8 beta without version/config alignment; see `docs/TEST_RESULTS.md` for current status and recommendations.
 
 #### Team Expectations
 
@@ -308,7 +307,6 @@ python manage.py test tests.test_auth_integration.AuthIntegrationTests.test_logi
 ```
 
 Use the module path **`tests.test_auth_integration`** (not `backend.tests...`). Django treats the first segment as an app name; we have no app called `backend`, so `backend.tests.test_auth_integration` raises `ModuleNotFoundError`.
-
 
 ### 8.2 Feature Test Suites (Progress & Coverage)
 
