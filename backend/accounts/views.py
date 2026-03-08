@@ -143,9 +143,7 @@ def api_register(request):
                 if prefs is not None:
                     _set_preferences_from_payload(user, prefs)
                 login(request, user)
-                return JsonResponse(
-                    {"success": True, "user": _user_to_json(user)}
-                )
+                return JsonResponse({"success": True, "user": _user_to_json(user)})
             else:
                 return JsonResponse(
                     {"success": False, "errors": form.errors}, status=400
@@ -187,9 +185,7 @@ def api_login(request):
             if user is not None:
                 cache.delete(cache_key)  # reset attempts on success
                 login(request, user)
-                return JsonResponse(
-                    {"success": True, "user": _user_to_json(user)}
-                )
+                return JsonResponse({"success": True, "user": _user_to_json(user)})
             else:
                 cache.set(cache_key, attempts + 1, timeout=300)  # 5 min lockout
                 return JsonResponse(

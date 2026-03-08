@@ -59,7 +59,7 @@ repo-root/
 
 ## 3. Environment Setup (Development vs Production)
 
-Environment configuration is split so that **development** uses your local backend and **production** builds use the deployed API.
+Environment configuration is split so that **development** uses your local backend and **production** builds use same-origin `/api` routing from the frontend host.
 
 ### Backend Setup
 
@@ -82,7 +82,7 @@ Note: `backend/.env` is in `.gitignore`. Create it locally; it will not be commi
 No file copying is required.
 
 - **`npm run dev`** → uses `frontend/.env.development`. With the default (empty `VITE_API_BASE_URL`), API requests go to the same origin and are proxied to the backend by Vite, so session cookies work for login and preferences.
-- **`npm run build`** → uses `frontend/.env.production` (API: deployed backend URL)
+- **`npm run build`** → uses `frontend/.env.production`. Keep `VITE_API_BASE_URL` empty in production so requests stay same-origin (`/api/...`) and are proxied by Nginx on the frontend EB instance.
 
 ### Optional: Local Override
 
@@ -92,7 +92,7 @@ To override the API base URL only on your machine, create:
 frontend/.env.local
 ```
 
-Example:
+Example (direct backend calls for debugging):
 
 ```
 VITE_API_BASE_URL=http://127.0.0.1:8000
@@ -226,6 +226,7 @@ Key deployment files:
 - `frontend/Procfile` — runs `npm run start` which calls `serve -s dist`
 - `frontend/.ebignore` — excludes `node_modules/`, source files, and config from the upload; **includes** `dist/`
 - `frontend/package.json` — only `serve` is in `dependencies`; all build tools are in `devDependencies`
+- `frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf` — proxies `/api/` from the frontend origin to the backend EB URL so browser session cookies work reliably
 
 ```bash
 cd frontend
@@ -238,7 +239,7 @@ eb init Mealswipe-frontend-1 \
 # Create environment (first time only)
 eb create Mealswipe-frontend-1-env
 
-# Build locally (uses .env.production for VITE_API_BASE_URL)
+# Build locally (uses .env.production; keep VITE_API_BASE_URL empty for same-origin /api)
 npm install
 npm run build
 
@@ -248,17 +249,17 @@ eb deploy --timeout 5
 
 > **Important:** You must run `npm run build` locally before every `eb deploy`. The EB instance does **not** build — it only serves the static files from `dist/`.
 
-### 7.4 Updating the backend API URL
+### 7.4 Updating the backend API target
 
-The backend URL is set via `VITE_API_BASE_URL` in `frontend/.env.production` (see **§3 Environment Setup**). To point the frontend at a different backend:
+In production, the frontend calls same-origin `/api/...` and Nginx forwards to the backend. To point production to a different backend:
 
-1. Update `VITE_API_BASE_URL` in `frontend/.env.production`
+1. Update `proxy_pass` and `proxy_set_header Host` in `frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf`
 2. Run `npm run build` in the `frontend/` directory
 3. Run `eb deploy` from `frontend/`
 
 ### 7.5 Architecture notes
 
-- **CORS** is handled by `django-cors-headers`. Allowed origins are set via the `CORS_ALLOWED_ORIGINS` env var on the backend EB environment.
+- **CORS** is handled by `django-cors-headers`. For production browser traffic, the frontend now uses same-origin `/api` proxying, which avoids cross-origin cookie issues.
 - **CSRF** protection must not be disabled for cookie-authenticated JSON API endpoints. Do not rely on CORS as a substitute for CSRF; either keep Django's CSRF protection enabled (remove any `@csrf_exempt` on cookie-based views) or use token/bearer authentication instead of cookies for those APIs. The Django template-based views also use CSRF.
 - **SQLite** is stored at `/var/app/db/db.sqlite3` on the EB instance (a writable directory created during deploy). Data is **ephemeral** — it is lost when the instance is replaced. For persistent data, switch to RDS.
 - **Instance type** is `t3.small` for the frontend (to avoid deploy timeouts). The backend uses the default instance type.
