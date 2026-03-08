@@ -159,3 +159,21 @@ class UserPreference(models.Model):
 
     def __str__(self):
         return f"Preferences for {self.user.email}"
+
+
+class VenueManagerProfile(models.Model):
+    """Extended profile for users with the 'venue_manager' role."""
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='venue_manager_profile',
+    )
+    business_name = models.CharField(max_length=255, blank=True)
+    business_email = models.EmailField(blank=True)
+    business_phone = models.CharField(max_length=30, blank=True)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.business_name} ({self.user.email})"
