@@ -76,6 +76,28 @@ Environment configuration is split so that **development** uses your local backe
 
 Note: `backend/.env` is in `.gitignore`. Create it locally; it will not be committed.
 
+### Email / Password Reset
+
+Password reset emails are sent via Django's SMTP backend. Gmail is the supported provider for development and production.
+
+Uncomment and fill in these variables in `backend/.env`:
+
+```dotenv
+EMAIL_BACKEND=accounts.smtp_backend.CertifiSMTPBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your-address@gmail.com
+EMAIL_HOST_PASSWORD=xxxx xxxx xxxx xxxx   # 16-char Gmail App Password
+DEFAULT_FROM_EMAIL=your-address@gmail.com
+```
+
+**Gmail App Password**: your normal Google account password will not work. Generate a 16-character App Password at <https://myaccount.google.com/apppasswords> (requires 2-Step Verification enabled on the account).
+
+**`CertifiSMTPBackend`**: a thin wrapper around Django's built-in SMTP backend (`accounts/smtp_backend.py`) that uses `certifi`'s CA bundle for SSL verification. This is required on macOS where Python's default SSL context cannot locate the system certificate store. It is safe on Linux/AWS (certifi's bundle is equally valid there).
+
+If `EMAIL_BACKEND` is not set, Django falls back to `console.EmailBackend` and prints emails to stdout — useful for local dev without a real mailbox. In DEBUG mode the reset link is also always logged to the Django console regardless of email delivery.
+
 ### Frontend Setup
 
 No file copying is required.
@@ -208,7 +230,15 @@ eb setenv \
   ALLOWED_HOSTS=<backend-cname>,localhost,127.0.0.1 \
   DB_PATH=/var/app/db/db.sqlite3 \
   CORS_ALLOWED_ORIGINS=http://<frontend-cname> \
-  CSRF_TRUSTED_ORIGINS=http://<frontend-cname>
+  CSRF_TRUSTED_ORIGINS=http://<frontend-cname> \
+  EMAIL_BACKEND=accounts.smtp_backend.CertifiSMTPBackend \
+  EMAIL_HOST=smtp.gmail.com \
+  EMAIL_PORT=587 \
+  EMAIL_USE_TLS=True \
+  EMAIL_HOST_USER=<your-gmail-address> \
+  EMAIL_HOST_PASSWORD=<your-16-char-app-password> \
+  DEFAULT_FROM_EMAIL=<your-gmail-address> \
+  FRONTEND_BASE_URL=http://<frontend-cname>
 
 # Deploy
 eb deploy --timeout 5
@@ -314,11 +344,13 @@ Use the module path **`tests.test_auth_integration`** (not `backend.tests...`). 
 
 Auth is tested against the **JSON API** under `/api/auth/` in `backend/tests/test_auth_integration.py`:
 
-1. **Registration** – success (hashed password, auto-login), duplicate email, invalid email, method not allowed
+1. **Registration** – success (hashed password, auto-login), duplicate email, invalid email, method not allowed; password must meet Django validators (min 8 chars, not common, not all-numeric)
 2. **Login** – success (session + current user), invalid credentials → 401, method not allowed
 3. **Logout** – POST clears session; unauthenticated current-user returns 401
 4. **Current user** – authenticated returns profile (id, email, name); unauthenticated → 401
-5. **Password reset request** – valid email → 200 + neutral message; invalid/missing email → 400
-6. **Rate limiting** – 10+ failed logins → 429; successful login resets counter
+5. **Password reset request** – valid email → 200 + neutral message (prevents user enumeration); invalid/missing email → 400; email sender is mocked in tests
+6. **Password reset token validation** – valid uid/token → 200 `{valid: true}`; invalid or expired token → 400 `{valid: false}`
+7. **Password reset confirm** – valid token + strong password → 200, password updated; weak password rejected → 400; invalid token → 400
+8. **Rate limiting** – 10+ failed logins → 429; successful login resets counter
 
 See **`docs/TEST_RESULTS.md`** for a full test summary and how to run a single test.

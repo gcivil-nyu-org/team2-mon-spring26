@@ -222,7 +222,7 @@ export function LoginPage() {
               <div className="space-y-4 pt-4">
                 <div className="bg-muted/50 p-4 rounded-lg text-sm">
                   <p className="text-muted-foreground">
-                    <strong className="text-foreground">Note:</strong> This is a demo. In a real application, you would receive an email with a secure reset link.
+                    The link expires after a short time for security.
                   </p>
                 </div>
                 <Button

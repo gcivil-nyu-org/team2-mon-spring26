@@ -5,9 +5,14 @@ These tests target the JSON API endpoints under /api/auth/ (config.urls).
 """
 
 import json
+from datetime import datetime, timedelta
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from django.urls import reverse
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.core.cache import cache
 
 User = get_user_model()
@@ -39,8 +44,12 @@ def api_login_payload(email, password):
 
 class AuthIntegrationTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(email="reg@example.com", password="pass123")
-        self.staff = User.objects.create_user(email="staff@example.com", password="pass123")
+        self.user = User.objects.create_user(
+            email="reg@example.com", password="pass123"
+        )
+        self.staff = User.objects.create_user(
+            email="staff@example.com", password="pass123"
+        )
         self.staff.is_staff = True
         self.staff.save()
 
@@ -51,6 +60,8 @@ class AuthIntegrationTests(TestCase):
         self.current_user_url = reverse("api_me")
         self.preferences_url = reverse("api_preferences_update")
         self.password_reset_request_url = reverse("api_request_password_reset")
+        self.password_reset_validate_url = reverse("api_validate_password_reset_token")
+        self.password_reset_confirm_url = reverse("api_confirm_password_reset")
 
     # -------------------------------------------------------------------------
     # Registration
@@ -101,8 +112,12 @@ class AuthIntegrationTests(TestCase):
         body = resp.json()
         self.assertTrue(body.get("success"), body)
         self.assertIn("preferences", body["user"])
-        self.assertEqual(body["user"]["preferences"]["dietary"], ["Vegetarian", "Vegan"])
-        self.assertEqual(body["user"]["preferences"]["cuisines"], ["Italian", "Japanese"])
+        self.assertEqual(
+            body["user"]["preferences"]["dietary"], ["Vegetarian", "Vegan"]
+        )
+        self.assertEqual(
+            body["user"]["preferences"]["cuisines"], ["Italian", "Japanese"]
+        )
         self.assertEqual(body["user"]["preferences"]["foodTypes"], ["Pizza", "Salads"])
         self.assertEqual(body["user"]["preferences"]["minimum_sanitation_grade"], "A")
 
@@ -117,7 +132,7 @@ class AuthIntegrationTests(TestCase):
         """Duplicate email returns 400 with email field error (registration exposes this for UX).
         Contrast: password reset uses a neutral message to avoid account enumeration."""
         User.objects.create_user(email="dup@example.com", password="x")
-        data = api_register_payload("dup@example.com", "Aaa123!")
+        data = api_register_payload("dup@example.com", "Aaa1234!!")
         resp = self.client.post(
             self.register_url,
             data=json.dumps(data),
@@ -299,6 +314,136 @@ class AuthIntegrationTests(TestCase):
         resp = self.client.get(self.password_reset_request_url)
         self.assertEqual(resp.status_code, 405)
 
+    @patch("accounts.views.send_password_reset_email")
+    def test_password_reset_request_existing_user_sends_email(self, mock_send_email):
+        """Requesting reset for an existing user calls email sender with a reset link."""
+        User.objects.create_user(email="resetme@example.com", password="StrongPass!1")
+
+        resp = self.client.post(
+            self.password_reset_request_url,
+            data=json.dumps({"email": "resetme@example.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_send_email.assert_called_once()
+        to_email, reset_link = mock_send_email.call_args[0]
+        self.assertEqual(to_email, "resetme@example.com")
+        self.assertIn("/reset-password/", reset_link)
+
+    def test_password_reset_validate_token_success(self):
+        """Valid uid/token pair returns valid=true."""
+        user = User.objects.create_user(
+            email="tokenok@example.com", password="StrongPass!1"
+        )
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        resp = self.client.post(
+            self.password_reset_validate_url,
+            data=json.dumps({"uid": uid, "token": token}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body.get("success"))
+        self.assertTrue(body.get("valid"))
+
+    def test_password_reset_validate_token_invalid(self):
+        """Invalid token returns 400 with valid=false."""
+        user = User.objects.create_user(
+            email="tokenbad@example.com", password="StrongPass!1"
+        )
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+
+        resp = self.client.post(
+            self.password_reset_validate_url,
+            data=json.dumps({"uid": uid, "token": "invalid-token"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        body = resp.json()
+        self.assertFalse(body.get("success", True))
+        self.assertFalse(body.get("valid", True))
+
+    def test_password_reset_confirm_success_updates_password(self):
+        """Confirm endpoint with valid token sets new password."""
+        user = User.objects.create_user(
+            email="confirmok@example.com", password="OldPass!123"
+        )
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        resp = self.client.post(
+            self.password_reset_confirm_url,
+            data=json.dumps(
+                {
+                    "uid": uid,
+                    "token": token,
+                    "new_password": "NewStrongPass!456",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body.get("success"), body)
+
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("NewStrongPass!456"))
+        self.assertFalse(user.check_password("OldPass!123"))
+
+    def test_password_reset_confirm_invalid_password_rejected(self):
+        """Confirm endpoint rejects passwords that fail Django validators."""
+        user = User.objects.create_user(
+            email="confirmbad@example.com", password="OldPass!123"
+        )
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        resp = self.client.post(
+            self.password_reset_confirm_url,
+            data=json.dumps(
+                {
+                    "uid": uid,
+                    "token": token,
+                    "new_password": "123",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        body = resp.json()
+        self.assertFalse(body.get("success", True))
+        self.assertIn("error", body)
+
+    @override_settings(PASSWORD_RESET_TIMEOUT=3600)
+    def test_password_reset_validate_token_expired(self):
+        """Token older than timeout is rejected as expired."""
+        user = User.objects.create_user(
+            email="expired@example.com", password="StrongPass!1"
+        )
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        issue_time = datetime(2026, 3, 8, 10, 0, 0)
+
+        with patch.object(default_token_generator, "_now", return_value=issue_time):
+            token = default_token_generator.make_token(user)
+
+        with patch.object(
+            default_token_generator,
+            "_now",
+            return_value=issue_time + timedelta(hours=2),
+        ):
+            resp = self.client.post(
+                self.password_reset_validate_url,
+                data=json.dumps({"uid": uid, "token": token}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(resp.status_code, 400)
+        body = resp.json()
+        self.assertFalse(body.get("success", True))
+        self.assertFalse(body.get("valid", True))
+
     # -------------------------------------------------------------------------
     # Preferences update (PATCH)
     # -------------------------------------------------------------------------
@@ -335,7 +480,12 @@ class AuthIntegrationTests(TestCase):
 
     def test_preferences_update_unauthenticated_returns_401(self):
         """PATCH preferences when not logged in returns 401."""
-        payload = {"dietary": [], "cuisines": [], "foodTypes": [], "minimum_sanitation_grade": "C"}
+        payload = {
+            "dietary": [],
+            "cuisines": [],
+            "foodTypes": [],
+            "minimum_sanitation_grade": "C",
+        }
         resp = self.client.patch(
             self.preferences_url,
             data=json.dumps(payload),
@@ -350,7 +500,9 @@ class LoginRateLimitTests(TestCase):
     def setUp(self):
         # Isolate rate-limit: delete only the key this test uses (test client uses 127.0.0.1)
         cache.delete("login_attempts_127.0.0.1")
-        self.user = User.objects.create_user(email="rate@example.com", password="secret")
+        self.user = User.objects.create_user(
+            email="rate@example.com", password="secret"
+        )
         self.login_url = reverse("api_login")
 
     def test_login_rate_limit_after_failures(self):

@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Badge } from '@/app/components/ui/badge';
@@ -49,18 +55,14 @@ export function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const toggleDietary = (option: string) => {
-    setSelectedDietary(prev =>
-      prev.includes(option)
-        ? prev.filter(o => o !== option)
-        : [...prev, option]
+    setSelectedDietary((prev) =>
+      prev.includes(option) ? prev.filter((o) => o !== option) : [...prev, option]
     );
   };
 
   const toggleCuisine = (option: string) => {
-    setSelectedCuisines(prev =>
-      prev.includes(option)
-        ? prev.filter(o => o !== option)
-        : [...prev, option]
+    setSelectedCuisines((prev) =>
+      prev.includes(option) ? prev.filter((o) => o !== option) : [...prev, option]
     );
   };
 
@@ -79,8 +81,8 @@ export function RegisterPage() {
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
     }
 
     if (formData.password !== formData.confirmPassword) {
@@ -100,7 +102,7 @@ export function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       await register({
         first_name: formData.name.split(' ')[0] || '',
@@ -110,7 +112,7 @@ export function RegisterPage() {
         preferences: {
           cuisines: selectedCuisines,
           dietary: selectedDietary,
-        }
+        },
       });
       navigate('/home');
     } catch (err: any) {
@@ -122,11 +124,14 @@ export function RegisterPage() {
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-purple-400 to-violet-300 flex items-center justify-center p-4 relative overflow-hidden">
       {/* Subtle background pattern */}
       <div className="absolute inset-0 opacity-5">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-        }}></div>
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}
+        ></div>
       </div>
-      
+
       <Card className="w-full max-w-md bg-gray-50/90 backdrop-blur-sm shadow-2xl border-gray-200/50 relative z-10">
         <CardHeader>
           <div className="w-16 h-16 bg-gradient-to-br from-purple-600 to-violet-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
@@ -136,8 +141,8 @@ export function RegisterPage() {
             {step === 'account' ? 'Create Account' : 'Set Your Preferences'}
           </CardTitle>
           <CardDescription className="text-center">
-            {step === 'account' 
-              ? 'Join Meal Swipe to find restaurants with your friends' 
+            {step === 'account'
+              ? 'Join Meal Swipe to find restaurants with your friends'
               : 'Help us personalize your restaurant recommendations'}
           </CardDescription>
         </CardHeader>
@@ -176,9 +181,13 @@ export function RegisterPage() {
                   type="password"
                   placeholder="Create a password"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
                 />
-                {errors.password && <p className="text-sm text-red-600">{errors.password}</p>}
+                {errors.password && (
+                  <p className="text-sm text-red-600">{errors.password}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -188,12 +197,19 @@ export function RegisterPage() {
                   type="password"
                   placeholder="Re-enter your password"
                   value={formData.confirmPassword}
-                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, confirmPassword: e.target.value })
+                  }
                 />
-                {errors.confirmPassword && <p className="text-sm text-red-600">{errors.confirmPassword}</p>}
+                {errors.confirmPassword && (
+                  <p className="text-sm text-red-600">{errors.confirmPassword}</p>
+                )}
               </div>
 
-              <Button type="submit" className="w-full bg-purple-700 hover:bg-purple-800 text-white shadow-lg">
+              <Button
+                type="submit"
+                className="w-full bg-purple-700 hover:bg-purple-800 text-white shadow-lg"
+              >
                 Continue
               </Button>
 
@@ -244,7 +260,9 @@ export function RegisterPage() {
                   {CUISINE_OPTIONS.map((option) => (
                     <Badge
                       key={option}
-                      variant={selectedCuisines.includes(option) ? 'default' : 'outline'}
+                      variant={
+                        selectedCuisines.includes(option) ? 'default' : 'outline'
+                      }
                       className={`cursor-pointer ${
                         selectedCuisines.includes(option)
                           ? 'bg-gradient-to-r from-orange-500 to-pink-500 text-white'
@@ -274,8 +292,10 @@ export function RegisterPage() {
                   Complete Registration
                 </Button>
               </div>
-              
-              {errors.form && <p className="text-sm text-red-600 text-center">{errors.form}</p>}
+
+              {errors.form && (
+                <p className="text-sm text-red-600 text-center">{errors.form}</p>
+              )}
 
               <p className="text-xs text-center text-muted-foreground">
                 You can always update your preferences later
