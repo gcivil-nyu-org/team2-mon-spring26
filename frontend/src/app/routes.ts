@@ -14,6 +14,7 @@ import { AddRestaurantPage } from '@/app/pages/add-restaurant-page';
 import { EditRestaurantPage } from '@/app/pages/edit-restaurant-page';
 import { VenueLoginPage } from '@/app/pages/venue-login-page';
 import { VenueRegisterPage } from '@/app/pages/venue-register-page';
+import { ResetPasswordPage } from '@/app/pages/reset-password-page';
 
 export const router = createBrowserRouter([
   {
@@ -27,6 +28,10 @@ export const router = createBrowserRouter([
       {
         path: 'register',
         Component: RegisterPage,
+      },
+      {
+        path: 'reset-password/:uid/:token',
+        Component: ResetPasswordPage,
       },
       {
         path: 'home',
