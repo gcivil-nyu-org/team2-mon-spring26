@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
@@ -23,8 +23,13 @@ export function CreateGroupPage() {
   const [searchEmail, setSearchEmail] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   
-  const { createGroup, setCurrentGroup, getAllUsers, inviteMember, currentUser } = useApp();
+  const { createGroup, setCurrentGroup, getAllUsers, fetchAvailableUsers, inviteMember, currentUser } = useApp();
   const navigate = useNavigate();
+
+  // Fetch users when the component mounts or when searchEmail changes
+  useEffect(() => {
+    fetchAvailableUsers(searchEmail);
+  }, [searchEmail, fetchAvailableUsers]);
 
   // Get all available users to invite (excluding current user)
   const availableUsers = getAllUsers().filter(user => user.id !== currentUser?.id);
@@ -49,17 +54,27 @@ export function CreateGroupPage() {
     setSelectedMembers(selectedMembers.filter(e => e !== email));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newGroup = createGroup(groupName);
-    
-    // Invite selected members
-    selectedMembers.forEach(email => {
-      inviteMember(newGroup.id, email);
-    });
-    
-    setCurrentGroup(newGroup);
-    navigate(`/group/${newGroup.id}`);
+    try {
+      const newGroup = await createGroup(
+        groupName,
+        groupType,
+        defaultLocation,
+        isPrivate ? 'invite-only' : 'public'
+      );
+      
+      // Invite selected members
+      for (const email of selectedMembers) {
+        await inviteMember(newGroup.id, email);
+      }
+      
+      setCurrentGroup(newGroup);
+      navigate(`/group/${newGroup.id}`);
+    } catch (error) {
+      console.error('Failed to create group:', error);
+      // Optional: add a toast/alert here if there's a UI for it
+    }
   };
 
   return (

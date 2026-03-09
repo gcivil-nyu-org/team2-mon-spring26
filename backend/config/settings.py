@@ -92,6 +92,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "accounts",
     "venues",
+    "groups",
 ]
 
 MIDDLEWARE = [
