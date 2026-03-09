@@ -134,10 +134,16 @@ interface AppContextType {
     minimumSanitationGrade?: string;
   }) => Promise<void>;
   groups: Group[];
-  createGroup: (name: string) => Group;
+  createGroup: (name: string, groupType?: string, defaultLocation?: string, privacy?: string) => Promise<Group>;
   joinGroup: (groupId: string) => void;
-  inviteMember: (groupId: string, userEmail: string) => void;
+  leaveGroup: (groupId: string) => Promise<void>;
+  deleteGroup: (groupId: string) => Promise<void>;
+  removeMember: (groupId: string, userId: string) => Promise<void>;
+  makeLeader: (groupId: string, userId: string) => Promise<void>;
+  inviteMember: (groupId: string, userEmail: string) => Promise<void>;
   getAllUsers: () => User[];
+  fetchAvailableUsers: (query?: string) => Promise<void>;
+  availableUsers: User[];
   currentGroup: Group | null;
   setCurrentGroup: (group: Group | null) => void;
   swipeEvents: SwipeEvent[];
@@ -251,6 +257,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isInitializingAuth, setIsInitializingAuth] = useState(true);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [swipeEvents, setSwipeEvents] = useState<SwipeEvent[]>([]);
   const [currentSwipeEvent, setCurrentSwipeEvent] = useState<SwipeEvent | null>(null);
@@ -573,6 +580,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ACTUAL API AUTHENTICATION LOGIC (Django Session Auth)
   // ---------------------------------------------------------------------------
 
+    const fetchUserGroups = async () => {
+      try {
+        const groupsResponse = await fetch(apiUrl('/api/groups/'), {
+          credentials: 'include',
+        });
+        if (groupsResponse.ok) {
+          const groupsData = await groupsResponse.json();
+          const mappedGroups = groupsData.groups.map((g: any) => ({
+            id: String(g.id),
+            name: g.name,
+            members: g.members.map((m: any) => ({
+              userId: String(m.id),
+              userName: m.name,
+              hasFinishedSwiping: false, // UI abstraction
+              isLeader: m.role === 'leader',
+            })),
+            createdBy: String(g.created_by),
+            createdAt: g.created_at,
+          }));
+          setGroups(mappedGroups);
+        }
+      } catch (err) {
+        console.error('Failed to fetch user groups', err);
+      }
+    };
+
   // Check session on mount
   useEffect(() => {
     const checkSession = async () => {
@@ -585,6 +618,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const data = await response.json();
           if (data.authenticated && data.user) {
             setCurrentUser(normalizeApiUser(data.user));
+            await fetchUserGroups();
           }
         }
       } catch (error) {
@@ -612,6 +646,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       if (response.ok && data.success) {
         setCurrentUser(normalizeApiUser(data.user));
+        await fetchUserGroups();
       } else {
         throw new Error(data.error || 'Login failed');
       }
@@ -670,6 +705,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       if (response.ok && data.success) {
         setCurrentUser(normalizeApiUser(data.user));
+        await fetchUserGroups();
       } else {
         let errorMessage = data.error || 'Registration failed';
         if (data.errors && typeof data.errors === 'object') {
@@ -811,25 +847,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('mealswipe_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  const createGroup = (name: string): Group => {
+  const createGroup = async (name: string, groupType: string = 'casual', defaultLocation: string = 'manhattan', privacy: string = 'public'): Promise<Group> => {
     if (!currentUser) throw new Error('Must be logged in');
 
+    const csrftoken = getCookie('csrftoken') || '';
+    const response = await fetch(apiUrl('/api/groups/'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken,
+      },
+      body: JSON.stringify({
+        name,
+        group_type: groupType,
+        default_location: defaultLocation,
+        privacy,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create group');
+    }
+
+    const data = await response.json();
+    const newGroupBackend = data.group;
+
+    // Map backend group format to frontend Group interface
     const newGroup: Group = {
-      id: `group-${Date.now()}`,
-      name,
-      members: [
-        {
-          userId: currentUser.id,
-          userName: currentUser.name,
-          hasFinishedSwiping: false,
-          isLeader: true,
-        },
-      ],
-      createdBy: currentUser.id,
-      createdAt: new Date().toISOString(),
+      id: String(newGroupBackend.id),
+      name: newGroupBackend.name,
+      members: newGroupBackend.members.map((m: any) => ({
+        userId: String(m.id),
+        userName: m.name,
+        hasFinishedSwiping: false, // UI abstraction
+        isLeader: m.role === 'leader',
+      })),
+      createdBy: String(newGroupBackend.created_by),
+      createdAt: newGroupBackend.created_at,
     };
 
-    setGroups([...groups, newGroup]);
+    setGroups((prev) => [...prev, newGroup]);
 
     // Initialize chat for this group
     setChatMessages((prev) => ({
@@ -885,57 +944,208 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const inviteMember = (groupId: string, userEmail: string) => {
+  const leaveGroup = async (groupId: string): Promise<void> => {
+    if (!currentUser) return;
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/${groupId}/leave/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to leave group');
+      }
+
+      // Remove from local state
+      setGroups((prev) => prev.filter((g) => g.id !== groupId));
+
+      // Optional: add system message or navigate away in component
+    } catch (error) {
+      console.error('Leave group error:', error);
+      throw error;
+    }
+  };
+
+  const deleteGroup = async (groupId: string): Promise<void> => {
+    if (!currentUser) return;
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/${groupId}/delete/`), {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to delete group');
+      }
+
+      setGroups((prev) => prev.filter((g) => g.id !== groupId));
+      if (currentGroup?.id === groupId) {
+        setCurrentGroup(null);
+      }
+    } catch (error) {
+      console.error('Delete group error:', error);
+      throw error;
+    }
+  };
+
+  const inviteMember = async (groupId: string, userEmail: string): Promise<void> => {
     if (!currentUser) return;
 
-    const user = mockUsers.find((u) => u.email === userEmail);
-    if (!user) return;
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/${groupId}/invite/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ email: userEmail }),
+      });
 
-    setGroups(
-      groups.map((group) => {
-        if (group.id === groupId) {
-          const isMember = group.members.some((m) => m.userId === user.id);
-          if (!isMember) {
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to invite user');
+      }
+
+      const data = await response.json();
+      const updatedBackendGroup = data.group;
+
+      // Update the group in local state with the new member list
+      setGroups((prevGroups) =>
+        prevGroups.map((group) => {
+          if (group.id === groupId) {
             return {
               ...group,
-              members: [
-                ...group.members,
-                {
-                  userId: user.id,
-                  userName: user.name,
-                  hasFinishedSwiping: false,
-                  isLeader: false,
-                },
-              ],
+              members: updatedBackendGroup.members.map((m: any) => ({
+                userId: String(m.id),
+                userName: m.name,
+                hasFinishedSwiping: false,
+                isLeader: m.role === 'leader',
+              })),
             };
           }
-        }
-        return group;
-      })
-    );
+          return group;
+        })
+      );
 
-    // Add system message
-    const group = groups.find((g) => g.id === groupId);
-    if (group) {
+      // Add system message
       addChatMessage(groupId, {
         id: `msg-${Date.now()}`,
         type: 'system',
-        message: `${currentUser.name} invited ${user.name} to the group`,
+        message: `${currentUser.name} invited ${userEmail} to the group`,
         timestamp: new Date().toISOString(),
       });
-    }
 
-    // Add notification
-    addNotification({
-      type: 'group_invite',
-      title: 'Group Invitation',
-      message: `${currentUser.name} invited you to join "${group?.name}"`,
-      groupId: group?.id,
-    });
+    } catch (error) {
+      console.error('Invite member error:', error);
+      throw error;
+    }
+  };
+
+  const removeMember = async (groupId: string, userId: string): Promise<void> => {
+    if (!currentUser) return;
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/${groupId}/members/${userId}/`), {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to remove member');
+      }
+
+      setGroups((prevGroups) =>
+        prevGroups.map((group) => {
+          if (group.id === groupId) {
+            return {
+              ...group,
+              members: group.members.filter((m) => m.userId !== userId),
+            };
+          }
+          return group;
+        })
+      );
+    } catch (error) {
+      console.error('Remove member error:', error);
+      throw error;
+    }
+  };
+
+  const makeLeader = async (groupId: string, userId: string): Promise<void> => {
+    if (!currentUser) return;
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/${groupId}/members/${userId}/role/`), {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to promote member');
+      }
+
+      setGroups((prevGroups) =>
+        prevGroups.map((group) => {
+          if (group.id === groupId) {
+            return {
+              ...group,
+              members: group.members.map((m) =>
+                m.userId === userId ? { ...m, isLeader: true } : m
+              ),
+            };
+          }
+          return group;
+        })
+      );
+    } catch (error) {
+      console.error('Make leader error:', error);
+      throw error;
+    }
+  };
+
+  const fetchAvailableUsers = async (query: string = '') => {
+    if (!currentUser) return;
+    try {
+      const response = await fetch(apiUrl(`/api/groups/users/?q=${encodeURIComponent(query)}`), {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const users = data.users.map((u: any) => ({
+          id: String(u.id),
+          email: u.email,
+          name: u.name,
+          preferences: { cuisines: [], dietary: [], foodTypes: [] } // Minimal mock for interface
+        }));
+        setAvailableUsers(users);
+      }
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+    }
   };
 
   const getAllUsers = () => {
-    return mockUsers;
+    return availableUsers.length > 0 ? availableUsers : mockUsers;
   };
 
   const createSwipeEvent = (groupId: string, name: string): SwipeEvent => {
@@ -1072,8 +1282,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         groups,
         createGroup,
         joinGroup,
+        leaveGroup,
+        deleteGroup,
+        removeMember,
+        makeLeader,
         inviteMember,
         getAllUsers,
+        fetchAvailableUsers,
+        availableUsers,
         currentGroup,
         setCurrentGroup,
         swipeEvents,

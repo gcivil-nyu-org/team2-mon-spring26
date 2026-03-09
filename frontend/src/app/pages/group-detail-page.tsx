@@ -28,6 +28,7 @@ import {
   UserPlus,
   Crown,
   Search,
+  X,
 } from "lucide-react";
 import { ChatSidebar } from "@/app/components/chat-sidebar";
 import { useState } from "react";
@@ -44,6 +45,10 @@ export function GroupDetailPage() {
     createSwipeEvent,
     inviteMember,
     getAllUsers,
+    leaveGroup,
+    deleteGroup,
+    removeMember,
+    makeLeader,
   } = useApp();
   const [showChat, setShowChat] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -136,6 +141,45 @@ export function GroupDetailPage() {
           >
             <MessageCircle className="w-5 h-5" />
           </Button>
+        </div>
+        
+        {/* Group Actions */}
+        <div className="max-w-4xl mx-auto px-4 pb-4 flex justify-end gap-2">
+          {isLeader ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={async () => {
+                if (window.confirm("Are you sure you want to delete this group?")) {
+                  try {
+                    await deleteGroup(group.id);
+                    navigate("/home");
+                  } catch (e) {
+                    alert((e as Error).message);
+                  }
+                }
+              }}
+            >
+              Delete Group
+            </Button>
+          ) : (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={async () => {
+                if (window.confirm("Are you sure you want to leave this group?")) {
+                  try {
+                    await leaveGroup(group.id);
+                    navigate("/home");
+                  } catch (e) {
+                    alert((e as Error).message);
+                  }
+                }
+              }}
+            >
+              Leave Group
+            </Button>
+          )}
         </div>
       </header>
 
@@ -236,15 +280,59 @@ export function GroupDetailPage() {
                     {member.userName.charAt(0)}
                   </div>
                   <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">
-                        {member.userName}
-                      </p>
-                      {member.isLeader && (
-                        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-                          <Crown className="w-3 h-3 mr-1" />
-                          Leader
-                        </Badge>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">
+                          {member.userName}
+                        </p>
+                        {member.isLeader && (
+                          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+                            <Crown className="w-3 h-3 mr-1" />
+                            Leader
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      {/* Leader Controls over other members */}
+                      {isLeader && member.userId !== currentUser?.id && (
+                        <div className="flex items-center gap-2">
+                          {!member.isLeader && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-8 px-2 text-xs"
+                              onClick={async () => {
+                                if (window.confirm(`Make ${member.userName} a leader?`)) {
+                                  try {
+                                    await makeLeader(group.id, member.userId);
+                                  } catch (e) {
+                                    alert((e as Error).message);
+                                  }
+                                }
+                              }}
+                            >
+                              <Crown className="w-3 h-3 mr-1" />
+                              Promote
+                            </Button>
+                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={async () => {
+                              if (window.confirm(`Remove ${member.userName} from the group?`)) {
+                                try {
+                                  await removeMember(group.id, member.userId);
+                                } catch (e) {
+                                  alert((e as Error).message);
+                                }
+                              }
+                            }}
+                          >
+                            <X className="w-3 h-3 mr-1" />
+                            Remove
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
