@@ -1,15 +1,23 @@
 import json
 import logging
+from urllib.parse import urljoin
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, logout, authenticate
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
 from django.views import View
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
+from django.conf import settings
 from django.http import JsonResponse
 from django.core.cache import cache
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.utils.encoding import force_bytes
 
 from .forms import UserCreationForm
+from .email_service import send_password_reset_email
 from .models import (
     SANITATION_GRADE_CHOICES,
     UserPreference,
@@ -22,6 +30,29 @@ from django.utils.text import slugify
 logger = logging.getLogger(__name__)
 
 VALID_SANITATION_GRADES = {choice[0] for choice in SANITATION_GRADE_CHOICES}
+User = get_user_model()
+
+
+def _build_frontend_reset_link(uid: str, token: str) -> str:
+    base_url = settings.FRONTEND_BASE_URL.rstrip("/") + "/"
+    return urljoin(base_url, f"reset-password/{uid}/{token}")
+
+
+def _get_user_from_uid(uidb64: str):
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        return User.objects.filter(pk=uid).first()
+    except Exception:
+        return None
+
+
+def _is_valid_password_reset_token(uidb64: str, token: str):
+    user = _get_user_from_uid(uidb64)
+    if not user:
+        return None
+    if not default_token_generator.check_token(user, token):
+        return None
+    return user
 
 
 def _get_preferences_dict(user):
@@ -143,9 +174,7 @@ def api_register(request):
                 if prefs is not None:
                     _set_preferences_from_payload(user, prefs)
                 login(request, user)
-                return JsonResponse(
-                    {"success": True, "user": _user_to_json(user)}
-                )
+                return JsonResponse({"success": True, "user": _user_to_json(user)})
             else:
                 return JsonResponse(
                     {"success": False, "errors": form.errors}, status=400
@@ -187,9 +216,7 @@ def api_login(request):
             if user is not None:
                 cache.delete(cache_key)  # reset attempts on success
                 login(request, user)
-                return JsonResponse(
-                    {"success": True, "user": _user_to_json(user)}
-                )
+                return JsonResponse({"success": True, "user": _user_to_json(user)})
             else:
                 cache.set(cache_key, attempts + 1, timeout=300)  # 5 min lockout
                 return JsonResponse(
@@ -250,7 +277,7 @@ def api_request_password_reset(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            email = data.get("email", "")
+            email = (data.get("email", "") or "").strip()
 
             if not email:
                 return JsonResponse(
@@ -260,8 +287,35 @@ def api_request_password_reset(request):
             # Server-side email validation
             validate_email(email)
 
-            # NOTE: We do not check if the user exists or send the email yet.
-            # Returning a neutral response prevents user enumeration attacks.
+            user = User.objects.filter(email__iexact=email).first()
+            if user and user.is_active:
+                uid = urlsafe_base64_encode(force_bytes(user.pk))
+                token = default_token_generator.make_token(user)
+                reset_link = _build_frontend_reset_link(uid, token)
+
+                # In development, always print the link so it can be used
+                # even when email delivery is restricted (e.g. no verified domain).
+                if settings.DEBUG:
+                    logger.info(
+                        "\n"
+                        "=" * 60 + "\n"
+                        "PASSWORD RESET LINK (dev – no email required):\n"
+                        "%s\n"
+                        "=" * 60,
+                        reset_link,
+                    )
+
+                try:
+                    send_password_reset_email(user.email, reset_link)
+                except Exception as send_error:
+                    logger.error(
+                        "Failed to send password reset email for user_id=%s: %s",
+                        user.id,
+                        send_error,
+                        exc_info=True,
+                    )
+
+            # Return a neutral response to prevent user enumeration.
             return JsonResponse(
                 {
                     "success": True,
@@ -284,3 +338,89 @@ def api_request_password_reset(request):
             )
 
     return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def api_validate_password_reset_token(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse(
+            {"success": False, "error": "Invalid JSON body"}, status=400
+        )
+
+    uid = (data.get("uid", "") or "").strip()
+    token = (data.get("token", "") or "").strip()
+    if not uid or not token:
+        return JsonResponse(
+            {
+                "success": False,
+                "valid": False,
+                "error": "Invalid or expired reset link",
+            },
+            status=400,
+        )
+
+    user = _is_valid_password_reset_token(uid, token)
+    if not user:
+        return JsonResponse(
+            {
+                "success": False,
+                "valid": False,
+                "error": "Invalid or expired reset link",
+            },
+            status=400,
+        )
+
+    return JsonResponse({"success": True, "valid": True})
+
+
+@csrf_exempt
+def api_confirm_password_reset(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse(
+            {"success": False, "error": "Invalid JSON body"}, status=400
+        )
+
+    uid = (data.get("uid", "") or "").strip()
+    token = (data.get("token", "") or "").strip()
+    new_password = data.get("new_password")
+
+    if not uid or not token or not new_password:
+        return JsonResponse(
+            {"success": False, "error": "uid, token, and new_password are required"},
+            status=400,
+        )
+
+    user = _is_valid_password_reset_token(uid, token)
+    if not user:
+        return JsonResponse(
+            {"success": False, "error": "Invalid or expired reset link"},
+            status=400,
+        )
+
+    try:
+        validate_password(new_password, user=user)
+    except ValidationError as validation_error:
+        return JsonResponse(
+            {"success": False, "error": " ".join(validation_error.messages)},
+            status=400,
+        )
+
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Your password has been reset successfully.",
+        }
+    )

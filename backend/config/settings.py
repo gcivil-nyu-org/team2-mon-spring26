@@ -12,16 +12,33 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import os
+from urllib.parse import urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
 # Load environment variables from backend/.env (optional; does not override existing env)
+def _load_env_file(env_file: Path):
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 try:
     import dotenv
+
     dotenv.load_dotenv(BASE_DIR / ".env")
 except ImportError:
-    pass
+    _load_env_file(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -192,6 +209,10 @@ EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@example.com")
 
+# Password reset settings
+PASSWORD_RESET_TIMEOUT = int(os.environ.get("PASSWORD_RESET_TIMEOUT", "3600"))
+FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:5173")
+
 # CORS configuration
 _cors_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "")
 CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
@@ -202,6 +223,21 @@ if not CORS_ALLOWED_ORIGINS:
         "http://localhost:5175",
         "http://127.0.0.1:5173",
     ]
+
+_frontend_origin = ""
+try:
+    _parsed_frontend = urlparse(FRONTEND_BASE_URL)
+    if _parsed_frontend.scheme and _parsed_frontend.netloc:
+        _frontend_origin = f"{_parsed_frontend.scheme}://{_parsed_frontend.netloc}"
+except Exception:
+    _frontend_origin = ""
+
+if _frontend_origin:
+    if _frontend_origin not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(_frontend_origin)
+    if _frontend_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_frontend_origin)
+
 CORS_ALLOW_CREDENTIALS = True
 
 # Redirects after login/logout

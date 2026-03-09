@@ -39,9 +39,15 @@ export function normalizeApiUser(apiUser: {
     email: apiUser.email,
     name: apiUser.name,
     preferences: {
-      cuisines: Array.isArray(prefs.cuisines) ? prefs.cuisines : DEFAULT_PREFERENCES.cuisines,
-      dietary: Array.isArray(prefs.dietary) ? prefs.dietary : DEFAULT_PREFERENCES.dietary,
-      foodTypes: Array.isArray(prefs.foodTypes) ? prefs.foodTypes : DEFAULT_PREFERENCES.foodTypes,
+      cuisines: Array.isArray(prefs.cuisines)
+        ? prefs.cuisines
+        : DEFAULT_PREFERENCES.cuisines,
+      dietary: Array.isArray(prefs.dietary)
+        ? prefs.dietary
+        : DEFAULT_PREFERENCES.dietary,
+      foodTypes: Array.isArray(prefs.foodTypes)
+        ? prefs.foodTypes
+        : DEFAULT_PREFERENCES.foodTypes,
       minimumSanitationGrade:
         grade === ''
           ? 'Not Graded'
@@ -115,6 +121,12 @@ interface AppContextType {
   register: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
+  validatePasswordResetToken: (uid: string, token: string) => Promise<void>;
+  confirmPasswordReset: (
+    uid: string,
+    token: string,
+    newPassword: string
+  ) => Promise<void>;
   updatePreferences: (preferences: {
     dietary?: string[];
     cuisines?: string[];
@@ -228,8 +240,7 @@ function getCookie(name: string) {
   return cookieValue;
 }
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 function apiUrl(path: string) {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -635,7 +646,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error((err as { error?: string }).error || 'Failed to update preferences');
+      throw new Error(
+        (err as { error?: string }).error || 'Failed to update preferences'
+      );
     }
     const data = await response.json();
     if (data.user) setCurrentUser(normalizeApiUser(data.user));
@@ -692,6 +705,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Password reset error:', error);
+      throw error;
+    }
+  };
+
+  const validatePasswordResetToken = async (uid: string, token: string) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl('/api/auth/validate-password-reset-token/'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ uid, token }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.valid) {
+        throw new Error(data.error || 'Invalid or expired reset link');
+      }
+    } catch (error) {
+      console.error('Password reset token validation error:', error);
+      throw error;
+    }
+  };
+
+  const confirmPasswordReset = async (
+    uid: string,
+    token: string,
+    newPassword: string
+  ) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl('/api/auth/confirm-password-reset/'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ uid, token, new_password: newPassword }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to reset password');
+      }
+    } catch (error) {
+      console.error('Password reset confirmation error:', error);
       throw error;
     }
   };
@@ -1003,6 +1066,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         requestPasswordReset,
+        validatePasswordResetToken,
+        confirmPasswordReset,
         updatePreferences,
         groups,
         createGroup,
