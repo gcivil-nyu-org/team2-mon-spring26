@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.utils.translation import gettext_lazy as _
 
-from .models import User
+from .models import User, VenueManagerProfile
 
 
 @admin.register(User)
@@ -22,3 +22,10 @@ class UserAdmin(DjangoUserAdmin):
     list_display = ('email', 'first_name', 'last_name', 'is_staff')
     search_fields = ('email', 'first_name', 'last_name')
     ordering = ('email',)
+
+
+@admin.register(VenueManagerProfile)
+class VenueManagerProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'business_name', 'business_email', 'is_verified')
+    list_filter = ('is_verified',)
+    search_fields = ('user__email', 'business_name', 'business_email')
