@@ -20,6 +20,7 @@ import {
 } from '@/app/components/ui/select';
 import { UtensilsCrossed } from 'lucide-react';
 import preferenceOptions from '@/app/data/preference-options.json';
+import { formatSanitationGradeLabel } from '@/app/utils/sanitation-grade';
 import { useApp } from '@/app/contexts/app-context';
 
 const dietaryCatalog: string[] = preferenceOptions.dietary ?? [];
@@ -313,7 +314,7 @@ export function RegisterPage() {
                   <SelectContent>
                     {sanitationCatalog.map((grade) => (
                       <SelectItem key={grade} value={grade}>
-                        {grade}
+                        {formatSanitationGradeLabel(grade)}
                       </SelectItem>
                     ))}
                   </SelectContent>
