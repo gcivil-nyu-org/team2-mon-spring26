@@ -16,15 +16,10 @@ import { ArrowLeft } from 'lucide-react';
 import { useApp } from '@/app/contexts/app-context';
 import preferenceOptions from '@/app/data/preference-options.json';
 
-const SANITATION_OPTIONS = [
-  { value: 'Not Graded', label: 'Not Graded' },
-  { value: 'N', label: 'N' },
-  { value: 'A', label: 'A' },
-  { value: 'Z', label: 'Z' },
-  { value: 'B', label: 'B' },
-  { value: 'C', label: 'C' },
-  { value: 'Pending', label: 'Pending' }, // legacy; backend may store as P
-] as const;
+const SANITATION_OPTIONS = (
+  preferenceOptions.minimumSanitationGrades ?? []
+).map((grade) => ({ value: grade, label: grade }));
+// Keep the backend-visible grade codes in sync with the options file.
 
 export function PreferencesPage() {
   const navigate = useNavigate();

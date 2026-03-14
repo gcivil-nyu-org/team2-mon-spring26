@@ -22,11 +22,7 @@
     "Lebanese",
     "Ethiopian"
   ],
-  "dietary": [
-    "Vegetarian",
-    "Vegan",
-    "Jewish/Kosher"
-  ],
+  "dietary": ["Vegetarian", "Vegan", "Jewish/Kosher"],
   "foodTypes": [
     "Pizza",
     "Burgers",
@@ -35,5 +31,6 @@
     "Salads",
     "Coffee/Tea",
     "Bakery/Desserts"
-  ]
+  ],
+  "minimumSanitationGrades": ["N", "A", "Z", "B", "C", "P"]
 }
