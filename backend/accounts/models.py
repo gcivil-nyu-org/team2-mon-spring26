@@ -50,6 +50,25 @@ SANITATION_GRADE_CHOICES = [
 ]
 
 
+def normalize_sanitation_grade(value):
+    """
+    Normalize legacy/blank sanitation grade values to a real grade code.
+
+    Historically, an empty string ('') was used to represent "Not Graded" or
+    "no minimum" sanitation grade. With the current SANITATION_GRADE_CHOICES,
+    only explicit codes (N/Z/P/...) are valid. This helper can be used by
+    migrations, model methods, or serializers to ensure that:
+
+    - legacy '' (or other blank-like values) are mapped to 'N'
+    - API responses never emit an empty string for sanitation grade
+    """
+    if value is None:
+        return "N"
+    if isinstance(value, str) and not value.strip():
+        return "N"
+    return value
+
+
 class User(AbstractBaseUser, PermissionsMixin):
     """Central authentication model — students, venue managers, and admins."""
 
