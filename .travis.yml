@@ -1,0 +1,68 @@
+language: python
+python:
+  - '3.14'
+dist: noble # Use Ubuntu 24.04 'Noble' for best 3.14 support
+
+# Force Travis to provide Node 20 for Vite compatibility
+node_js:
+  - '20'
+
+install:
+  # Ensure the environment uses Node 20 immediately
+  - nvm install 20
+  - nvm use 20
+  # Install Python tools
+  - pip install black flake8 coverage coveralls
+  # Install project dependencies
+  - cd backend && pip install -r requirements.txt && cd ..
+  - cd frontend && npm install && cd ..
+
+before_script:
+  - cd backend && python manage.py migrate && cd ..
+
+script:
+  # 1. Quality Checks
+  # Using --config=.flake8 ensures it ignores those E501 long lines
+  - black --check backend/
+  - flake8 backend/ --config=.flake8
+  - cd frontend && npm run lint && cd ..
+
+  # 2. Backend Tests & Coverage
+  - cd backend && coverage run --source=. manage.py test && cd ..
+
+  # 3. Frontend Build
+  - cd frontend && npm run build && cd ..
+
+after_success:
+  - cd backend && coveralls && cd ..
+
+before_deploy:
+  # Package only the backend directory for backend EB deploy
+  - cd backend && zip -r ../backend-deploy.zip . --exclude "*.pyc" --exclude "*/__pycache__/*" --exclude ".venv/*" --exclude "db.sqlite3" --exclude "db.sqlite3.bak" --exclude ".env" --exclude ".DS_Store" --exclude ".elasticbeanstalk/*" --exclude "aws-elastic-beanstalk-cli-setup/*" && cd ..
+  # Package the pre-built frontend dist/ and Procfile for frontend EB deploy
+  - cd frontend && zip -r ../frontend-deploy.zip dist/ Procfile && cd ..
+
+deploy:
+  - provider: elasticbeanstalk
+    access_key_id: $AWS_ACCESS_KEY_ID
+    secret_access_key: $AWS_SECRET_ACCESS_KEY
+    region: 'us-east-1'
+    app: 'mealswipe-backend'
+    env: 'mealswipe-backend-env'
+    bucket_name: 'elasticbeanstalk-us-east-1-916055948433'
+    zip_file: backend-deploy.zip
+    edge: true
+    on:
+      branch: develop
+
+  - provider: elasticbeanstalk
+    access_key_id: $AWS_ACCESS_KEY_ID
+    secret_access_key: $AWS_SECRET_ACCESS_KEY
+    region: 'us-east-1'
+    app: 'mealswipe-frontend'
+    env: 'Mealswipe-frontend-env'
+    bucket_name: 'elasticbeanstalk-us-east-1-916055948433'
+    zip_file: frontend-deploy.zip
+    edge: true
+    on:
+      branch: develop
