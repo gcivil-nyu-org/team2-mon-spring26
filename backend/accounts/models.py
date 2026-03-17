@@ -10,7 +10,7 @@ class UserManager(BaseUserManager):
 
     def _create_user(self, email, password, **extra_fields):
         if not email:
-            raise ValueError('The given email must be set')
+            raise ValueError("The given email must be set")
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -18,18 +18,18 @@ class UserManager(BaseUserManager):
         return user
 
     def create_user(self, email, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', False)
-        extra_fields.setdefault('is_superuser', False)
+        extra_fields.setdefault("is_staff", False)
+        extra_fields.setdefault("is_superuser", False)
         return self._create_user(email, password, **extra_fields)
 
     def create_superuser(self, email, password, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
 
-        if extra_fields.get('is_staff') is not True:
-            raise ValueError('Superuser must have is_staff=True.')
-        if extra_fields.get('is_superuser') is not True:
-            raise ValueError('Superuser must have is_superuser=True.')
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
 
         return self._create_user(email, password, **extra_fields)
 
@@ -41,17 +41,37 @@ USER_ROLE_CHOICES = [
 ]
 
 SANITATION_GRADE_CHOICES = [
-    ('', 'Not Graded'),
-    ('N', 'N'),
-    ('A', 'A'),
-    ('Z', 'Z'),
-    ('B', 'B'),
-    ('C', 'C'),
+    ("P", "P"),
+    ("N", "N"),
+    ("A", "A"),
+    ("Z", "Z"),
+    ("B", "B"),
+    ("C", "C"),
 ]
+
+
+def normalize_sanitation_grade(value):
+    """
+    Normalize legacy/blank sanitation grade values to a real grade code.
+
+    Historically, an empty string ('') was used to represent "Not Graded" or
+    "no minimum" sanitation grade. With the current SANITATION_GRADE_CHOICES,
+    only explicit codes (N/Z/P/...) are valid. This helper can be used by
+    migrations, model methods, or serializers to ensure that:
+
+    - legacy '' (or other blank-like values) are mapped to 'N'
+    - API responses never emit an empty string for sanitation grade
+    """
+    if value is None:
+        return "N"
+    if isinstance(value, str) and not value.strip():
+        return "N"
+    return value
 
 
 class User(AbstractBaseUser, PermissionsMixin):
     """Central authentication model — students, venue managers, and admins."""
+
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=150, blank=True)
     first_name = models.CharField(max_length=150, blank=True)
@@ -82,6 +102,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class CuisineType(models.Model):
     """Lookup table for cuisine categories. Many-to-many with Restaurant and UserPreference."""
+
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=120, unique=True, blank=True)
 
@@ -96,6 +117,7 @@ class CuisineType(models.Model):
 
 class DietaryTag(models.Model):
     """Lookup table for dietary options. Many-to-many with Restaurant and UserPreference."""
+
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=120, unique=True, blank=True)
 
@@ -110,6 +132,7 @@ class DietaryTag(models.Model):
 
 class FoodTypeTag(models.Model):
     """Lookup table for dining categories/formats (e.g. Quick Bite, Cafe, Pizza). Many-to-many with Restaurant and UserPreference."""
+
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=120, unique=True, blank=True)
 
@@ -124,15 +147,16 @@ class FoodTypeTag(models.Model):
 
 class UserPreference(models.Model):
     """Stores personalized restaurant matching filters. One-to-one with User; M2M with DietaryTag, CuisineType, FoodTypeTag."""
+
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
-        related_name='preference',
+        related_name="preference",
     )
     minimum_sanitation_grade = models.CharField(
         max_length=10,
         choices=SANITATION_GRADE_CHOICES,
-        default='A',
+        default="A",
         blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)
@@ -140,22 +164,22 @@ class UserPreference(models.Model):
 
     dietary_tags = models.ManyToManyField(
         DietaryTag,
-        related_name='user_preferences',
+        related_name="user_preferences",
         blank=True,
     )
     cuisine_types = models.ManyToManyField(
         CuisineType,
-        related_name='user_preferences',
+        related_name="user_preferences",
         blank=True,
     )
     food_type_tags = models.ManyToManyField(
         FoodTypeTag,
-        related_name='user_preferences',
+        related_name="user_preferences",
         blank=True,
     )
 
     class Meta:
-        db_table = 'accounts_userpreference'
+        db_table = "accounts_userpreference"
 
     def __str__(self):
         return f"Preferences for {self.user.email}"
@@ -163,10 +187,11 @@ class UserPreference(models.Model):
 
 class VenueManagerProfile(models.Model):
     """Extended profile for users with the 'venue_manager' role."""
+
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
-        related_name='venue_manager_profile',
+        related_name="venue_manager_profile",
     )
     business_name = models.CharField(max_length=255, blank=True)
     business_email = models.EmailField(blank=True)
