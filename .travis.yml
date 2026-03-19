@@ -39,6 +39,8 @@ after_success:
 before_deploy:
   # Package only the backend directory for backend EB deploy
   - (cd backend && zip -r ../backend-deploy.zip . --exclude "*.pyc" --exclude "*/__pycache__/*" --exclude ".venv/*" --exclude "db.sqlite3" --exclude "db.sqlite3.bak" --exclude ".env" --exclude ".DS_Store" --exclude ".elasticbeanstalk/*" --exclude "aws-elastic-beanstalk-cli-setup/*")
+  # Inject backend EB URL into Nginx config before packaging
+  - sed -i "s|BACKEND_EB_URL|$EB_DEV_BACKEND_URL|g" frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf
   # Package the pre-built frontend dist/, Procfile, package.json, lockfile, and .platform/ Nginx config
   - (cd frontend && zip -r ../frontend-deploy.zip dist/ Procfile package.json package-lock.json .platform/)
 
