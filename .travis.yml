@@ -1,7 +1,7 @@
 language: python
 python:
-  - '3.14'
-dist: noble # Use Ubuntu 24.04 'Noble' for best 3.14 support
+  - '3.12'
+dist: noble # Use Ubuntu 24.04 'Noble' with a stable Python 3.12 environment
 
 # Force Travis to provide Node 20 for Vite compatibility
 node_js:
