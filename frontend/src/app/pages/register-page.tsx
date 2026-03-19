@@ -113,8 +113,8 @@ export function RegisterPage() {
         },
       });
       navigate('/home');
-    } catch (err: any) {
-      setErrors({ form: err.message || 'Registration failed' });
+    } catch (err: unknown) {
+      setErrors({ form: err instanceof Error ? err.message : 'Registration failed' });
     }
   };
 

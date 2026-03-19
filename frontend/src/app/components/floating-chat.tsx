@@ -67,6 +67,7 @@ export function FloatingChat() {
   // Set initial conversation when data loads
   useEffect(() => {
     if (conversations.length > 0 && !selectedConversationId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedConversationId(conversations[0].id);
     }
   }, [conversations.length, selectedConversationId]);

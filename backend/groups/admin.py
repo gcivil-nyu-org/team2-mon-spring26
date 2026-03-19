@@ -16,6 +16,7 @@ class GroupAdmin(admin.ModelAdmin):
     inlines = [GroupMembershipInline]
     autocomplete_fields = ["created_by"]
 
+
 @admin.register(GroupMembership)
 class GroupMembershipAdmin(admin.ModelAdmin):
     list_display = ("user", "group", "role", "join_date")

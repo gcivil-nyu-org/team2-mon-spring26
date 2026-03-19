@@ -21,6 +21,7 @@ export interface User {
 }
 
 /** Normalize API user payload to User (fill missing/partial preferences). */
+// eslint-disable-next-line react-refresh/only-export-components
 export function normalizeApiUser(apiUser: {
   id: number | string;
   email: string;
@@ -110,10 +111,43 @@ export interface Notification {
   timestamp: string;
 }
 
+interface RegisterData {
+  first_name: string;
+  last_name: string;
+  email: string;
+  password: string;
+  preferences?: {
+    cuisines?: string[];
+    dietary?: string[];
+    foodTypes?: string[];
+    minimum_sanitation_grade?: string;
+  };
+}
+
+interface BackendMember {
+  id: number | string;
+  name: string;
+  role: string;
+}
+
+interface BackendGroup {
+  id: number | string;
+  name: string;
+  members: BackendMember[];
+  created_by: number | string;
+  created_at: string;
+}
+
+interface BackendUser {
+  id: number | string;
+  email: string;
+  name: string;
+}
+
 interface AppContextType {
   currentUser: User | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: any) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   validatePasswordResetToken: (uid: string, token: string) => Promise<void>;
@@ -587,10 +621,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       if (groupsResponse.ok) {
         const groupsData = await groupsResponse.json();
-        const mappedGroups = groupsData.groups.map((g: any) => ({
+        const mappedGroups = groupsData.groups.map((g: BackendGroup) => ({
           id: String(g.id),
           name: g.name,
-          members: g.members.map((m: any) => ({
+          members: g.members.map((m: BackendMember) => ({
             userId: String(m.id),
             userName: m.name,
             hasFinishedSwiping: false, // UI abstraction
@@ -689,7 +723,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (data.user) setCurrentUser(normalizeApiUser(data.user));
   };
 
-  const register = async (userData: any) => {
+  const register = async (userData: RegisterData) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
       const response = await fetch(apiUrl('/api/auth/register/'), {
@@ -883,7 +917,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const newGroup: Group = {
       id: String(newGroupBackend.id),
       name: newGroupBackend.name,
-      members: newGroupBackend.members.map((m: any) => ({
+      members: newGroupBackend.members.map((m: BackendMember) => ({
         userId: String(m.id),
         userName: m.name,
         hasFinishedSwiping: false, // UI abstraction
@@ -1032,7 +1066,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (group.id === groupId) {
             return {
               ...group,
-              members: updatedBackendGroup.members.map((m: any) => ({
+              members: updatedBackendGroup.members.map((m: BackendMember) => ({
                 userId: String(m.id),
                 userName: m.name,
                 hasFinishedSwiping: false,
@@ -1144,7 +1178,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       if (response.ok) {
         const data = await response.json();
-        const users = data.users.map((u: any) => ({
+        const users = data.users.map((u: BackendUser) => ({
           id: String(u.id),
           email: u.email,
           name: u.name,
@@ -1327,6 +1361,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useApp() {
   const context = useContext(AppContext);
   if (!context) {

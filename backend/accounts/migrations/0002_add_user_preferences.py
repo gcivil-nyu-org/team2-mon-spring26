@@ -6,31 +6,31 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('accounts', '0001_initial'),
+        ("accounts", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='user',
-            name='dietary_preferences',
+            model_name="user",
+            name="dietary_preferences",
             field=models.JSONField(default=list),
         ),
         migrations.AddField(
-            model_name='user',
-            name='cuisine_preferences',
+            model_name="user",
+            name="cuisine_preferences",
             field=models.JSONField(default=list),
         ),
         migrations.AddField(
-            model_name='user',
-            name='food_type_preferences',
+            model_name="user",
+            name="food_type_preferences",
             field=models.JSONField(default=list),
         ),
         migrations.AddField(
-            model_name='user',
-            name='minimum_sanitation_grade',
+            model_name="user",
+            name="minimum_sanitation_grade",
             field=models.CharField(
-                choices=[('A', 'A'), ('B', 'B'), ('C', 'C'), ('P', 'Pending')],
-                default='C',
+                choices=[("A", "A"), ("B", "B"), ("C", "C"), ("P", "Pending")],
+                default="C",
                 max_length=10,
             ),
         ),

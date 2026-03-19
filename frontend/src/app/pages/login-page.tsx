@@ -53,8 +53,8 @@ export function LoginPage() {
     try {
       await requestPasswordReset(resetEmail);
       setResetSent(true);
-    } catch (err: any) {
-      setResetError(err.message || 'Failed to request password reset. Please try again.');
+    } catch (err: unknown) {
+      setResetError(err instanceof Error ? err.message : 'Failed to request password reset. Please try again.');
     }
   };
 

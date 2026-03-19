@@ -17,7 +17,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="CuisineType",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("name", models.CharField(max_length=100, unique=True)),
                 ("slug", models.SlugField(blank=True, max_length=120, unique=True)),
             ],
@@ -25,7 +33,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="DietaryTag",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("name", models.CharField(max_length=100, unique=True)),
                 ("slug", models.SlugField(blank=True, max_length=120, unique=True)),
             ],
@@ -33,7 +49,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="FoodTypeTag",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("name", models.CharField(max_length=100, unique=True)),
                 ("slug", models.SlugField(blank=True, max_length=120, unique=True)),
             ],
@@ -41,7 +65,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="UserPreference",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 (
                     "minimum_sanitation_grade",
                     models.CharField(
@@ -60,10 +92,38 @@ class Migration(migrations.Migration):
                 ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
-                ("user", models.OneToOneField(on_delete=models.CASCADE, related_name="preference", to="accounts.user")),
-                ("dietary_tags", models.ManyToManyField(blank=True, related_name="user_preferences", to="accounts.dietarytag")),
-                ("cuisine_types", models.ManyToManyField(blank=True, related_name="user_preferences", to="accounts.cuisinetype")),
-                ("food_type_tags", models.ManyToManyField(blank=True, related_name="user_preferences", to="accounts.foodtypetag")),
+                (
+                    "user",
+                    models.OneToOneField(
+                        on_delete=models.CASCADE,
+                        related_name="preference",
+                        to="accounts.user",
+                    ),
+                ),
+                (
+                    "dietary_tags",
+                    models.ManyToManyField(
+                        blank=True,
+                        related_name="user_preferences",
+                        to="accounts.dietarytag",
+                    ),
+                ),
+                (
+                    "cuisine_types",
+                    models.ManyToManyField(
+                        blank=True,
+                        related_name="user_preferences",
+                        to="accounts.cuisinetype",
+                    ),
+                ),
+                (
+                    "food_type_tags",
+                    models.ManyToManyField(
+                        blank=True,
+                        related_name="user_preferences",
+                        to="accounts.foodtypetag",
+                    ),
+                ),
             ],
             options={
                 "db_table": "accounts_userpreference",
