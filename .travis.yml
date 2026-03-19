@@ -39,6 +39,8 @@ after_success:
 before_deploy:
   # Package only the backend directory for backend EB deploy
   - (cd backend && zip -r ../backend-deploy.zip . --exclude "*.pyc" --exclude "*/__pycache__/*" --exclude ".venv/*" --exclude "db.sqlite3" --exclude "db.sqlite3.bak" --exclude ".env" --exclude ".DS_Store" --exclude ".elasticbeanstalk/*" --exclude "aws-elastic-beanstalk-cli-setup/*")
+  # Inject backend EB URL into Nginx config before packaging
+  - sed -i "s|BACKEND_EB_URL|$EB_DEV_BACKEND_URL|g" frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf
   # Package the pre-built frontend dist/, Procfile, package.json, lockfile, and .platform/ Nginx config
   - (cd frontend && zip -r ../frontend-deploy.zip dist/ Procfile package.json package-lock.json .platform/)
 
@@ -46,10 +48,10 @@ deploy:
   - provider: elasticbeanstalk
     access_key_id: $AWS_ACCESS_KEY_ID
     secret_access_key: $AWS_SECRET_ACCESS_KEY
-    region: 'us-east-1'
-    app: 'mealswipe-backend'
-    env: 'mealswipe-backend-env'
-    bucket_name: 'elasticbeanstalk-us-east-1-916055948433'
+    region: $AWS_DEV_REGION
+    app: $EB_DEV_BACKEND_APP
+    env: $EB_DEV_BACKEND_ENV
+    bucket_name: $EB_DEV_BUCKET_NAME
     zip_file: backend-deploy.zip
     edge: true
     on:
@@ -58,10 +60,10 @@ deploy:
   - provider: elasticbeanstalk
     access_key_id: $AWS_ACCESS_KEY_ID
     secret_access_key: $AWS_SECRET_ACCESS_KEY
-    region: 'us-east-1'
-    app: 'mealswipe-frontend'
-    env: 'Mealswipe-frontend-env'
-    bucket_name: 'elasticbeanstalk-us-east-1-916055948433'
+    region: $AWS_DEV_REGION
+    app: $EB_DEV_FRONTEND_APP
+    env: $EB_DEV_FRONTEND_ENV
+    bucket_name: $EB_DEV_BUCKET_NAME
     zip_file: frontend-deploy.zip
     edge: true
     on:
