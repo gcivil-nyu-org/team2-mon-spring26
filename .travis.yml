@@ -11,8 +11,8 @@ install:
   # Ensure the environment uses Node 20 immediately
   - nvm install 20
   - nvm use 20
-  # Install Python tools
-  - pip install black flake8 coverage coveralls
+  # Install Python tools (version-pinned for deterministic CI)
+  - pip install black==24.4.2 flake8==7.0.0 coverage==7.4.4 coveralls==4.0.1
   # Install project dependencies
   - (cd backend && pip install -r requirements.txt)
   - (cd frontend && npm ci)
