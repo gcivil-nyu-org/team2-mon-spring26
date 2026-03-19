@@ -46,10 +46,10 @@ deploy:
   - provider: elasticbeanstalk
     access_key_id: $AWS_ACCESS_KEY_ID
     secret_access_key: $AWS_SECRET_ACCESS_KEY
-    region: 'us-east-1'
-    app: 'mealswipe-backend'
-    env: 'mealswipe-backend-env'
-    bucket_name: 'elasticbeanstalk-us-east-1-916055948433'
+    region: $AWS_DEV_REGION
+    app: $EB_DEV_BACKEND_APP
+    env: $EB_DEV_BACKEND_ENV
+    bucket_name: $EB_DEV_BUCKET_NAME
     zip_file: backend-deploy.zip
     edge: true
     on:
@@ -58,10 +58,10 @@ deploy:
   - provider: elasticbeanstalk
     access_key_id: $AWS_ACCESS_KEY_ID
     secret_access_key: $AWS_SECRET_ACCESS_KEY
-    region: 'us-east-1'
-    app: 'mealswipe-frontend'
-    env: 'Mealswipe-frontend-env'
-    bucket_name: 'elasticbeanstalk-us-east-1-916055948433'
+    region: $AWS_DEV_REGION
+    app: $EB_DEV_FRONTEND_APP
+    env: $EB_DEV_FRONTEND_ENV
+    bucket_name: $EB_DEV_BUCKET_NAME
     zip_file: frontend-deploy.zip
     edge: true
     on:
