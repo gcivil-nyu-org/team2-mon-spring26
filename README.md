@@ -269,7 +269,10 @@ eb create Mealswipe-frontend-env
 - `backend/Procfile` — starts Gunicorn
 - `backend/.ebextensions/01_migrate.config` — runs migrations on deploy
 - `frontend/Procfile` — runs `npm run start` (`serve -s dist`)
+- `frontend/package.json` + `frontend/package-lock.json` — required by EB's Node.js platform to run `npm run start`
 - `frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf` — proxies `/api/` from the frontend to the backend EB URL so session cookies work
+
+The Travis CI frontend deploy bundle includes: `dist/`, `Procfile`, `package.json`, `package-lock.json`, and `.platform/`.
 
 ### 7.4 Updating the backend API target
 
