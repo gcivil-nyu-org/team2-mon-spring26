@@ -9,5 +9,6 @@ exclude = '''
   | venv
   | __pycache__
   | node_modules
+  | aws-elastic-beanstalk-cli-setup
 )/
 '''

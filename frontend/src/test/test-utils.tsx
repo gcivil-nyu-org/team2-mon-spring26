@@ -1,5 +1,5 @@
-import { ReactElement, ReactNode } from 'react';
-import { render, RenderOptions } from '@testing-library/react';
+import type { ReactElement, ReactNode } from 'react';
+import { render, type RenderOptions } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { AppProvider } from '@/app/contexts/app-context';
 import { VenueProvider } from '@/app/contexts/venue-context';
@@ -9,6 +9,7 @@ interface AllTheProvidersProps {
   initialRoute?: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function AllTheProviders({ children, initialRoute = '/' }: AllTheProvidersProps) {
   return (
     <MemoryRouter initialEntries={[initialRoute]}>
@@ -32,5 +33,6 @@ function customRender(
   });
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export * from '@testing-library/react';
 export { customRender as render };

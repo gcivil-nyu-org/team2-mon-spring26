@@ -14,33 +14,33 @@ install:
   # Install Python tools
   - pip install black flake8 coverage coveralls
   # Install project dependencies
-  - cd backend && pip install -r requirements.txt && cd ..
-  - cd frontend && npm install && cd ..
+  - (cd backend && pip install -r requirements.txt)
+  - (cd frontend && npm install)
 
 before_script:
-  - cd backend && python manage.py migrate && cd ..
+  - (cd backend && python manage.py migrate)
 
 script:
   # 1. Quality Checks
   # Using --config=.flake8 ensures it ignores those E501 long lines
   - black --check backend/
   - flake8 backend/ --config=.flake8
-  - cd frontend && npm run lint && cd ..
+  - (cd frontend && npm run lint)
 
   # 2. Backend Tests & Coverage
-  - cd backend && coverage run --source=. manage.py test && cd ..
+  - (cd backend && coverage run --source=. manage.py test)
 
   # 3. Frontend Build
-  - cd frontend && npm run build && cd ..
+  - (cd frontend && npm run build)
 
 after_success:
-  - cd backend && coveralls && cd ..
+  - (cd backend && coveralls)
 
 before_deploy:
   # Package only the backend directory for backend EB deploy
-  - cd backend && zip -r ../backend-deploy.zip . --exclude "*.pyc" --exclude "*/__pycache__/*" --exclude ".venv/*" --exclude "db.sqlite3" --exclude "db.sqlite3.bak" --exclude ".env" --exclude ".DS_Store" --exclude ".elasticbeanstalk/*" --exclude "aws-elastic-beanstalk-cli-setup/*" && cd ..
+  - (cd backend && zip -r ../backend-deploy.zip . --exclude "*.pyc" --exclude "*/__pycache__/*" --exclude ".venv/*" --exclude "db.sqlite3" --exclude "db.sqlite3.bak" --exclude ".env" --exclude ".DS_Store" --exclude ".elasticbeanstalk/*" --exclude "aws-elastic-beanstalk-cli-setup/*")
   # Package the pre-built frontend dist/ and Procfile for frontend EB deploy
-  - cd frontend && zip -r ../frontend-deploy.zip dist/ Procfile && cd ..
+  - (cd frontend && zip -r ../frontend-deploy.zip dist/ Procfile)
 
 deploy:
   - provider: elasticbeanstalk

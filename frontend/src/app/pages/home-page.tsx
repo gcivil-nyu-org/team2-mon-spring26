@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { useApp } from '@/app/contexts/app-context';
+import { useApp, type Notification } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { UtensilsCrossed, Users, LogOut, Settings, Bell } from 'lucide-react';
@@ -18,7 +18,7 @@ export function HomePage() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const handleNotificationClick = (notification: any) => {
+  const handleNotificationClick = (notification: Notification) => {
     markNotificationAsRead(notification.id);
     if (notification.type === 'group_invite' && notification.groupId) {
       joinGroup(notification.groupId);

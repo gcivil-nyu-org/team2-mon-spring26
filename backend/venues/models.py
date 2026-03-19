@@ -8,7 +8,6 @@ from accounts.models import (
     SANITATION_GRADE_CHOICES,
 )
 
-
 PRICE_RANGE_CHOICES = [
     ("$", "$"),
     ("$$", "$$"),
