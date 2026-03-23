@@ -1,5 +1,4 @@
 from django.core.management.base import BaseCommand
-from django.db import transaction
 
 from accounts.models import DietaryTag, FoodTypeTag
 from venues.models import Venue
@@ -84,7 +83,7 @@ class Command(BaseCommand):
 
         self.stdout.write("Linking tags to venues...")
 
-        venues_qs = Venue.objects.exclude(google_types=[]).select_related("cuisine_type")
+        venues_qs = Venue.objects.select_related("cuisine_type")
         total = venues_qs.count()
         linked_food = 0
         linked_dietary = 0

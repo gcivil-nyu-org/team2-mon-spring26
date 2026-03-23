@@ -1,4 +1,5 @@
 import csv
+import itertools
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -107,30 +108,29 @@ class Command(BaseCommand):
         cuisine_cache = {}
         counters = {"venues_created": 0, "venues_updated": 0, "inspections_created": 0, "errors": 0}
 
+        processed = 0
+        self.stdout.write("Starting ingestion...")
+
         with open(csv_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            rows = list(reader)
-
-        self.stdout.write(f"Loaded {len(rows)} rows. Starting ingestion...")
-
-        for i in range(0, len(rows), batch_size):
-            batch = rows[i: i + batch_size]
-            try:
+            while True:
+                batch = list(itertools.islice(reader, batch_size))
+                if not batch:
+                    break
                 with transaction.atomic():
                     for row in batch:
                         try:
-                            self._process_row(row, cuisine_cache, counters)
+                            with transaction.atomic():
+                                self._process_row(row, cuisine_cache, counters)
                         except Exception as e:
                             counters["errors"] += 1
                             if counters["errors"] <= 5:
                                 self.stderr.write(f"Row error ({row.get('dohmh_camis', '?')}): {e}")
-            except Exception as e:
-                self.stderr.write(f"Batch {i}-{i + batch_size} failed: {e}")
+                processed += len(batch)
+                self.stdout.write(f"  Processed {processed} rows...", ending="\r")
+                self.stdout.flush()
 
-            self.stdout.write(f"  Processed {min(i + batch_size, len(rows))}/{len(rows)} rows...", ending="\r")
-            self.stdout.flush()
-
-        self.stdout.write("")
+        self.stdout.write(f"\nProcessed {processed} rows total.")
         self.stdout.write(self.style.SUCCESS(
             f"Done. Venues created: {counters['venues_created']}, "
             f"updated: {counters['venues_updated']}, "
@@ -150,11 +150,7 @@ class Command(BaseCommand):
         cuisine_obj = None
         if cuisine_name:
             if cuisine_name not in cuisine_cache:
-                slug = cuisine_name.lower().replace(" ", "-").replace("/", "-")
-                obj, _ = CuisineType.objects.get_or_create(
-                    slug=slug,
-                    defaults={"name": cuisine_name},
-                )
+                obj, _ = CuisineType.objects.get_or_create(name=cuisine_name)
                 cuisine_cache[cuisine_name] = obj
             cuisine_obj = cuisine_cache[cuisine_name]
 
