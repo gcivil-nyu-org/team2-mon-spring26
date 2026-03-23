@@ -109,3 +109,34 @@ class GroupAPITests(TestCase):
         response = self.client.post(f"/api/groups/{group.id}/leave/")
         self.assertEqual(response.status_code, 400)
         self.assertIn("only leader", response.json()["error"])
+
+
+from django.contrib.auth import get_user_model
+from groups.models import Group, GroupMembership
+
+User = get_user_model()
+
+
+class GroupModelTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="testuser", email="test@nyu.edu", password="testpass123"
+        )
+        self.group = Group.objects.create(name="Lunch Crew", created_by=self.user)
+
+    def test_group_str(self):
+        self.assertEqual(str(self.group), "Lunch Crew")
+
+
+class GroupMembershipModelTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="testuser", email="test@nyu.edu", password="testpass123"
+        )
+        self.group = Group.objects.create(name="Lunch Crew", created_by=self.user)
+        self.membership = GroupMembership.objects.create(
+            user=self.user, group=self.group, role=GroupMembership.Role.LEADER
+        )
+
+    def test_membership_str(self):
+        self.assertEqual(str(self.membership), "test@nyu.edu in Lunch Crew (leader)")
