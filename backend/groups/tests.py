@@ -111,16 +111,10 @@ class GroupAPITests(TestCase):
         self.assertIn("only leader", response.json()["error"])
 
 
-from django.contrib.auth import get_user_model
-from groups.models import Group, GroupMembership
-
-User = get_user_model()
-
-
 class GroupModelTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
-            username="testuser", email="test@nyu.edu", password="testpass123"
+            email="test@nyu.edu", password="testpass123"
         )
         self.group = Group.objects.create(name="Lunch Crew", created_by=self.user)
 
@@ -131,7 +125,7 @@ class GroupModelTest(TestCase):
 class GroupMembershipModelTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
-            username="testuser", email="test@nyu.edu", password="testpass123"
+            email="test@nyu.edu", password="testpass123"
         )
         self.group = Group.objects.create(name="Lunch Crew", created_by=self.user)
         self.membership = GroupMembership.objects.create(
