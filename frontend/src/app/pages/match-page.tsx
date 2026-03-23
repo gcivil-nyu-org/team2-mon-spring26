@@ -64,6 +64,7 @@ export function MatchPage() {
     if (bestMatch) {
       const restaurant = mockRestaurants.find(r => r.id === bestMatch);
       if (restaurant) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMatchedRestaurant(restaurant);
         setMatchStats({ totalLikes: maxLikes, membersWhoLiked: bestMatchUserNames });
         setShowMatch(true);

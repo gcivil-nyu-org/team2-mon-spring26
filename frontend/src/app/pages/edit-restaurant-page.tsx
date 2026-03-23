@@ -76,6 +76,7 @@ export function EditRestaurantPage() {
 
   useEffect(() => {
     if (restaurant) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(restaurant.name);
       setAddress(restaurant.address);
       setBorough(restaurant.borough);
@@ -205,7 +206,7 @@ export function EditRestaurantPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="priceRange">Price Range</Label>
-                    <Select value={priceRange} onValueChange={(val) => setPriceRange(val as any)}>
+                    <Select value={priceRange} onValueChange={(val) => setPriceRange(val as '$' | '$$' | '$$$' | '$$$$')}>
                       <SelectTrigger id="priceRange" className="h-11">
                         <SelectValue />
                       </SelectTrigger>
@@ -307,7 +308,7 @@ export function EditRestaurantPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="sanitation">Sanitation Grade</Label>
-                    <Select value={sanitationGrade} onValueChange={(val) => setSanitationGrade(val as any)}>
+                    <Select value={sanitationGrade} onValueChange={(val) => setSanitationGrade(val as 'A' | 'B' | 'C' | 'Pending')}>
                       <SelectTrigger id="sanitation" className="h-11">
                         <SelectValue />
                       </SelectTrigger>

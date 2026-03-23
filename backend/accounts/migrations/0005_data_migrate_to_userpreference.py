@@ -70,9 +70,15 @@ def backward(apps, schema_editor):
     for user in User.objects.all():
         try:
             pref = UserPreference.objects.get(user=user)
-            user.dietary_preferences = list(pref.dietary_tags.values_list("name", flat=True))
-            user.cuisine_preferences = list(pref.cuisine_types.values_list("name", flat=True))
-            user.food_type_preferences = list(pref.food_type_tags.values_list("name", flat=True))
+            user.dietary_preferences = list(
+                pref.dietary_tags.values_list("name", flat=True)
+            )
+            user.cuisine_preferences = list(
+                pref.cuisine_types.values_list("name", flat=True)
+            )
+            user.food_type_preferences = list(
+                pref.food_type_tags.values_list("name", flat=True)
+            )
             user.minimum_sanitation_grade = pref.minimum_sanitation_grade or "C"
             user.save()
         except UserPreference.DoesNotExist:

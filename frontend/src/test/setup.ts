@@ -11,7 +11,7 @@ import { afterEach, vi } from 'vitest';
   if (exports !== null && typeof exports === 'object') {
     try {
       Object.defineProperty(exports, name, { get: getter, enumerable: true });
-    } catch (_) {}
+    } catch { /* intentionally ignored */ }
   }
 };
 

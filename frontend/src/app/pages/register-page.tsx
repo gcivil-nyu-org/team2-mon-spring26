@@ -11,34 +11,22 @@ import {
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Badge } from '@/app/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/app/components/ui/select';
 import { UtensilsCrossed } from 'lucide-react';
-
-const DIETARY_OPTIONS = [
-  'Vegetarian',
-  'Vegan',
-  'Halal',
-  'Kosher',
-  'Gluten-Free',
-  'Dairy-Free',
-  'Nut-Free',
-];
-
-const CUISINE_OPTIONS = [
-  'Italian',
-  'Japanese',
-  'Chinese',
-  'Mexican',
-  'Indian',
-  'Thai',
-  'Korean',
-  'Mediterranean',
-  'American',
-  'Middle Eastern',
-  'French',
-  'Vietnamese',
-];
-
+import preferenceOptions from '@/app/data/preference-options.json';
+import { formatSanitationGradeLabel } from '@/app/utils/sanitation-grade';
 import { useApp } from '@/app/contexts/app-context';
+
+const dietaryCatalog: string[] = preferenceOptions.dietary ?? [];
+const cuisineCatalog: string[] = preferenceOptions.cuisines ?? [];
+const foodTypeCatalog: string[] = preferenceOptions.foodTypes ?? [];
+const sanitationCatalog: string[] = preferenceOptions.minimumSanitationGrades ?? [];
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -51,8 +39,10 @@ export function RegisterPage() {
   });
   const [selectedDietary, setSelectedDietary] = useState<string[]>([]);
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
+  const [selectedFoodTypes, setSelectedFoodTypes] = useState<string[]>([]);
   const [step, setStep] = useState<'account' | 'preferences'>('account');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [minimumSanitationGrade, setMinimumSanitationGrade] = useState<string>('A');
 
   const toggleDietary = (option: string) => {
     setSelectedDietary((prev) =>
@@ -62,6 +52,12 @@ export function RegisterPage() {
 
   const toggleCuisine = (option: string) => {
     setSelectedCuisines((prev) =>
+      prev.includes(option) ? prev.filter((o) => o !== option) : [...prev, option]
+    );
+  };
+
+  const toggleFoodType = (option: string) => {
+    setSelectedFoodTypes((prev) =>
       prev.includes(option) ? prev.filter((o) => o !== option) : [...prev, option]
     );
   };
@@ -112,11 +108,13 @@ export function RegisterPage() {
         preferences: {
           cuisines: selectedCuisines,
           dietary: selectedDietary,
+          foodTypes: selectedFoodTypes,
+          minimum_sanitation_grade: minimumSanitationGrade,
         },
       });
       navigate('/home');
-    } catch (err: any) {
-      setErrors({ form: err.message || 'Registration failed' });
+    } catch (err: unknown) {
+      setErrors({ form: err instanceof Error ? err.message : 'Registration failed' });
     }
   };
 
@@ -233,7 +231,7 @@ export function RegisterPage() {
                   Select any dietary restrictions you have
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {DIETARY_OPTIONS.map((option) => (
+                  {dietaryCatalog.map((option) => (
                     <Badge
                       key={option}
                       variant={selectedDietary.includes(option) ? 'default' : 'outline'}
@@ -257,7 +255,7 @@ export function RegisterPage() {
                   Select cuisines you enjoy
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {CUISINE_OPTIONS.map((option) => (
+                  {cuisineCatalog.map((option) => (
                     <Badge
                       key={option}
                       variant={
@@ -274,6 +272,53 @@ export function RegisterPage() {
                     </Badge>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Food Types (Optional)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Select formats you enjoy
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {foodTypeCatalog.map((option) => (
+                    <Badge
+                      key={option}
+                      variant={
+                        selectedFoodTypes.includes(option) ? 'default' : 'outline'
+                      }
+                      className={`cursor-pointer ${
+                        selectedFoodTypes.includes(option)
+                          ? 'bg-gradient-to-r from-pink-500 to-red-500 text-white'
+                          : ''
+                      }`}
+                      onClick={() => toggleFoodType(option)}
+                    >
+                      {option}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="minimumSanitationGrade">Minimum Sanitation Grade</Label>
+                <p className="text-xs text-muted-foreground">
+                  Only show restaurants with at least this grade
+                </p>
+                <Select
+                  value={minimumSanitationGrade}
+                  onValueChange={setMinimumSanitationGrade}
+                >
+                  <SelectTrigger id="minimumSanitationGrade" className="h-11 max-w-xs">
+                    <SelectValue placeholder="Select a grade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sanitationCatalog.map((grade) => (
+                      <SelectItem key={grade} value={grade}>
+                        {formatSanitationGradeLabel(grade)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex gap-3">

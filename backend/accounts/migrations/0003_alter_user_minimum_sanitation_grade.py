@@ -6,24 +6,24 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('accounts', '0002_add_user_preferences'),
+        ("accounts", "0002_add_user_preferences"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='user',
-            name='minimum_sanitation_grade',
+            model_name="user",
+            name="minimum_sanitation_grade",
             field=models.CharField(
                 blank=True,
                 choices=[
-                    ('', 'Not Graded'),
-                    ('N', 'N'),
-                    ('A', 'A'),
-                    ('Z', 'Z'),
-                    ('B', 'B'),
-                    ('C', 'C'),
+                    ("", "Not Graded"),
+                    ("N", "N"),
+                    ("A", "A"),
+                    ("Z", "Z"),
+                    ("B", "B"),
+                    ("C", "C"),
                 ],
-                default='C',
+                default="C",
                 max_length=10,
             ),
         ),

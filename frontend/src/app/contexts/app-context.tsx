@@ -21,6 +21,7 @@ export interface User {
 }
 
 /** Normalize API user payload to User (fill missing/partial preferences). */
+// eslint-disable-next-line react-refresh/only-export-components
 export function normalizeApiUser(apiUser: {
   id: number | string;
   email: string;
@@ -48,12 +49,7 @@ export function normalizeApiUser(apiUser: {
       foodTypes: Array.isArray(prefs.foodTypes)
         ? prefs.foodTypes
         : DEFAULT_PREFERENCES.foodTypes,
-      minimumSanitationGrade:
-        grade === ''
-          ? 'Not Graded'
-          : grade === 'P' || grade === 'Z'
-            ? 'Pending'
-            : grade,
+      minimumSanitationGrade: grade,
     },
   };
 }
@@ -115,10 +111,43 @@ export interface Notification {
   timestamp: string;
 }
 
+interface RegisterData {
+  first_name: string;
+  last_name: string;
+  email: string;
+  password: string;
+  preferences?: {
+    cuisines?: string[];
+    dietary?: string[];
+    foodTypes?: string[];
+    minimum_sanitation_grade?: string;
+  };
+}
+
+interface BackendMember {
+  id: number | string;
+  name: string;
+  role: string;
+}
+
+interface BackendGroup {
+  id: number | string;
+  name: string;
+  members: BackendMember[];
+  created_by: number | string;
+  created_at: string;
+}
+
+interface BackendUser {
+  id: number | string;
+  email: string;
+  name: string;
+}
+
 interface AppContextType {
   currentUser: User | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: any) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   validatePasswordResetToken: (uid: string, token: string) => Promise<void>;
@@ -134,7 +163,12 @@ interface AppContextType {
     minimumSanitationGrade?: string;
   }) => Promise<void>;
   groups: Group[];
-  createGroup: (name: string, groupType?: string, defaultLocation?: string, privacy?: string) => Promise<Group>;
+  createGroup: (
+    name: string,
+    groupType?: string,
+    defaultLocation?: string,
+    privacy?: string
+  ) => Promise<Group>;
   joinGroup: (groupId: string) => void;
   leaveGroup: (groupId: string) => Promise<void>;
   deleteGroup: (groupId: string) => Promise<void>;
@@ -580,31 +614,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ACTUAL API AUTHENTICATION LOGIC (Django Session Auth)
   // ---------------------------------------------------------------------------
 
-    const fetchUserGroups = async () => {
-      try {
-        const groupsResponse = await fetch(apiUrl('/api/groups/'), {
-          credentials: 'include',
-        });
-        if (groupsResponse.ok) {
-          const groupsData = await groupsResponse.json();
-          const mappedGroups = groupsData.groups.map((g: any) => ({
-            id: String(g.id),
-            name: g.name,
-            members: g.members.map((m: any) => ({
-              userId: String(m.id),
-              userName: m.name,
-              hasFinishedSwiping: false, // UI abstraction
-              isLeader: m.role === 'leader',
-            })),
-            createdBy: String(g.created_by),
-            createdAt: g.created_at,
-          }));
-          setGroups(mappedGroups);
-        }
-      } catch (err) {
-        console.error('Failed to fetch user groups', err);
+  const fetchUserGroups = async () => {
+    try {
+      const groupsResponse = await fetch(apiUrl('/api/groups/'), {
+        credentials: 'include',
+      });
+      if (groupsResponse.ok) {
+        const groupsData = await groupsResponse.json();
+        const mappedGroups = groupsData.groups.map((g: BackendGroup) => ({
+          id: String(g.id),
+          name: g.name,
+          members: g.members.map((m: BackendMember) => ({
+            userId: String(m.id),
+            userName: m.name,
+            hasFinishedSwiping: false, // UI abstraction
+            isLeader: m.role === 'leader',
+          })),
+          createdBy: String(g.created_by),
+          createdAt: g.created_at,
+        }));
+        setGroups(mappedGroups);
       }
-    };
+    } catch (err) {
+      console.error('Failed to fetch user groups', err);
+    }
+  };
 
   // Check session on mount
   useEffect(() => {
@@ -689,7 +723,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (data.user) setCurrentUser(normalizeApiUser(data.user));
   };
 
-  const register = async (userData: any) => {
+  const register = async (userData: RegisterData) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
       const response = await fetch(apiUrl('/api/auth/register/'), {
@@ -847,7 +881,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('mealswipe_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  const createGroup = async (name: string, groupType: string = 'casual', defaultLocation: string = 'manhattan', privacy: string = 'public'): Promise<Group> => {
+  const createGroup = async (
+    name: string,
+    groupType: string = 'casual',
+    defaultLocation: string = 'manhattan',
+    privacy: string = 'public'
+  ): Promise<Group> => {
     if (!currentUser) throw new Error('Must be logged in');
 
     const csrftoken = getCookie('csrftoken') || '';
@@ -878,7 +917,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const newGroup: Group = {
       id: String(newGroupBackend.id),
       name: newGroupBackend.name,
-      members: newGroupBackend.members.map((m: any) => ({
+      members: newGroupBackend.members.map((m: BackendMember) => ({
         userId: String(m.id),
         userName: m.name,
         hasFinishedSwiping: false, // UI abstraction
@@ -1027,7 +1066,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (group.id === groupId) {
             return {
               ...group,
-              members: updatedBackendGroup.members.map((m: any) => ({
+              members: updatedBackendGroup.members.map((m: BackendMember) => ({
                 userId: String(m.id),
                 userName: m.name,
                 hasFinishedSwiping: false,
@@ -1046,7 +1085,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         message: `${currentUser.name} invited ${userEmail} to the group`,
         timestamp: new Date().toISOString(),
       });
-
     } catch (error) {
       console.error('Invite member error:', error);
       throw error;
@@ -1057,13 +1095,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!currentUser) return;
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch(apiUrl(`/api/groups/${groupId}/members/${userId}/`), {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          'X-CSRFToken': csrftoken,
-        },
-      });
+      const response = await fetch(
+        apiUrl(`/api/groups/${groupId}/members/${userId}/`),
+        {
+          method: 'DELETE',
+          credentials: 'include',
+          headers: {
+            'X-CSRFToken': csrftoken,
+          },
+        }
+      );
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
@@ -1091,13 +1132,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!currentUser) return;
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch(apiUrl(`/api/groups/${groupId}/members/${userId}/role/`), {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: {
-          'X-CSRFToken': csrftoken,
-        },
-      });
+      const response = await fetch(
+        apiUrl(`/api/groups/${groupId}/members/${userId}/role/`),
+        {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: {
+            'X-CSRFToken': csrftoken,
+          },
+        }
+      );
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
@@ -1126,16 +1170,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const fetchAvailableUsers = async (query: string = '') => {
     if (!currentUser) return;
     try {
-      const response = await fetch(apiUrl(`/api/groups/users/?q=${encodeURIComponent(query)}`), {
-        credentials: 'include',
-      });
+      const response = await fetch(
+        apiUrl(`/api/groups/users/?q=${encodeURIComponent(query)}`),
+        {
+          credentials: 'include',
+        }
+      );
       if (response.ok) {
         const data = await response.json();
-        const users = data.users.map((u: any) => ({
+        const users = data.users.map((u: BackendUser) => ({
           id: String(u.id),
           email: u.email,
           name: u.name,
-          preferences: { cuisines: [], dietary: [], foodTypes: [] } // Minimal mock for interface
+          preferences: { cuisines: [], dietary: [], foodTypes: [] }, // Minimal mock for interface
         }));
         setAvailableUsers(users);
       }
@@ -1314,6 +1361,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useApp() {
   const context = useContext(AppContext);
   if (!context) {

@@ -1,0 +1,15 @@
+[flake8]
+# Explicitly set the length to 88
+max-line-length = 88
+# Tell it to ignore the long line errors (E501) entirely for now
+ignore = E501, E203, W503
+# Exclude folders that shouldn't be linted
+exclude = 
+    .git,
+    __pycache__,
+    */migrations/*,
+    venv,
+    env,
+    .tox,
+    build,
+    dist

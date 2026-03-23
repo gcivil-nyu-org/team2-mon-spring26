@@ -21,22 +21,22 @@ def api_list_users(request):
     """
     if request.method != "GET":
         return JsonResponse({"error": "Method not allowed"}, status=405)
-    
+
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
-        
+
     try:
         query = request.GET.get("q", "").strip()
         users_qs = User.objects.exclude(id=request.user.id)
-        
+
         if query:
             users_qs = users_qs.filter(
-                models.Q(email__icontains=query) | 
-                models.Q(username__icontains=query) |
-                models.Q(first_name__icontains=query) |
-                models.Q(last_name__icontains=query)
+                models.Q(email__icontains=query)
+                | models.Q(username__icontains=query)
+                | models.Q(first_name__icontains=query)
+                | models.Q(last_name__icontains=query)
             )
-            
+
         users_data = [
             {
                 "id": u.id,
@@ -72,7 +72,7 @@ def _group_to_json(group):
                 "join_date": m.join_date.isoformat(),
             }
             for m in memberships
-        ]
+        ],
     }
 
 
@@ -87,12 +87,13 @@ def api_groups_list_create(request):
 
     if request.method == "GET":
         try:
-            memberships = GroupMembership.objects.filter(user=request.user).select_related("group")
+            memberships = GroupMembership.objects.filter(
+                user=request.user
+            ).select_related("group")
             groups = [m.group for m in memberships]
-            return JsonResponse({
-                "success": True, 
-                "groups": [_group_to_json(g) for g in groups]
-            })
+            return JsonResponse(
+                {"success": True, "groups": [_group_to_json(g) for g in groups]}
+            )
         except Exception as e:
             logger.error(f"Group fetch error: {str(e)}", exc_info=True)
             return JsonResponse({"error": "An expected error occurred"}, status=500)
@@ -111,15 +112,13 @@ def api_groups_list_create(request):
                     group_type=data.get("group_type", Group.GroupType.CASUAL),
                     default_location=(data.get("default_location") or "").strip(),
                     privacy=data.get("privacy", Group.PrivacyType.PUBLIC),
-                    created_by=request.user
+                    created_by=request.user,
                 )
                 # Creator is automatically a leader
                 GroupMembership.objects.create(
-                    user=request.user,
-                    group=group,
-                    role=GroupMembership.Role.LEADER
+                    user=request.user, group=group, role=GroupMembership.Role.LEADER
                 )
-                
+
             return JsonResponse({"success": True, "group": _group_to_json(group)})
 
         except json.JSONDecodeError:
@@ -139,26 +138,30 @@ def api_edit_group(request, group_id):
     """
     if request.method not in ("PATCH", "PUT"):
         return JsonResponse({"error": "Method not allowed"}, status=405)
-    
+
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
         group = Group.objects.get(id=group_id)
         # Check permissions: user must be a leader of this group
-        membership = GroupMembership.objects.filter(group=group, user=request.user).first()
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
         if not membership or membership.role != GroupMembership.Role.LEADER:
-            return JsonResponse({"error": "Only group leaders can edit the group"}, status=403)
+            return JsonResponse(
+                {"error": "Only group leaders can edit the group"}, status=403
+            )
 
         data = json.loads(request.body)
-        
+
         name = data.get("name")
         if name is not None:
             name = name.strip()
             if not name:
                 return JsonResponse({"error": "Group name cannot be empty"}, status=400)
             group.name = name
-            
+
         if "description" in data:
             group.description = data["description"].strip()
         if "group_type" in data:
@@ -190,15 +193,19 @@ def api_delete_group(request, group_id):
     """
     if request.method != "DELETE":
         return JsonResponse({"error": "Method not allowed"}, status=405)
-    
+
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
         group = Group.objects.get(id=group_id)
-        membership = GroupMembership.objects.filter(group=group, user=request.user).first()
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
         if not membership or membership.role != GroupMembership.Role.LEADER:
-            return JsonResponse({"error": "Only group leaders can delete the group"}, status=403)
+            return JsonResponse(
+                {"error": "Only group leaders can delete the group"}, status=403
+            )
 
         group.delete()
         return JsonResponse({"success": True, "message": "Group deleted successfully"})
@@ -218,15 +225,19 @@ def api_invite_to_group(request, group_id):
     """
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
-    
+
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
         group = Group.objects.get(id=group_id)
-        membership = GroupMembership.objects.filter(group=group, user=request.user).first()
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
         if not membership or membership.role != GroupMembership.Role.LEADER:
-            return JsonResponse({"error": "Only group leaders can invite members"}, status=403)
+            return JsonResponse(
+                {"error": "Only group leaders can invite members"}, status=403
+            )
 
         data = json.loads(request.body)
         identifier = (data.get("email") or data.get("username") or "").strip()
@@ -246,12 +257,12 @@ def api_invite_to_group(request, group_id):
             return JsonResponse({"error": "User not found"}, status=404)
 
         if GroupMembership.objects.filter(group=group, user=target_user).exists():
-            return JsonResponse({"error": "User is already a member of this group"}, status=400)
+            return JsonResponse(
+                {"error": "User is already a member of this group"}, status=400
+            )
 
         GroupMembership.objects.create(
-            group=group,
-            user=target_user,
-            role=GroupMembership.Role.MEMBER
+            group=group, user=target_user, role=GroupMembership.Role.MEMBER
         )
 
         return JsonResponse({"success": True, "group": _group_to_json(group)})
@@ -273,22 +284,38 @@ def api_remove_from_group(request, group_id, user_id):
     """
     if request.method != "DELETE":
         return JsonResponse({"error": "Method not allowed"}, status=405)
-    
+
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
         group = Group.objects.get(id=group_id)
-        leader_membership = GroupMembership.objects.filter(group=group, user=request.user).first()
-        if not leader_membership or leader_membership.role != GroupMembership.Role.LEADER:
-            return JsonResponse({"error": "Only group leaders can remove members"}, status=403)
+        leader_membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
+        if (
+            not leader_membership
+            or leader_membership.role != GroupMembership.Role.LEADER
+        ):
+            return JsonResponse(
+                {"error": "Only group leaders can remove members"}, status=403
+            )
 
         if request.user.id == int(user_id):
-            return JsonResponse({"error": "You cannot remove yourself. Use the leave endpoint instead."}, status=400)
+            return JsonResponse(
+                {
+                    "error": "You cannot remove yourself. Use the leave endpoint instead."
+                },
+                status=400,
+            )
 
-        target_membership = GroupMembership.objects.filter(group=group, user_id=user_id).first()
+        target_membership = GroupMembership.objects.filter(
+            group=group, user_id=user_id
+        ).first()
         if not target_membership:
-            return JsonResponse({"error": "User is not a member of this group"}, status=404)
+            return JsonResponse(
+                {"error": "User is not a member of this group"}, status=404
+            )
 
         target_membership.delete()
         return JsonResponse({"success": True, "group": _group_to_json(group)})
@@ -308,21 +335,32 @@ def api_make_leader(request, group_id, user_id):
     """
     if request.method != "PATCH":
         return JsonResponse({"error": "Method not allowed"}, status=405)
-    
+
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
         group = Group.objects.get(id=group_id)
-        leader_membership = GroupMembership.objects.filter(group=group, user=request.user).first()
-        if not leader_membership or leader_membership.role != GroupMembership.Role.LEADER:
-            return JsonResponse({"error": "Only group leaders can promote members"}, status=403)
+        leader_membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
+        if (
+            not leader_membership
+            or leader_membership.role != GroupMembership.Role.LEADER
+        ):
+            return JsonResponse(
+                {"error": "Only group leaders can promote members"}, status=403
+            )
 
         # Using JSON to determine role update optionally, or assume it's always default logic
         # For simplicity based on AC, just making them a leader
-        target_membership = GroupMembership.objects.filter(group=group, user_id=user_id).first()
+        target_membership = GroupMembership.objects.filter(
+            group=group, user_id=user_id
+        ).first()
         if not target_membership:
-            return JsonResponse({"error": "User is not a member of this group"}, status=404)
+            return JsonResponse(
+                {"error": "User is not a member of this group"}, status=404
+            )
 
         if target_membership.role != GroupMembership.Role.LEADER:
             target_membership.role = GroupMembership.Role.LEADER
@@ -345,30 +383,41 @@ def api_leave_group(request, group_id):
     """
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
-    
+
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
         group = Group.objects.get(id=group_id)
-        membership = GroupMembership.objects.filter(group=group, user=request.user).first()
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
         if not membership:
-            return JsonResponse({"error": "You are not a member of this group"}, status=404)
+            return JsonResponse(
+                {"error": "You are not a member of this group"}, status=404
+            )
 
         with transaction.atomic():
             if membership.role == GroupMembership.Role.LEADER:
                 # Check if there are other leaders
-                other_leaders_count = GroupMembership.objects.filter(
-                    group=group, role=GroupMembership.Role.LEADER
-                ).exclude(user=request.user).count()
+                other_leaders_count = (
+                    GroupMembership.objects.filter(
+                        group=group, role=GroupMembership.Role.LEADER
+                    )
+                    .exclude(user=request.user)
+                    .count()
+                )
 
                 if other_leaders_count == 0:
-                    return JsonResponse({
-                        "error": "You are the only leader of this group. You must either assign another leader or delete the group."
-                    }, status=400)
+                    return JsonResponse(
+                        {
+                            "error": "You are the only leader of this group. You must either assign another leader or delete the group."
+                        },
+                        status=400,
+                    )
 
             membership.delete()
-        
+
         return JsonResponse({"success": True, "message": "You have left the group"})
 
     except Group.DoesNotExist:

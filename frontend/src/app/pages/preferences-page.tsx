@@ -2,7 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Label } from '@/app/components/ui/label';
 import {
@@ -15,16 +21,12 @@ import {
 import { ArrowLeft } from 'lucide-react';
 import { useApp } from '@/app/contexts/app-context';
 import preferenceOptions from '@/app/data/preference-options.json';
+import { formatSanitationGradeLabel } from '@/app/utils/sanitation-grade';
 
-const SANITATION_OPTIONS = [
-  { value: 'Not Graded', label: 'Not Graded' },
-  { value: 'N', label: 'N' },
-  { value: 'A', label: 'A' },
-  { value: 'Z', label: 'Z' },
-  { value: 'B', label: 'B' },
-  { value: 'C', label: 'C' },
-  { value: 'Pending', label: 'Pending' }, // legacy; backend may store as P
-] as const;
+const SANITATION_OPTIONS = (preferenceOptions.minimumSanitationGrades ?? []).map(
+  (grade) => ({ value: grade, label: formatSanitationGradeLabel(grade) })
+);
+// Keep the backend-visible grade codes in sync with the options file.
 
 export function PreferencesPage() {
   const navigate = useNavigate();
@@ -185,7 +187,9 @@ export function PreferencesPage() {
         <Card>
           <CardHeader>
             <CardTitle>Minimum Sanitation Grade</CardTitle>
-            <CardDescription>Only show restaurants with at least this grade</CardDescription>
+            <CardDescription>
+              Only show restaurants with at least this grade
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Label htmlFor="sanitation" className="sr-only">
@@ -216,11 +220,7 @@ export function PreferencesPage() {
         )}
 
         <div className="grid grid-cols-1 gap-4">
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full"
-          >
+          <Button onClick={handleSave} disabled={saving} className="w-full">
             {saving ? 'Saving…' : 'Save Preferences'}
           </Button>
           <Button

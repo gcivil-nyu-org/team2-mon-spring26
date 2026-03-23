@@ -189,41 +189,50 @@ Frontend URL: `http://localhost:5173`
 
 ## 7. Deploy to AWS Elastic Beanstalk
 
-This repo deploys as two independent Elastic Beanstalk applications in **us-east-2**:
+This repo deploys as two independent Elastic Beanstalk applications in **us-east-1**:
 
-| Component | EB Application         | EB Environment             | Platform                              |
-| --------- | ---------------------- | -------------------------- | ------------------------------------- |
-| Backend   | `Mealswipe-backend`    | `Mealswipe-backend-env-1`  | Python 3.x on 64bit Amazon Linux 2023 |
-| Frontend  | `Mealswipe-frontend-1` | `Mealswipe-frontend-1-env` | Node.js on 64bit Amazon Linux 2023    |
+| Component | EB Application      | EB Environment        | Platform                              |
+| --------- | ------------------- | --------------------- | ------------------------------------- |
+| Backend   | `mealswipe-backend` | `mealswipe-backend-env` | Python 3.x on 64bit Amazon Linux 2023 |
+| Frontend  | `mealswipe-frontend` | `Mealswipe-frontend-env` | Node.js on 64bit Amazon Linux 2023    |
 
-### 7.1 Prerequisites
+### 7.1 CI/CD via Travis CI
 
+Deployments are **automated via Travis CI**. Every merge to `develop` triggers the full pipeline:
+
+1. Linting — `black --check`, `flake8`, `npm run lint`
+2. Backend tests with coverage
+3. Frontend build (`npm run build`)
+4. Packages and deploys backend to `mealswipe-backend-env`
+5. Packages and deploys frontend (`dist/` + `Procfile`) to `Mealswipe-frontend-env`
+
+**No manual `eb deploy` is needed for routine deployments.** Just merge to `develop`.
+
+Travis CI requires two environment variables set in the repository settings:
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+
+### 7.2 First-time environment setup
+
+If the EB environments need to be recreated from scratch, use the EB CLI to initialise and configure them. This is a one-time operation per environment.
+
+**Prerequisites:**
 - **AWS CLI** installed (`brew install awscli` on macOS)
-- **EB CLI** installed (via pip in the backend venv: `pip install awsebcli`)
-- AWS credentials configured: `aws configure --profile default` (set region to `us-east-2`)
+- **EB CLI** installed (`pip install awsebcli`)
+- AWS credentials configured: `aws configure` (set region to `us-east-1`)
 
-### 7.2 Backend deploy
-
-The backend runs Django + Gunicorn. Key deployment files:
-
-- `backend/Procfile` — starts Gunicorn
-- `backend/.ebextensions/01_migrate.config` — creates a writable DB directory, runs migrations, fixes permissions
-- `backend/.ebignore` — excludes `.venv/`, `__pycache__/`, `db.sqlite3`, etc. from the upload bundle
-- `backend/requirements.txt` — includes `django-cors-headers` for cross-origin API access
+**Backend:**
 
 ```bash
 cd backend
 source .venv/bin/activate
 
-# First-time setup (already done — skip if .elasticbeanstalk/config.yml exists)
-eb init Mealswipe-backend \
+eb init mealswipe-backend \
   --platform "Python 3.x running on 64bit Amazon Linux 2023" \
-  --region us-east-2
+  --region us-east-1
 
-# Create environment (first time only)
-eb create Mealswipe-backend-env-1
+eb create mealswipe-backend-env
 
-# Set environment variables
 eb setenv \
   SECRET_KEY=<your-secret-key> \
   DEBUG=False \
@@ -239,52 +248,38 @@ eb setenv \
   EMAIL_HOST_PASSWORD=<your-16-char-app-password> \
   DEFAULT_FROM_EMAIL=<your-gmail-address> \
   FRONTEND_BASE_URL=http://<frontend-cname>
-
-# Deploy
-eb deploy --timeout 5
 ```
 
 > **Note:** The `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS` values must be **lowercase** (browsers normalise the `Origin` header to lowercase).
 
-### 7.3 Frontend deploy
-
-The frontend is built **locally** and the pre-built `dist/` folder is shipped in the EB bundle. The EB instance only installs `serve` (the sole production dependency) and serves the static files.
-
-Key deployment files:
-
-- `frontend/Procfile` — runs `npm run start` which calls `serve -s dist`
-- `frontend/.ebignore` — excludes `node_modules/`, source files, and config from the upload; **includes** `dist/`
-- `frontend/package.json` — only `serve` is in `dependencies`; all build tools are in `devDependencies`
-- `frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf` — proxies `/api/` from the frontend origin to the backend EB URL so browser session cookies work reliably
+**Frontend:**
 
 ```bash
 cd frontend
 
-# First-time setup (already done — skip if .elasticbeanstalk/config.yml exists)
-eb init Mealswipe-frontend-1 \
+eb init mealswipe-frontend \
   --platform "Node.js 24 running on 64bit Amazon Linux 2023" \
-  --region us-east-2
+  --region us-east-1
 
-# Create environment (first time only)
-eb create Mealswipe-frontend-1-env
-
-# Build locally (uses .env.production; keep VITE_API_BASE_URL empty for same-origin /api)
-npm install
-npm run build
-
-# Deploy (ships pre-built dist/ to EB — deploys in ~20 seconds)
-eb deploy --timeout 5
+eb create Mealswipe-frontend-env
 ```
 
-> **Important:** You must run `npm run build` locally before every `eb deploy`. The EB instance does **not** build — it only serves the static files from `dist/`.
+### 7.3 Key deployment files
+
+- `backend/Procfile` — starts Gunicorn
+- `backend/.ebextensions/01_migrate.config` — runs migrations on deploy
+- `frontend/Procfile` — runs `npm run start` (`serve -s dist`)
+- `frontend/package.json` + `frontend/package-lock.json` — required by EB's Node.js platform to run `npm run start`
+- `frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf` — proxies `/api/` from the frontend to the backend EB URL so session cookies work
+
+The Travis CI frontend deploy bundle includes: `dist/`, `Procfile`, `package.json`, `package-lock.json`, and `.platform/`.
 
 ### 7.4 Updating the backend API target
 
 In production, the frontend calls same-origin `/api/...` and Nginx forwards to the backend. To point production to a different backend:
 
 1. Update `proxy_pass` and `proxy_set_header Host` in `frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf`
-2. Run `npm run build` in the `frontend/` directory
-3. Run `eb deploy` from `frontend/`
+2. Merge the change to `develop` — Travis CI will rebuild and redeploy automatically
 
 ### 7.5 Architecture notes
 
