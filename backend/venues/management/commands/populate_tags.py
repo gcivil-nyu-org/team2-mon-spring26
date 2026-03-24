@@ -70,14 +70,14 @@ class Command(BaseCommand):
         # Create all FoodTypeTags
         food_tags = {}
         for name in set(FOOD_TYPE_MAP.values()):
-            obj, created = FoodTypeTag.objects.get_or_create(name=name)
+            obj, _ = FoodTypeTag.objects.get_or_create(name=name)
             food_tags[name] = obj
         self.stdout.write(f"  FoodTypeTags: {len(food_tags)} tags ready")
 
         # Create all DietaryTags
         dietary_tags = {}
         for name in set(list(DIETARY_TYPE_MAP.values()) + list(CUISINE_DIETARY_MAP.values())):
-            obj, created = DietaryTag.objects.get_or_create(name=name)
+            obj, _ = DietaryTag.objects.get_or_create(name=name)
             dietary_tags[name] = obj
         self.stdout.write(f"  DietaryTags: {len(dietary_tags)} tags ready")
 

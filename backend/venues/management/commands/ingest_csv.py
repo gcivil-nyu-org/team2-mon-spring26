@@ -111,21 +111,20 @@ class Command(BaseCommand):
         processed = 0
         self.stdout.write("Starting ingestion...")
 
-        with open(csv_path, encoding="utf-8") as f:
+        with open(csv_path, encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             while True:
                 batch = list(itertools.islice(reader, batch_size))
                 if not batch:
                     break
-                with transaction.atomic():
-                    for row in batch:
-                        try:
-                            with transaction.atomic():
-                                self._process_row(row, cuisine_cache, counters)
-                        except Exception as e:
-                            counters["errors"] += 1
-                            if counters["errors"] <= 5:
-                                self.stderr.write(f"Row error ({row.get('dohmh_camis', '?')}): {e}")
+                for row in batch:
+                    try:
+                        with transaction.atomic():
+                            self._process_row(row, cuisine_cache, counters)
+                    except Exception as e:
+                        counters["errors"] += 1
+                        if counters["errors"] <= 5:
+                            self.stderr.write(f"Row error ({row.get('dohmh_camis', '?')}): {e}")
                 processed += len(batch)
                 self.stdout.write(f"  Processed {processed} rows...", ending="\r")
                 self.stdout.flush()
@@ -205,7 +204,7 @@ class Command(BaseCommand):
         violation_code = row.get("dohmh_violation_code", "").strip()
 
         if inspection_date or violation_code:
-            _, insp_created = Inspection.objects.get_or_create(
+            _, insp_created = Inspection.objects.update_or_create(
                 venue=venue,
                 inspection_date=inspection_date,
                 violation_code=violation_code,
