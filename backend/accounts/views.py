@@ -1,0 +1,426 @@
+import json
+import logging
+from urllib.parse import urljoin
+from django.shortcuts import render, redirect
+from django.contrib.auth import login, logout, authenticate
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
+from django.views import View
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from django.conf import settings
+from django.http import JsonResponse
+from django.core.cache import cache
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.utils.encoding import force_bytes
+
+from .forms import UserCreationForm
+from .email_service import send_password_reset_email
+from .models import (
+    SANITATION_GRADE_CHOICES,
+    UserPreference,
+    DietaryTag,
+    CuisineType,
+    FoodTypeTag,
+)
+from django.utils.text import slugify
+
+logger = logging.getLogger(__name__)
+
+VALID_SANITATION_GRADES = {choice[0] for choice in SANITATION_GRADE_CHOICES}
+User = get_user_model()
+
+
+def _build_frontend_reset_link(uid: str, token: str) -> str:
+    base_url = settings.FRONTEND_BASE_URL.rstrip("/") + "/"
+    return urljoin(base_url, f"reset-password/{uid}/{token}")
+
+
+def _get_user_from_uid(uidb64: str):
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        return User.objects.filter(pk=uid).first()
+    except Exception:
+        return None
+
+
+def _is_valid_password_reset_token(uidb64: str, token: str):
+    user = _get_user_from_uid(uidb64)
+    if not user:
+        return None
+    if not default_token_generator.check_token(user, token):
+        return None
+    return user
+
+
+def _get_preferences_dict(user):
+    """Return API-shaped preferences from UserPreference (M2M tag names). Creates preference if missing."""
+    pref, _ = UserPreference.objects.get_or_create(
+        user=user,
+        defaults={"minimum_sanitation_grade": "A"},
+    )
+    return {
+        "dietary": list(pref.dietary_tags.values_list("name", flat=True)),
+        "cuisines": list(pref.cuisine_types.values_list("name", flat=True)),
+        "foodTypes": list(pref.food_type_tags.values_list("name", flat=True)),
+        "minimum_sanitation_grade": pref.minimum_sanitation_grade or "",
+    }
+
+
+def _set_preferences_from_payload(user, payload):
+    """Create/update UserPreference from API payload (list of tag names + minimum_sanitation_grade)."""
+    pref, _ = UserPreference.objects.get_or_create(
+        user=user,
+        defaults={"minimum_sanitation_grade": "A"},
+    )
+    if isinstance(payload.get("dietary"), list):
+        tags = []
+        for name in payload["dietary"]:
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            tag, _ = DietaryTag.objects.get_or_create(
+                name=clean_name,
+                defaults={"slug": slugify(clean_name) or clean_name.lower()},
+            )
+            tags.append(tag)
+        pref.dietary_tags.set(tags)
+    if isinstance(payload.get("cuisines"), list):
+        tags = []
+        for name in payload["cuisines"]:
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            tag, _ = CuisineType.objects.get_or_create(
+                name=clean_name,
+                defaults={"slug": slugify(clean_name) or clean_name.lower()},
+            )
+            tags.append(tag)
+        pref.cuisine_types.set(tags)
+    if isinstance(payload.get("foodTypes"), list):
+        tags = []
+        for name in payload["foodTypes"]:
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            tag, _ = FoodTypeTag.objects.get_or_create(
+                name=clean_name,
+                defaults={"slug": slugify(clean_name) or clean_name.lower()},
+            )
+            tags.append(tag)
+        pref.food_type_tags.set(tags)
+    grade = payload.get("minimum_sanitation_grade")
+    if grade is not None and grade in VALID_SANITATION_GRADES:
+        pref.minimum_sanitation_grade = grade
+        pref.save(update_fields=["minimum_sanitation_grade", "updated_at"])
+
+
+def _user_to_json(user):
+    """Build user payload with preferences for API responses."""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": f"{user.first_name} {user.last_name}".strip(),
+        "preferences": _get_preferences_dict(user),
+    }
+
+
+class SignUpView(View):
+    template_name = "registration/signup.html"
+
+    def get(self, request):
+        form = UserCreationForm()
+        return render(request, self.template_name, {"form": form})
+
+    def post(self, request):
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            return redirect("/")
+        return render(request, self.template_name, {"form": form})
+
+
+signup = SignUpView.as_view()
+
+# --- JSON API Views for React Frontend ---
+
+
+@csrf_exempt
+def api_register(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            # Create a mutable dict to pass to the form
+            post_data = {
+                "email": data.get("email"),
+                "first_name": data.get("first_name", ""),
+                "last_name": data.get("last_name", ""),
+                "password1": data.get("password"),
+                "password2": data.get("password"),  # Auto-confirm for simple API
+            }
+            form = UserCreationForm(post_data)
+            if form.is_valid():
+                user = form.save()
+                prefs = data.get("preferences")
+                if prefs is not None:
+                    _set_preferences_from_payload(user, prefs)
+                login(request, user)
+                return JsonResponse({"success": True, "user": _user_to_json(user)})
+            else:
+                return JsonResponse(
+                    {"success": False, "errors": form.errors}, status=400
+                )
+        except Exception as e:
+            logger.error(f"Registration error: {str(e)}", exc_info=True)
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "An unexpected error occurred during registration. Please try again.",
+                },
+                status=500,
+            )
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def api_login(request):
+    if request.method == "POST":
+        # basic brute force mitigation: limit by IP and email
+        ip = request.META.get("REMOTE_ADDR")
+        cache_key = f"login_attempts_{ip}"
+        attempts = cache.get(cache_key, 0)
+
+        if attempts >= 10:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Too many failed attempts. Please try again in 5 minutes.",
+                },
+                status=429,
+            )
+
+        try:
+            data = json.loads(request.body)
+            email = data.get("email")
+            password = data.get("password")
+            user = authenticate(request, username=email, password=password)
+            if user is not None:
+                cache.delete(cache_key)  # reset attempts on success
+                login(request, user)
+                return JsonResponse({"success": True, "user": _user_to_json(user)})
+            else:
+                cache.set(cache_key, attempts + 1, timeout=300)  # 5 min lockout
+                return JsonResponse(
+                    {"success": False, "error": "Invalid credentials"}, status=401
+                )
+        except Exception as e:
+            logger.error(f"Login error: {str(e)}", exc_info=True)
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "An unexpected error occurred during login. Please try again.",
+                },
+                status=500,
+            )
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def api_logout(request):
+    if request.method == "POST":
+        logout(request)
+        return JsonResponse({"success": True})
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+@ensure_csrf_cookie
+def api_me(request):
+    if request.user.is_authenticated:
+        return JsonResponse(
+            {
+                "authenticated": True,
+                "user": _user_to_json(request.user),
+            }
+        )
+    return JsonResponse({"authenticated": False}, status=401)
+
+
+@csrf_exempt
+def api_preferences_update(request):
+    if request.method not in ("PATCH", "PUT"):
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+    try:
+        data = json.loads(request.body)
+        user = request.user
+        _set_preferences_from_payload(user, data)
+        return JsonResponse({"user": _user_to_json(user)})
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse(
+            {"error": "Invalid JSON body"},
+            status=400,
+        )
+
+
+@csrf_exempt
+def api_request_password_reset(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            email = (data.get("email", "") or "").strip()
+
+            if not email:
+                return JsonResponse(
+                    {"success": False, "error": "Email is required"}, status=400
+                )
+
+            # Server-side email validation
+            validate_email(email)
+
+            user = User.objects.filter(email__iexact=email).first()
+            if user and user.is_active:
+                uid = urlsafe_base64_encode(force_bytes(user.pk))
+                token = default_token_generator.make_token(user)
+                reset_link = _build_frontend_reset_link(uid, token)
+
+                # In development, always print the link so it can be used
+                # even when email delivery is restricted (e.g. no verified domain).
+                if settings.DEBUG:
+                    logger.info(
+                        "\n"
+                        "=" * 60 + "\n"
+                        "PASSWORD RESET LINK (dev – no email required):\n"
+                        "%s\n"
+                        "=" * 60,
+                        reset_link,
+                    )
+
+                try:
+                    send_password_reset_email(user.email, reset_link)
+                except Exception as send_error:
+                    logger.error(
+                        "Failed to send password reset email for user_id=%s: %s",
+                        user.id,
+                        send_error,
+                        exc_info=True,
+                    )
+
+            # Return a neutral response to prevent user enumeration.
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": "If an account with this email exists, a password reset link has been sent.",
+                }
+            )
+
+        except ValidationError:
+            return JsonResponse(
+                {"success": False, "error": "Invalid email format"}, status=400
+            )
+        except Exception as e:
+            logger.error(f"Password reset error: {str(e)}", exc_info=True)
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "An unexpected error occurred. Please try again.",
+                },
+                status=500,
+            )
+
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+@csrf_exempt
+def api_validate_password_reset_token(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse(
+            {"success": False, "error": "Invalid JSON body"}, status=400
+        )
+
+    uid = (data.get("uid", "") or "").strip()
+    token = (data.get("token", "") or "").strip()
+    if not uid or not token:
+        return JsonResponse(
+            {
+                "success": False,
+                "valid": False,
+                "error": "Invalid or expired reset link",
+            },
+            status=400,
+        )
+
+    user = _is_valid_password_reset_token(uid, token)
+    if not user:
+        return JsonResponse(
+            {
+                "success": False,
+                "valid": False,
+                "error": "Invalid or expired reset link",
+            },
+            status=400,
+        )
+
+    return JsonResponse({"success": True, "valid": True})
+
+
+@csrf_exempt
+def api_confirm_password_reset(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse(
+            {"success": False, "error": "Invalid JSON body"}, status=400
+        )
+
+    uid = (data.get("uid", "") or "").strip()
+    token = (data.get("token", "") or "").strip()
+    new_password = data.get("new_password")
+
+    if not uid or not token or not new_password:
+        return JsonResponse(
+            {"success": False, "error": "uid, token, and new_password are required"},
+            status=400,
+        )
+
+    user = _is_valid_password_reset_token(uid, token)
+    if not user:
+        return JsonResponse(
+            {"success": False, "error": "Invalid or expired reset link"},
+            status=400,
+        )
+
+    try:
+        validate_password(new_password, user=user)
+    except ValidationError as validation_error:
+        return JsonResponse(
+            {"success": False, "error": " ".join(validation_error.messages)},
+            status=400,
+        )
+
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Your password has been reset successfully.",
+        }
+    )
