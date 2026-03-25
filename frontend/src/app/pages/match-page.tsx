@@ -55,13 +55,14 @@ export function MatchPage() {
       }
     });
 
-    // Only match if ALL participants swiped right on the same restaurant
+    // Match if at least 2/3 of participants swiped right on the same restaurant
+    const matchThreshold = Math.ceil(totalParticipants * 2 / 3);
     let bestMatch: string | null = null;
     let maxLikes = 0;
     let bestMatchUserNames: string[] = [];
 
     Object.entries(restaurantLikes).forEach(([restaurantId, data]) => {
-      if (data.count >= totalParticipants && data.count > maxLikes) {
+      if (data.count >= matchThreshold && data.count > maxLikes) {
         maxLikes = data.count;
         bestMatch = restaurantId;
         bestMatchUserNames = data.userNames;
