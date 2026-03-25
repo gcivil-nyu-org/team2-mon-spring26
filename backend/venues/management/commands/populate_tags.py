@@ -62,7 +62,9 @@ CUISINE_DIETARY_MAP = {
 
 
 class Command(BaseCommand):
-    help = "Populate DietaryTag and FoodTypeTag from venue google_types and cuisine data"
+    help = (
+        "Populate DietaryTag and FoodTypeTag from venue google_types and cuisine data"
+    )
 
     def handle(self, *args, **options):
         self.stdout.write("Creating tags...")
@@ -76,7 +78,9 @@ class Command(BaseCommand):
 
         # Create all DietaryTags
         dietary_tags = {}
-        for name in set(list(DIETARY_TYPE_MAP.values()) + list(CUISINE_DIETARY_MAP.values())):
+        for name in set(
+            list(DIETARY_TYPE_MAP.values()) + list(CUISINE_DIETARY_MAP.values())
+        ):
             obj, _ = DietaryTag.objects.get_or_create(name=name)
             dietary_tags[name] = obj
         self.stdout.write(f"  DietaryTags: {len(dietary_tags)} tags ready")
@@ -90,7 +94,9 @@ class Command(BaseCommand):
 
         for i, venue in enumerate(venues_qs.iterator(), 1):
             google_types = venue.google_types or []
-            cuisine_name = (venue.cuisine_type.name if venue.cuisine_type else "").lower()
+            cuisine_name = (
+                venue.cuisine_type.name if venue.cuisine_type else ""
+            ).lower()
 
             # FoodTypeTags from google_types
             food_to_add = []
@@ -123,6 +129,8 @@ class Command(BaseCommand):
                 self.stdout.flush()
 
         self.stdout.write("")
-        self.stdout.write(self.style.SUCCESS(
-            f"Done. Venues linked to food type tags: {linked_food}, dietary tags: {linked_dietary}"
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Done. Venues processed with food type tags: {linked_food}, dietary tags: {linked_dietary}"
+            )
+        )
