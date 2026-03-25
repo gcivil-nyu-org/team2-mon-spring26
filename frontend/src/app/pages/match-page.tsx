@@ -27,34 +27,41 @@ export function MatchPage() {
   useEffect(() => {
     if (!event || !swipes[event.id]) return;
 
-    // Simple matching algorithm: find first restaurant that everyone swiped right on
+    // Matching algorithm: find restaurant that everyone swiped right on
     const eventSwipes = swipes[event.id];
-    
-    // For demo purposes, if current user finished, find matches
+
+    // Count unique users who participated in swiping
+    const uniqueUsers = new Set(eventSwipes.map(s => s.userId));
+    const totalParticipants = uniqueUsers.size;
+
     const rightSwipes = eventSwipes.filter(s => s.direction === 'right');
-    
-    // Count right swipes per restaurant
+
+    // Count right swipes per restaurant (deduplicated by user)
     const restaurantLikes: Record<string, { count: number; userNames: string[] }> = {};
     rightSwipes.forEach(swipe => {
       if (!restaurantLikes[swipe.restaurantId]) {
         restaurantLikes[swipe.restaurantId] = { count: 0, userNames: [] };
       }
-      restaurantLikes[swipe.restaurantId].count += 1;
-      
-      // Find member name
-      const member = group?.members.find(m => m.userId === swipe.userId);
-      if (member) {
-        restaurantLikes[swipe.restaurantId].userNames.push(member.userName);
+      // Avoid counting duplicate swipes from same user
+      if (!restaurantLikes[swipe.restaurantId].userNames.some(name => {
+        const member = group?.members.find(m => m.userName === name);
+        return member?.userId === swipe.userId;
+      })) {
+        restaurantLikes[swipe.restaurantId].count += 1;
+        const member = group?.members.find(m => m.userId === swipe.userId);
+        if (member) {
+          restaurantLikes[swipe.restaurantId].userNames.push(member.userName);
+        }
       }
     });
 
-    // Find restaurant with most likes (simple algorithm for demo)
+    // Only match if ALL participants swiped right on the same restaurant
     let bestMatch: string | null = null;
     let maxLikes = 0;
     let bestMatchUserNames: string[] = [];
-    
+
     Object.entries(restaurantLikes).forEach(([restaurantId, data]) => {
-      if (data.count > maxLikes) {
+      if (data.count >= totalParticipants && data.count > maxLikes) {
         maxLikes = data.count;
         bestMatch = restaurantId;
         bestMatchUserNames = data.userNames;
