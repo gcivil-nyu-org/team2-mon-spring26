@@ -96,7 +96,7 @@ class Command(BaseCommand):
             "--batch-size",
             type=int,
             default=500,
-            help="Number of rows per transaction batch (default: 500)",
+            help="Number of rows per batch committed in one transaction (default: 500)",
         )
 
     def handle(self, *args, **options):
@@ -122,16 +122,17 @@ class Command(BaseCommand):
                 batch = list(itertools.islice(reader, batch_size))
                 if not batch:
                     break
-                for row in batch:
-                    try:
-                        with transaction.atomic():
-                            self._process_row(row, cuisine_cache, counters)
-                    except Exception as e:
-                        counters["errors"] += 1
-                        if counters["errors"] <= 5:
-                            self.stderr.write(
-                                f"Row error ({row.get('dohmh_camis', '?')}): {e}"
-                            )
+                with transaction.atomic():
+                    for row in batch:
+                        try:
+                            with transaction.atomic():
+                                self._process_row(row, cuisine_cache, counters)
+                        except Exception as e:
+                            counters["errors"] += 1
+                            if counters["errors"] <= 5:
+                                self.stderr.write(
+                                    f"Row error ({row.get('dohmh_camis', '?')}): {e}"
+                                )
                 processed += len(batch)
                 self.stdout.write(f"  Processed {processed} rows...", ending="\r")
                 self.stdout.flush()
@@ -252,26 +253,41 @@ class Command(BaseCommand):
         violation_code = row.get("dohmh_violation_code", "").strip()
 
         if inspection_date or violation_code:
-            _, insp_created = Inspection.objects.update_or_create(
+            insp_fields = {
+                "inspection_type": row.get("dohmh_inspection_type", "").strip(),
+                "action": row.get("dohmh_action", "").strip(),
+                "score": parse_int(
+                    row.get("dohmh_score") or row.get("inspection_score")
+                ),
+                "grade": (
+                    row.get("dohmh_grade") or row.get("inspection_grade") or ""
+                ).strip()[:2],
+                "grade_date": parse_date(row.get("dohmh_grade_date")),
+                "violation_description": row.get(
+                    "dohmh_violation_description", ""
+                ).strip(),
+                "critical_flag": row.get("dohmh_critical_flag", "").strip(),
+                "record_date": parse_date(row.get("dohmh_record_date")),
+            }
+            # Use filter().first() to avoid MultipleObjectsReturned (no unique
+            # constraint on venue+date+code) — update in place if found, else create.
+            existing = Inspection.objects.filter(
                 venue=venue,
                 inspection_date=inspection_date,
                 violation_code=violation_code,
-                defaults={
-                    "inspection_type": row.get("dohmh_inspection_type", "").strip(),
-                    "action": row.get("dohmh_action", "").strip(),
-                    "score": parse_int(
-                        row.get("dohmh_score") or row.get("inspection_score")
-                    ),
-                    "grade": (
-                        row.get("dohmh_grade") or row.get("inspection_grade") or ""
-                    ).strip()[:2],
-                    "grade_date": parse_date(row.get("dohmh_grade_date")),
-                    "violation_description": row.get(
-                        "dohmh_violation_description", ""
-                    ).strip(),
-                    "critical_flag": row.get("dohmh_critical_flag", "").strip(),
-                    "record_date": parse_date(row.get("dohmh_record_date")),
-                },
-            )
+            ).first()
+            if existing:
+                for attr, val in insp_fields.items():
+                    setattr(existing, attr, val)
+                existing.save()
+                insp_created = False
+            else:
+                Inspection.objects.create(
+                    venue=venue,
+                    inspection_date=inspection_date,
+                    violation_code=violation_code,
+                    **insp_fields,
+                )
+                insp_created = True
             if insp_created:
                 counters["inspections_created"] += 1

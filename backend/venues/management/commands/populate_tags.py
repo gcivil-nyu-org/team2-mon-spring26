@@ -87,10 +87,17 @@ class Command(BaseCommand):
 
         self.stdout.write("Linking tags to venues...")
 
+        FoodThrough = Venue.food_type_tags.through
+        DietaryThrough = Venue.dietary_tags.through
+
         venues_qs = Venue.objects.select_related("cuisine_type")
         total = venues_qs.count()
         linked_food = 0
         linked_dietary = 0
+
+        food_rows = []
+        dietary_rows = []
+        CHUNK = 1000
 
         for i, venue in enumerate(venues_qs.iterator(), 1):
             google_types = venue.google_types or []
@@ -99,34 +106,50 @@ class Command(BaseCommand):
             ).lower()
 
             # FoodTypeTags from google_types
-            food_to_add = []
             for gtype in google_types:
                 tag_name = FOOD_TYPE_MAP.get(gtype)
                 if tag_name and tag_name in food_tags:
-                    food_to_add.append(food_tags[tag_name])
-            if food_to_add:
-                venue.food_type_tags.add(*food_to_add)
-                linked_food += 1
+                    food_rows.append(
+                        FoodThrough(
+                            venue_id=venue.pk, foodtypetag_id=food_tags[tag_name].pk
+                        )
+                    )
+                    linked_food += 1
 
             # DietaryTags from google_types
-            dietary_to_add = []
             for gtype in google_types:
                 tag_name = DIETARY_TYPE_MAP.get(gtype)
                 if tag_name and tag_name in dietary_tags:
-                    dietary_to_add.append(dietary_tags[tag_name])
+                    dietary_rows.append(
+                        DietaryThrough(
+                            venue_id=venue.pk, dietarytag_id=dietary_tags[tag_name].pk
+                        )
+                    )
+                    linked_dietary += 1
 
             # DietaryTags from cuisine name keywords
             for keyword, tag_name in CUISINE_DIETARY_MAP.items():
                 if keyword in cuisine_name and tag_name in dietary_tags:
-                    dietary_to_add.append(dietary_tags[tag_name])
+                    dietary_rows.append(
+                        DietaryThrough(
+                            venue_id=venue.pk, dietarytag_id=dietary_tags[tag_name].pk
+                        )
+                    )
+                    linked_dietary += 1
 
-            if dietary_to_add:
-                venue.dietary_tags.add(*dietary_to_add)
-                linked_dietary += 1
-
-            if i % 1000 == 0:
+            if i % CHUNK == 0:
+                FoodThrough.objects.bulk_create(food_rows, ignore_conflicts=True)
+                DietaryThrough.objects.bulk_create(dietary_rows, ignore_conflicts=True)
+                food_rows.clear()
+                dietary_rows.clear()
                 self.stdout.write(f"  Processed {i}/{total}...", ending="\r")
                 self.stdout.flush()
+
+        # flush remaining
+        if food_rows:
+            FoodThrough.objects.bulk_create(food_rows, ignore_conflicts=True)
+        if dietary_rows:
+            DietaryThrough.objects.bulk_create(dietary_rows, ignore_conflicts=True)
 
         self.stdout.write("")
         self.stdout.write(
