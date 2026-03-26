@@ -1,0 +1,36 @@
+{
+  "cuisines": [
+    "Chinese",
+    "Japanese",
+    "Korean",
+    "Thai",
+    "Indian",
+    "Italian",
+    "Mexican",
+    "American",
+    "Mediterranean",
+    "Middle Eastern",
+    "Greek",
+    "Spanish",
+    "French",
+    "Brazilian",
+    "Caribbean",
+    "African",
+    "Peruvian",
+    "German",
+    "Turkish",
+    "Lebanese",
+    "Ethiopian"
+  ],
+  "dietary": ["Vegetarian", "Vegan", "Jewish/Kosher"],
+  "foodTypes": [
+    "Pizza",
+    "Burgers",
+    "Seafood",
+    "Barbecue",
+    "Salads",
+    "Coffee/Tea",
+    "Bakery/Desserts"
+  ],
+  "minimumSanitationGrades": ["N", "A", "Z", "B", "C", "P"]
+}
