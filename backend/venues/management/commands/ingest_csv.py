@@ -171,7 +171,11 @@ class Command(BaseCommand):
             "name_clean": row.get("name_clean", "").strip(),
             "street_address": row.get("address", "").strip()
             or (
-                f"{row.get('dohmh_building', '').strip()} {row.get('dohmh_street', '').strip()}".strip()
+                (
+                    row.get("dohmh_building", "").strip()
+                    + " "
+                    + row.get("dohmh_street", "").strip()
+                ).strip()
             ),
             "borough": row.get("borough", "").strip()
             or row.get("dohmh_boro", "").strip(),
@@ -218,7 +222,7 @@ class Command(BaseCommand):
 
         if camis:
             # When matching by camis, exclude google_place_id from defaults to avoid
-            # unique constraint conflicts with a pre-existing venue that already holds it.
+            # unique constraint conflicts with a venue that already holds it.
             camis_defaults = {
                 k: v for k, v in venue_defaults.items() if k != "google_place_id"
             }
@@ -226,7 +230,7 @@ class Command(BaseCommand):
                 dohmh_camis=camis,
                 defaults=camis_defaults,
             )
-            # Update google_place_id separately only if not already claimed by another venue.
+            # Update google_place_id separately if not claimed by another venue.
             if (
                 google_place_id
                 and not Venue.objects.filter(google_place_id=google_place_id)
