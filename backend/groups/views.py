@@ -1,13 +1,16 @@
 import json
 import logging
+import math
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
 from django.db import transaction, models
+from django.db.models import Count
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 
-from .models import Group, GroupMembership
+from .models import Group, GroupMembership, SwipeEvent, Swipe
+from venues.models import Venue
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -425,3 +428,408 @@ def api_leave_group(request, group_id):
     except Exception as e:
         logger.error(f"Group leave error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "An expected error occurred"}, status=500)
+
+
+# ---------------------------------------------------------------------------
+# Swipe Event & Venue Matching API
+# ---------------------------------------------------------------------------
+
+# Grade ranking: lower number = stricter (better)
+GRADE_RANK = {"A": 1, "B": 2, "C": 3, "Z": 4, "N": 5, "P": 6}
+
+
+def _event_to_json(event):
+    """Serialize a SwipeEvent instance."""
+    return {
+        "id": event.id,
+        "group_id": event.group_id,
+        "name": event.name,
+        "status": event.status,
+        "created_by": event.created_by_id,
+        "matched_venue_id": event.matched_venue_id,
+        "created_at": event.created_at.isoformat(),
+    }
+
+
+def _venue_to_swipe_json(venue):
+    """Serialize a Venue for the swipe card UI."""
+    photos = list(
+        venue.photos.order_by("-is_primary").values_list("image_url", flat=True)[:3]
+    )
+    dietary_tags = list(venue.dietary_tags.values_list("name", flat=True))
+    food_type_tags = list(venue.food_type_tags.values_list("name", flat=True))
+
+    # Build badges list from tags and features
+    badges = []
+    for tag in dietary_tags:
+        badges.append(tag)
+    if venue.has_group_seating:
+        badges.append("Group Seating")
+
+    # Get latest inspection
+    latest_inspection = venue.inspections.first()  # ordered by -inspection_date
+    health_inspection = None
+    if latest_inspection:
+        violations = list(
+            venue.inspections.exclude(violation_description="").values_list(
+                "violation_description", flat=True
+            )[:5]
+        )
+        health_inspection = {
+            "grade": latest_inspection.grade or venue.sanitation_grade,
+            "score": latest_inspection.score or 0,
+            "inspectionDate": (
+                latest_inspection.inspection_date.isoformat()
+                if latest_inspection.inspection_date
+                else ""
+            ),
+            "violations": [
+                {"type": "Violation", "description": v, "severity": "minor"}
+                for v in violations
+            ],
+        }
+
+    # Get active student discount
+    discount = venue.discounts.filter(is_active=True).first()
+
+    return {
+        "id": str(venue.id),
+        "name": venue.name,
+        "cuisine": [venue.cuisine_type.name] if venue.cuisine_type else [],
+        "sanitationGrade": venue.sanitation_grade or "P",
+        "images": photos if photos else [],
+        "badges": badges,
+        "address": (
+            f"{venue.street_address}, {venue.borough}"
+            if venue.street_address
+            else venue.borough
+        ),
+        "inspectionDate": (
+            latest_inspection.inspection_date.isoformat()
+            if latest_inspection and latest_inspection.inspection_date
+            else ""
+        ),
+        "menuLink": venue.website or "",
+        "notes": "",
+        "latitude": float(venue.latitude) if venue.latitude else 0,
+        "longitude": float(venue.longitude) if venue.longitude else 0,
+        "distance": "",
+        "cost": venue.price_range or "$$",
+        "hasGroupSeating": venue.has_group_seating,
+        "hasStudentDiscount": discount is not None,
+        "studentDiscountAmount": discount.discount_value if discount else "",
+        "rating": float(venue.google_rating) if venue.google_rating else 0,
+        "reviewCount": venue.google_review_count,
+        "healthInspection": health_inspection,
+        "foodTypeTags": food_type_tags,
+        "dietaryTags": dietary_tags,
+    }
+
+
+@csrf_exempt
+def api_swipe_events(request, group_id):
+    """
+    GET  /api/groups/<id>/events/ - List swipe events for a group
+    POST /api/groups/<id>/events/ - Create a new swipe event (leader only)
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
+        if not membership:
+            return JsonResponse(
+                {"error": "You are not a member of this group"}, status=403
+            )
+
+        if request.method == "GET":
+            events = group.swipe_events.order_by("-created_at")
+            return JsonResponse(
+                {
+                    "success": True,
+                    "events": [_event_to_json(e) for e in events],
+                }
+            )
+
+        elif request.method == "POST":
+            if membership.role != GroupMembership.Role.LEADER:
+                return JsonResponse(
+                    {"error": "Only group leaders can create events"},
+                    status=403,
+                )
+            data = json.loads(request.body)
+            name = (data.get("name") or "").strip()
+            if not name:
+                return JsonResponse({"error": "Event name is required"}, status=400)
+
+            event = SwipeEvent.objects.create(
+                group=group,
+                name=name,
+                created_by=request.user,
+            )
+            return JsonResponse(
+                {"success": True, "event": _event_to_json(event)}, status=201
+            )
+
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    except Group.DoesNotExist:
+        return JsonResponse({"error": "Group not found"}, status=404)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    except Exception as e:
+        logger.error(f"Swipe event error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An unexpected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_swipe_event_venues(request, group_id, event_id):
+    """
+    GET /api/groups/<id>/events/<event_id>/venues/
+    Returns venues filtered by the combined preferences of group members,
+    excluding venues the requesting user has already swiped on.
+    """
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
+        if not membership:
+            return JsonResponse(
+                {"error": "You are not a member of this group"}, status=403
+            )
+
+        event = SwipeEvent.objects.get(id=event_id, group=group)
+
+        # Gather group members' preferences
+        member_users = group.memberships.select_related("user").values_list(
+            "user", flat=True
+        )
+
+        venues_qs = Venue.objects.filter(is_active=True)
+
+        # --- Preference-based filtering ---
+        from accounts.models import UserPreference
+
+        preferences = UserPreference.objects.filter(
+            user_id__in=member_users
+        ).prefetch_related("dietary_tags", "cuisine_types")
+
+        # Sanitation grade: use the strictest across all members
+        strictest_rank = 6  # P (least strict)
+        for pref in preferences:
+            grade = pref.minimum_sanitation_grade or "P"
+            rank = GRADE_RANK.get(grade, 6)
+            if rank < strictest_rank:
+                strictest_rank = rank
+        allowed_grades = [g for g, r in GRADE_RANK.items() if r <= strictest_rank]
+        venues_qs = venues_qs.filter(sanitation_grade__in=allowed_grades)
+
+        # Cuisine types: union of all members' preferences (if any)
+        all_cuisine_ids = set()
+        for pref in preferences:
+            cuisine_ids = set(pref.cuisine_types.values_list("id", flat=True))
+            all_cuisine_ids.update(cuisine_ids)
+        if all_cuisine_ids:
+            venues_qs = venues_qs.filter(cuisine_type_id__in=all_cuisine_ids)
+
+        # Exclude venues already swiped on by this user for this event
+        swiped_venue_ids = Swipe.objects.filter(
+            event=event, user=request.user
+        ).values_list("venue_id", flat=True)
+        venues_qs = venues_qs.exclude(id__in=swiped_venue_ids)
+
+        # Order by rating (best first), limit to 20
+        venues_qs = venues_qs.order_by(models.F("google_rating").desc(nulls_last=True))[
+            :20
+        ]
+
+        venues_data = [_venue_to_swipe_json(v) for v in venues_qs]
+        return JsonResponse({"success": True, "venues": venues_data})
+
+    except Group.DoesNotExist:
+        return JsonResponse({"error": "Group not found"}, status=404)
+    except SwipeEvent.DoesNotExist:
+        return JsonResponse({"error": "Event not found"}, status=404)
+    except Exception as e:
+        logger.error(f"Venue fetch error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An unexpected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_submit_swipe(request, group_id, event_id):
+    """
+    POST /api/groups/<id>/events/<event_id>/swipes/
+    Records a swipe (left/right) on a venue. Idempotent via update_or_create.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
+        if not membership:
+            return JsonResponse(
+                {"error": "You are not a member of this group"}, status=403
+            )
+
+        event = SwipeEvent.objects.get(id=event_id, group=group)
+        if event.status != SwipeEvent.Status.ACTIVE:
+            return JsonResponse({"error": "This event is no longer active"}, status=400)
+
+        data = json.loads(request.body)
+        venue_id = data.get("venue_id")
+        direction = data.get("direction")
+
+        if not venue_id:
+            return JsonResponse({"error": "venue_id is required"}, status=400)
+        if direction not in ("left", "right"):
+            return JsonResponse(
+                {"error": "direction must be 'left' or 'right'"}, status=400
+            )
+
+        venue = Venue.objects.get(id=venue_id)
+
+        Swipe.objects.update_or_create(
+            event=event,
+            user=request.user,
+            venue=venue,
+            defaults={"direction": direction},
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "swipe": {"venue_id": venue.id, "direction": direction},
+            }
+        )
+
+    except Group.DoesNotExist:
+        return JsonResponse({"error": "Group not found"}, status=404)
+    except SwipeEvent.DoesNotExist:
+        return JsonResponse({"error": "Event not found"}, status=404)
+    except Venue.DoesNotExist:
+        return JsonResponse({"error": "Venue not found"}, status=404)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    except Exception as e:
+        logger.error(f"Swipe submit error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An unexpected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_swipe_event_results(request, group_id, event_id):
+    """
+    GET /api/groups/<id>/events/<event_id>/results/
+    Computes match results using 2/3 majority algorithm.
+    """
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
+        if not membership:
+            return JsonResponse(
+                {"error": "You are not a member of this group"}, status=403
+            )
+
+        event = SwipeEvent.objects.get(id=event_id, group=group)
+
+        # If already computed, return cached result
+        if event.matched_venue:
+            return JsonResponse(
+                {
+                    "success": True,
+                    "match_found": True,
+                    "matched_venue": _venue_to_swipe_json(event.matched_venue),
+                    "total_participants": (
+                        event.swipes.values("user_id").distinct().count()
+                    ),
+                    "threshold": 0,
+                    "likes_count": event.swipes.filter(
+                        venue=event.matched_venue, direction=Swipe.Direction.RIGHT
+                    ).count(),
+                }
+            )
+
+        # Count unique participants
+        all_swipes = event.swipes.all()
+        total_participants = all_swipes.values("user_id").distinct().count()
+
+        if total_participants == 0:
+            return JsonResponse(
+                {
+                    "success": True,
+                    "match_found": False,
+                    "matched_venue": None,
+                    "total_participants": 0,
+                    "threshold": 0,
+                    "likes_count": 0,
+                }
+            )
+
+        # 2/3 majority threshold
+        threshold = math.ceil(total_participants * 2 / 3)
+
+        # Count right swipes per venue (distinct users)
+        venue_likes = (
+            all_swipes.filter(direction=Swipe.Direction.RIGHT)
+            .values("venue_id")
+            .annotate(like_count=Count("user_id", distinct=True))
+            .order_by("-like_count")
+        )
+
+        # Find venues meeting the threshold
+        matched_venue = None
+        likes_count = 0
+        for entry in venue_likes:
+            if entry["like_count"] >= threshold:
+                matched_venue = Venue.objects.get(id=entry["venue_id"])
+                likes_count = entry["like_count"]
+                break
+
+        if matched_venue:
+            event.matched_venue = matched_venue
+            event.status = SwipeEvent.Status.COMPLETED
+            event.save(update_fields=["matched_venue", "status", "updated_at"])
+
+        return JsonResponse(
+            {
+                "success": True,
+                "match_found": matched_venue is not None,
+                "matched_venue": (
+                    _venue_to_swipe_json(matched_venue) if matched_venue else None
+                ),
+                "total_participants": total_participants,
+                "threshold": threshold,
+                "likes_count": likes_count,
+            }
+        )
+
+    except Group.DoesNotExist:
+        return JsonResponse({"error": "Group not found"}, status=404)
+    except SwipeEvent.DoesNotExist:
+        return JsonResponse({"error": "Event not found"}, status=404)
+    except Exception as e:
+        logger.error(f"Match results error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An unexpected error occurred"}, status=500)

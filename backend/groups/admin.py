@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Group, GroupMembership
+from .models import Group, GroupMembership, SwipeEvent, Swipe
 
 
 class GroupMembershipInline(admin.TabularInline):
@@ -23,3 +23,25 @@ class GroupMembershipAdmin(admin.ModelAdmin):
     list_filter = ("role",)
     search_fields = ("user__email", "group__name")
     autocomplete_fields = ["user", "group"]
+
+
+class SwipeInline(admin.TabularInline):
+    model = Swipe
+    extra = 0
+    autocomplete_fields = ["user", "venue"]
+
+
+@admin.register(SwipeEvent)
+class SwipeEventAdmin(admin.ModelAdmin):
+    list_display = ("name", "group", "status", "created_by", "created_at")
+    list_filter = ("status",)
+    search_fields = ("name", "group__name")
+    inlines = [SwipeInline]
+    autocomplete_fields = ["group", "created_by", "matched_venue"]
+
+
+@admin.register(Swipe)
+class SwipeAdmin(admin.ModelAdmin):
+    list_display = ("user", "event", "venue", "direction", "created_at")
+    list_filter = ("direction",)
+    search_fields = ("user__email", "venue__name")

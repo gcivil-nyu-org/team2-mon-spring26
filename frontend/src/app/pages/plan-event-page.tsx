@@ -112,7 +112,7 @@ export function PlanEventPage() {
     );
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Build location string
@@ -130,11 +130,14 @@ export function PlanEventPage() {
     }
 
     const finalName = eventName || `Dining Plan - ${locationString}`;
-    const newEvent = createSwipeEvent(group.id, finalName);
-
-    setCurrentGroup(group);
-    setCurrentSwipeEvent(newEvent);
-    navigate(`/swipe/${newEvent.id}`);
+    try {
+      const newEvent = await createSwipeEvent(group.id, finalName);
+      setCurrentGroup(group);
+      setCurrentSwipeEvent(newEvent);
+      navigate(`/swipe/${newEvent.id}`);
+    } catch (error) {
+      console.error('Failed to create event:', error);
+    }
   };
 
   // Get appropriate neighborhood options based on selected borough

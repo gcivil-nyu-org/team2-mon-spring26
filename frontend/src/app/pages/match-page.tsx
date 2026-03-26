@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useApp } from '@/app/contexts/app-context';
-import { mockRestaurants, type Restaurant } from '@/app/data/mock-restaurants';
+import type { Restaurant } from '@/app/data/mock-restaurants';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
@@ -13,80 +13,46 @@ import { Separator } from '@/app/components/ui/separator';
 export function MatchPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const { currentGroup, swipes, groups, swipeEvents } = useApp();
-  
+  const { currentGroup, groups, swipeEvents, fetchMatchResults } = useApp();
+
   const [matchedRestaurant, setMatchedRestaurant] = useState<Restaurant | null>(null);
   const [showMatch, setShowMatch] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [matchStats, setMatchStats] = useState<{ totalLikes: number; membersWhoLiked: string[] }>({ totalLikes: 0, membersWhoLiked: [] });
+  const [matchStats, setMatchStats] = useState<{ totalLikes: number }>({ totalLikes: 0 });
 
   // Find event and group
   const event = swipeEvents.find(e => e.id === eventId);
   const group = currentGroup || (event ? groups.find(g => g.id === event.groupId) : null);
 
   useEffect(() => {
-    if (!event || !swipes[event.id]) return;
+    if (!event || !group) return;
 
-    // Matching algorithm: find restaurant that everyone swiped right on
-    const eventSwipes = swipes[event.id];
+    let cancelled = false;
+    const loadResults = async () => {
+      try {
+        const results = await fetchMatchResults(group.id, event.id);
+        if (cancelled) return;
 
-    // Count unique users who participated in swiping
-    const uniqueUsers = new Set(eventSwipes.map(s => s.userId));
-    const totalParticipants = uniqueUsers.size;
-
-    const rightSwipes = eventSwipes.filter(s => s.direction === 'right');
-
-    // Count right swipes per restaurant (deduplicated by user)
-    const restaurantLikes: Record<string, { count: number; userNames: string[] }> = {};
-    rightSwipes.forEach(swipe => {
-      if (!restaurantLikes[swipe.restaurantId]) {
-        restaurantLikes[swipe.restaurantId] = { count: 0, userNames: [] };
-      }
-      // Avoid counting duplicate swipes from same user
-      if (!restaurantLikes[swipe.restaurantId].userNames.some(name => {
-        const member = group?.members.find(m => m.userName === name);
-        return member?.userId === swipe.userId;
-      })) {
-        restaurantLikes[swipe.restaurantId].count += 1;
-        const member = group?.members.find(m => m.userId === swipe.userId);
-        if (member) {
-          restaurantLikes[swipe.restaurantId].userNames.push(member.userName);
+        if (results.match_found && results.matched_venue) {
+          setMatchedRestaurant(results.matched_venue);
+          setMatchStats({ totalLikes: results.likes_count });
+          setShowMatch(true);
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 5000);
+        } else {
+          setMatchedRestaurant(null);
+          setShowMatch(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setMatchedRestaurant(null);
+          setShowMatch(true);
         }
       }
-    });
-
-    // Match if at least 2/3 of participants swiped right on the same restaurant
-    const matchThreshold = Math.ceil(totalParticipants * 2 / 3);
-    let bestMatch: string | null = null;
-    let maxLikes = 0;
-    let bestMatchUserNames: string[] = [];
-
-    Object.entries(restaurantLikes).forEach(([restaurantId, data]) => {
-      if (data.count >= matchThreshold && data.count > maxLikes) {
-        maxLikes = data.count;
-        bestMatch = restaurantId;
-        bestMatchUserNames = data.userNames;
-      }
-    });
-
-    if (bestMatch) {
-      const restaurant = mockRestaurants.find(r => r.id === bestMatch);
-      if (restaurant) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setMatchedRestaurant(restaurant);
-        setMatchStats({ totalLikes: maxLikes, membersWhoLiked: bestMatchUserNames });
-        setShowMatch(true);
-        setShowConfetti(true);
-        
-        // Stop confetti after 5 seconds
-        setTimeout(() => setShowConfetti(false), 5000);
-      }
-    } else {
-      // No match found - show conflict resolution
-      setMatchedRestaurant(null);
-      setShowMatch(true);
-    }
-  }, [eventId]); // Only depend on eventId
+    };
+    loadResults();
+    return () => { cancelled = true; };
+  }, [event?.id, group?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!event || !group) {
     return (
@@ -170,7 +136,7 @@ export function MatchPage() {
                 </div>
                 <h1 className="text-4xl mb-2">It's a Match!</h1>
                 <p className="text-lg text-muted-foreground">
-                  {matchStats.membersWhoLiked.length} {matchStats.membersWhoLiked.length === 1 ? 'person' : 'people'} loved this restaurant
+                  {matchStats.totalLikes} {matchStats.totalLikes === 1 ? 'person' : 'people'} loved this restaurant
                 </p>
               </motion.div>
 
