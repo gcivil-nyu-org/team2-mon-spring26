@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Plus, Users } from 'lucide-react';
+import { MessageCircle, X, Send, Plus, Users, Trash2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
@@ -26,7 +26,7 @@ interface Conversation {
 }
 
 export function FloatingChat() {
-  const { groups, dmConversations, chatMessages, addChatMessage, currentUser, createDMConversation, getAllUsers } = useApp();
+  const { groups, dmConversations, chatMessages, addChatMessage, deleteChatMessage, currentUser, createDMConversation, getAllUsers } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string>('');
   const [newMessage, setNewMessage] = useState('');
@@ -74,6 +74,7 @@ export function FloatingChat() {
 
   const selectedConversation = conversations.find(c => c.id === selectedConversationId);
   const messages = selectedConversationId ? chatMessages[selectedConversationId] || [] : [];
+  const isLeader = selectedConversation?.isGroup ? groups.find(g => g.id === selectedConversationId)?.members.find(m => m.userId === currentUser?.id)?.isLeader : false;
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -102,7 +103,7 @@ export function FloatingChat() {
     }
   };
 
-  const handleStartDM = (participantId: string) => {
+  const handleStartDM = async (participantId: string) => {
     // Check if DM already exists
     const existingDM = dmConversations.find(dm => 
       dm.participants.includes(participantId) && dm.participants.includes(currentUser!.id)
@@ -111,8 +112,12 @@ export function FloatingChat() {
     if (existingDM) {
       setSelectedConversationId(existingDM.id);
     } else {
-      const newDM = createDMConversation(participantId);
-      setSelectedConversationId(newDM.id);
+      try {
+        const newDM = await createDMConversation(participantId);
+        setSelectedConversationId(newDM.id);
+      } catch (err) {
+        console.error('Failed to create or navigate to DM', err);
+      }
     }
     setShowNewDMDialog(false);
   };
@@ -295,21 +300,41 @@ export function FloatingChat() {
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}
+                        className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} group/msg relative`}
                       >
                         {!isCurrentUser && (
                           <span className="text-xs text-muted-foreground mb-1 px-1">
                             {msg.userName}
                           </span>
                         )}
-                        <div
-                          className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                            isCurrentUser
-                              ? 'bg-purple-600 text-white'
-                              : 'bg-muted text-foreground'
-                          }`}
-                        >
-                          <p className="text-sm break-words">{msg.message}</p>
+                        <div className="flex items-center gap-2">
+                          {isLeader && !isCurrentUser && msg.message !== '[This message has been deleted]' && selectedConversationId && (
+                            <button 
+                              onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
+                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                              title="Delete message"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          <div
+                            className={`max-w-[75%] rounded-2xl px-4 py-2 ${
+                              isCurrentUser
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-muted text-foreground'
+                            } ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}
+                          >
+                            <p className="text-sm break-words">{msg.message}</p>
+                          </div>
+                          {isLeader && isCurrentUser && msg.message !== '[This message has been deleted]' && selectedConversationId && (
+                            <button 
+                              onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
+                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                              title="Delete message"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                         <span className="text-xs text-muted-foreground mt-1 px-1">
                           {new Date(msg.timestamp).toLocaleTimeString([], {
