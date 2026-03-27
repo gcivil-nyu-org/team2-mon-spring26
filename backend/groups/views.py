@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 
 from .models import Group, GroupMembership, SwipeEvent, Swipe
+from accounts.models import UserPreference
 from venues.models import Venue
 
 logger = logging.getLogger(__name__)
@@ -618,8 +619,6 @@ def api_swipe_event_venues(request, group_id, event_id):
         venues_qs = Venue.objects.filter(is_active=True)
 
         # --- Preference-based filtering ---
-        from accounts.models import UserPreference
-
         preferences = UserPreference.objects.filter(
             user_id__in=member_users
         ).prefetch_related("dietary_tags", "cuisine_types")
@@ -649,9 +648,13 @@ def api_swipe_event_venues(request, group_id, event_id):
         venues_qs = venues_qs.exclude(id__in=swiped_venue_ids)
 
         # Order by rating (best first), limit to 20
-        venues_qs = venues_qs.order_by(models.F("google_rating").desc(nulls_last=True))[
-            :20
-        ]
+        venues_qs = (
+            venues_qs.select_related("cuisine_type")
+            .prefetch_related(
+                "photos", "dietary_tags", "food_type_tags", "inspections", "discounts"
+            )
+            .order_by(models.F("google_rating").desc(nulls_last=True))[:20]
+        )
 
         venues_data = [_venue_to_swipe_json(v) for v in venues_qs]
         return JsonResponse({"success": True, "venues": venues_data})
@@ -757,15 +760,14 @@ def api_swipe_event_results(request, group_id, event_id):
 
         # If already computed, return cached result
         if event.matched_venue:
+            cached_participants = event.swipes.values("user_id").distinct().count()
             return JsonResponse(
                 {
                     "success": True,
                     "match_found": True,
                     "matched_venue": _venue_to_swipe_json(event.matched_venue),
-                    "total_participants": (
-                        event.swipes.values("user_id").distinct().count()
-                    ),
-                    "threshold": 0,
+                    "total_participants": cached_participants,
+                    "threshold": math.ceil(cached_participants * 2 / 3),
                     "likes_count": event.swipes.filter(
                         venue=event.matched_venue, direction=Swipe.Direction.RIGHT
                     ).count(),
