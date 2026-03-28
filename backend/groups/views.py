@@ -58,19 +58,23 @@ def _group_to_json(group):
     memberships = group.memberships.select_related("user").all()
 
     constraints_data = None
-    if hasattr(group, 'constraints'):
+    if hasattr(group, "constraints"):
         constraints = group.constraints
         constraints_data = {
             "dietary": list(constraints.dietary_tags.values_list("name", flat=True)),
             "cuisines": list(constraints.cuisine_types.values_list("name", flat=True)),
-            "foodTypes": list(constraints.food_type_tags.values_list("name", flat=True)),
+            "foodTypes": list(
+                constraints.food_type_tags.values_list("name", flat=True)
+            ),
             "minimumSanitationGrade": constraints.minimum_sanitation_grade,
         }
 
     return {
         "id": group.id,
         "name": group.name,
-        "chat_id": getattr(group, 'chat', None).id if getattr(group, 'chat', None) else None,
+        "chat_id": (
+            getattr(group, "chat", None).id if getattr(group, "chat", None) else None
+        ),
         "constraints": constraints_data,
         "description": group.description,
         "group_type": group.group_type,
@@ -139,18 +143,16 @@ def api_groups_list_create(request):
                     type=Chat.ChatType.GROUP,
                     name=group.name,
                     created_by=request.user,
-                    group=group
+                    group=group,
                 )
                 ChatRoomMember.objects.create(
-                    chat=chat,
-                    user=request.user,
-                    role=ChatRoomMember.Role.ADMIN
+                    chat=chat, user=request.user, role=ChatRoomMember.Role.ADMIN
                 )
                 username_display = request.user.first_name or request.user.username
                 Message.objects.create(
                     chat=chat,
                     message_type=Message.MessageType.SYSTEM,
-                    body=f"{username_display} created the group"
+                    body=f"{username_display} created the group",
                 )
 
             return JsonResponse({"success": True, "group": _group_to_json(group)})
@@ -299,7 +301,7 @@ def api_invite_to_group(request, group_id):
             group=group, user=target_user, role=GroupMembership.Role.MEMBER
         )
 
-        if hasattr(group, 'chat'):
+        if hasattr(group, "chat"):
             ChatRoomMember.objects.update_or_create(
                 chat=group.chat,
                 user=target_user,
@@ -312,7 +314,7 @@ def api_invite_to_group(request, group_id):
             Message.objects.create(
                 chat=group.chat,
                 message_type=Message.MessageType.SYSTEM,
-                body=f"{username_display} joined the group"
+                body=f"{username_display} joined the group",
             )
 
         return JsonResponse({"success": True, "group": _group_to_json(group)})
@@ -369,14 +371,16 @@ def api_remove_from_group(request, group_id, user_id):
 
         target_membership.delete()
 
-        if hasattr(group, 'chat'):
-            ChatRoomMember.objects.filter(chat=group.chat, user_id=user_id).update(left_at=timezone.now())
+        if hasattr(group, "chat"):
+            ChatRoomMember.objects.filter(chat=group.chat, user_id=user_id).update(
+                left_at=timezone.now()
+            )
             user = User.objects.get(id=user_id)
             username_display = user.first_name or user.username
             Message.objects.create(
                 chat=group.chat,
                 message_type=Message.MessageType.SYSTEM,
-                body=f"{username_display} was removed from the group"
+                body=f"{username_display} was removed from the group",
             )
 
         return JsonResponse({"success": True, "group": _group_to_json(group)})
@@ -428,7 +432,7 @@ def api_make_leader(request, group_id, user_id):
             target_membership.save(update_fields=["role"])
 
             # Sync ChatMember role
-            if hasattr(group, 'chat'):
+            if hasattr(group, "chat"):
                 chat_member = ChatRoomMember.objects.filter(
                     chat=group.chat,
                     user_id=user_id,
@@ -490,13 +494,15 @@ def api_leave_group(request, group_id):
 
             membership.delete()
 
-            if hasattr(group, 'chat'):
-                ChatRoomMember.objects.filter(chat=group.chat, user=request.user).update(left_at=timezone.now())
+            if hasattr(group, "chat"):
+                ChatRoomMember.objects.filter(
+                    chat=group.chat, user=request.user
+                ).update(left_at=timezone.now())
                 username_display = request.user.first_name or request.user.username
                 Message.objects.create(
                     chat=group.chat,
                     message_type=Message.MessageType.SYSTEM,
-                    body=f"{username_display} left the group"
+                    body=f"{username_display} left the group",
                 )
 
         return JsonResponse({"success": True, "message": "You have left the group"})
@@ -517,19 +523,28 @@ def api_update_group_constraints(request, group_id):
 
     try:
         group = Group.objects.get(id=group_id)
-        membership = GroupMembership.objects.filter(group=group, user=request.user).first()
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
         if not membership or membership.role != GroupMembership.Role.LEADER:
-            return JsonResponse({"error": "Only leaders can modify constraints"}, status=403)
+            return JsonResponse(
+                {"error": "Only leaders can modify constraints"}, status=403
+            )
 
         data = json.loads(request.body)
 
         from .models import GroupConstraint
+
         constraints, _ = GroupConstraint.objects.get_or_create(
-            group=group,
-            defaults={"minimum_sanitation_grade": "A"}
+            group=group, defaults={"minimum_sanitation_grade": "A"}
         )
 
-        from accounts.models import DietaryTag, CuisineType, FoodTypeTag, SANITATION_GRADE_CHOICES
+        from accounts.models import (
+            DietaryTag,
+            CuisineType,
+            FoodTypeTag,
+            SANITATION_GRADE_CHOICES,
+        )
         from django.utils.text import slugify
 
         if isinstance(data.get("dietary"), list):
@@ -537,7 +552,9 @@ def api_update_group_constraints(request, group_id):
             for name in data["dietary"]:
                 if not isinstance(name, str) or not name.strip():
                     continue
-                tag, _ = DietaryTag.objects.get_or_create(slug=slugify(name.strip()), defaults={"name": name.strip()})
+                tag, _ = DietaryTag.objects.get_or_create(
+                    slug=slugify(name.strip()), defaults={"name": name.strip()}
+                )
                 tags.append(tag)
             constraints.dietary_tags.set(tags)
 
@@ -546,7 +563,9 @@ def api_update_group_constraints(request, group_id):
             for name in data["cuisines"]:
                 if not isinstance(name, str) or not name.strip():
                     continue
-                tag, _ = CuisineType.objects.get_or_create(slug=slugify(name.strip()), defaults={"name": name.strip()})
+                tag, _ = CuisineType.objects.get_or_create(
+                    slug=slugify(name.strip()), defaults={"name": name.strip()}
+                )
                 tags.append(tag)
             constraints.cuisine_types.set(tags)
 
@@ -555,7 +574,9 @@ def api_update_group_constraints(request, group_id):
             for name in data["foodTypes"]:
                 if not isinstance(name, str) or not name.strip():
                     continue
-                tag, _ = FoodTypeTag.objects.get_or_create(slug=slugify(name.strip()), defaults={"name": name.strip()})
+                tag, _ = FoodTypeTag.objects.get_or_create(
+                    slug=slugify(name.strip()), defaults={"name": name.strip()}
+                )
                 tags.append(tag)
             constraints.food_type_tags.set(tags)
 

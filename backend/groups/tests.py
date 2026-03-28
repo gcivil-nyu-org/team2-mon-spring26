@@ -118,18 +118,22 @@ class GroupAPITests(TestCase):
         self.client.login(email="alice@example.com", password="password123")
         response = self.client.patch(
             f"/api/groups/{group.id}/constraints/",
-            json.dumps({
-                "dietary": ["Vegetarian"],
-                "cuisines": ["Italian"],
-                "foodTypes": ["Breakfast"],
-                "minimumSanitationGrade": "B"
-            }),
+            json.dumps(
+                {
+                    "dietary": ["Vegetarian"],
+                    "cuisines": ["Italian"],
+                    "foodTypes": ["Breakfast"],
+                    "minimumSanitationGrade": "B",
+                }
+            ),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
         group.refresh_from_db()
         self.assertEqual(group.constraints.minimum_sanitation_grade, "B")
-        self.assertTrue(group.constraints.dietary_tags.filter(name="Vegetarian").exists())
+        self.assertTrue(
+            group.constraints.dietary_tags.filter(name="Vegetarian").exists()
+        )
         self.assertTrue(group.constraints.cuisine_types.filter(name="Italian").exists())
 
     def test_update_group_constraints_as_member_fails(self):
@@ -154,12 +158,13 @@ class GroupAPITests(TestCase):
             user=self.user1, group=group, role=GroupMembership.Role.LEADER
         )
         from .models import GroupConstraint
+
         GroupConstraint.objects.create(group=group, minimum_sanitation_grade="A")
 
         self.client.login(email="alice@example.com", password="password123")
         response = self.client.patch(
             f"/api/groups/{group.id}/constraints/",
-            json.dumps({"minimumSanitationGrade": "Z"}),
+            json.dumps({"minimumSanitationGrade": "INVALID"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)

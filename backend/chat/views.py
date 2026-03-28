@@ -15,35 +15,60 @@ User = get_user_model()
 def _message_to_json(message):
     return {
         "id": f"msg-{message.id}",
-        "type": "system" if message.message_type == Message.MessageType.SYSTEM else "user",
-        "userId": str(message.sender.id) if message.sender else None,
-        "userName": message.sender.name if message.sender and hasattr(message.sender, 'name') and message.sender.name else (
-            f"{message.sender.first_name} {message.sender.last_name}".strip() or message.sender.username if message.sender else None
+        "type": (
+            "system" if message.message_type == Message.MessageType.SYSTEM else "user"
         ),
-        "message": message.body if not message.deleted_at else "[This message has been deleted]",
+        "userId": str(message.sender.id) if message.sender else None,
+        "userName": (
+            message.sender.name
+            if message.sender
+            and hasattr(message.sender, "name")
+            and message.sender.name
+            else (
+                f"{message.sender.first_name} {message.sender.last_name}".strip()
+                or message.sender.username
+                if message.sender
+                else None
+            )
+        ),
+        "message": (
+            message.body
+            if not message.deleted_at
+            else "[This message has been deleted]"
+        ),
         "timestamp": message.created_at.isoformat().replace("+00:00", "Z"),
         "message_type": message.message_type,
-        "is_deleted": bool(message.deleted_at)
+        "is_deleted": bool(message.deleted_at),
     }
 
 
 def _chat_to_json(chat):
-    memberships = chat.members.select_related('user').filter(left_at__isnull=True)
+    memberships = chat.members.select_related("user").filter(left_at__isnull=True)
     participants = [str(m.user.id) for m in memberships]
     participant_names = [
-        m.user.name if hasattr(m.user, 'name') and m.user.name else (f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username)
+        (
+            m.user.name
+            if hasattr(m.user, "name") and m.user.name
+            else (f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username)
+        )
         for m in memberships
     ]
 
     # Load messages once, with sender preloaded, ordered by creation time
-    messages_qs = chat.messages.select_related('sender').order_by('created_at')
+    messages_qs = chat.messages.select_related("sender").order_by("created_at")
     messages = list(messages_qs)
 
     last_msg = messages[-1] if messages else None
-    last_message_time = last_msg.created_at.isoformat().replace("+00:00", "Z") if last_msg else None
+    last_message_time = (
+        last_msg.created_at.isoformat().replace("+00:00", "Z") if last_msg else None
+    )
 
     return {
-        "id": str(chat.id) if chat.type == Chat.ChatType.DIRECT else (str(chat.group.id) if getattr(chat, 'group', None) else str(chat.id)),
+        "id": (
+            str(chat.id)
+            if chat.type == Chat.ChatType.DIRECT
+            else (str(chat.group.id) if getattr(chat, "group", None) else str(chat.id))
+        ),
         "type": chat.type,
         "name": chat.name,
         "created_by": str(chat.created_by.id) if chat.created_by else None,
@@ -52,7 +77,7 @@ def _chat_to_json(chat):
         "participantNames": participant_names,
         "lastMessageTime": last_message_time,
         "isGroup": chat.type == Chat.ChatType.GROUP,
-        "messages": [_message_to_json(m) for m in messages]
+        "messages": [_message_to_json(m) for m in messages],
     }
 
 
@@ -68,9 +93,9 @@ def api_chat_list_create(request):
     if request.method == "GET":
         try:
             from groups.models import Group, GroupMembership
+
             missing_chat_groups = Group.objects.filter(
-                memberships__user=request.user,
-                chat__isnull=True
+                memberships__user=request.user, chat__isnull=True
             )
             for group in missing_chat_groups:
                 with transaction.atomic():
@@ -78,19 +103,28 @@ def api_chat_list_create(request):
                         type=Chat.ChatType.GROUP,
                         name=group.name,
                         created_by=group.created_by or request.user,
-                        group=group
+                        group=group,
                     )
                     group_memberships = GroupMembership.objects.filter(group=group)
                     chat_members = []
                     for gm in group_memberships:
-                        role = ChatMember.Role.ADMIN if gm.role == 'leader' else ChatMember.Role.MEMBER
-                        chat_members.append(ChatMember(chat=chat, user=gm.user, role=role))
+                        role = (
+                            ChatMember.Role.ADMIN
+                            if gm.role == "leader"
+                            else ChatMember.Role.MEMBER
+                        )
+                        chat_members.append(
+                            ChatMember(chat=chat, user=gm.user, role=role)
+                        )
                     ChatMember.objects.bulk_create(chat_members)
 
-            chats = Chat.objects.filter(
-                members__user=request.user,
-                members__left_at__isnull=True
-            ).distinct().prefetch_related('members__user', 'messages', 'group')
+            chats = (
+                Chat.objects.filter(
+                    members__user=request.user, members__left_at__isnull=True
+                )
+                .distinct()
+                .prefetch_related("members__user", "messages", "group")
+            )
 
             chat_data = [_chat_to_json(c) for c in chats]
             return JsonResponse({"success": True, "chats": chat_data})
@@ -112,21 +146,32 @@ def api_chat_list_create(request):
                 return JsonResponse({"error": "User not found"}, status=404)
 
             # Check if DM exists
-            existing_dms = Chat.objects.filter(
-                type=Chat.ChatType.DIRECT,
-                members__user=request.user
-            ).filter(members__user=other_user).distinct()
+            existing_dms = (
+                Chat.objects.filter(
+                    type=Chat.ChatType.DIRECT, members__user=request.user
+                )
+                .filter(members__user=other_user)
+                .distinct()
+            )
 
             if existing_dms.exists():
-                return JsonResponse({"success": True, "chat": _chat_to_json(existing_dms.first())})
+                return JsonResponse(
+                    {"success": True, "chat": _chat_to_json(existing_dms.first())}
+                )
 
             with transaction.atomic():
-                chat = Chat.objects.create(type=Chat.ChatType.DIRECT, created_by=request.user)
+                chat = Chat.objects.create(
+                    type=Chat.ChatType.DIRECT, created_by=request.user
+                )
                 ChatMember.objects.create(chat=chat, user=request.user)
                 ChatMember.objects.create(chat=chat, user=other_user)
 
-            chat_full = Chat.objects.prefetch_related('members__user', 'messages').get(id=chat.id)
-            return JsonResponse({"success": True, "chat": _chat_to_json(chat_full)}, status=201)
+            chat_full = Chat.objects.prefetch_related("members__user", "messages").get(
+                id=chat.id
+            )
+            return JsonResponse(
+                {"success": True, "chat": _chat_to_json(chat_full)}, status=201
+            )
 
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
@@ -157,13 +202,18 @@ def api_chat_messages(request, chat_id):
         if not chat:
             # Treat chat_id as a potential group ID and resolve/create the group chat
             from groups.models import Group, GroupMembership
+
             try:
                 group = Group.objects.get(id=chat_id)
             except (Group.DoesNotExist, ValueError):
                 return JsonResponse({"error": "Chat not found"}, status=404)
 
-            if not GroupMembership.objects.filter(group=group, user=request.user).exists():
-                return JsonResponse({"error": "You are not a member of this group"}, status=403)
+            if not GroupMembership.objects.filter(
+                group=group, user=request.user
+            ).exists():
+                return JsonResponse(
+                    {"error": "You are not a member of this group"}, status=403
+                )
 
             # Re-use existing chat for this group if it exists, otherwise lazily provision it
             chat = Chat.objects.filter(group=group).first()
@@ -173,22 +223,36 @@ def api_chat_messages(request, chat_id):
                         type=Chat.ChatType.GROUP,
                         name=group.name,
                         created_by=group.created_by or request.user,
-                        group=group
+                        group=group,
                     )
                     group_memberships = GroupMembership.objects.filter(group=group)
                     chat_members = []
                     for gm in group_memberships:
-                        role = ChatMember.Role.ADMIN if gm.role == 'leader' else ChatMember.Role.MEMBER
-                        chat_members.append(ChatMember(chat=chat, user=gm.user, role=role))
+                        role = (
+                            ChatMember.Role.ADMIN
+                            if gm.role == "leader"
+                            else ChatMember.Role.MEMBER
+                        )
+                        chat_members.append(
+                            ChatMember(chat=chat, user=gm.user, role=role)
+                        )
                     ChatMember.objects.bulk_create(chat_members)
         # Check membership
-        membership = ChatMember.objects.filter(chat=chat, user=request.user, left_at__isnull=True).first()
+        membership = ChatMember.objects.filter(
+            chat=chat, user=request.user, left_at__isnull=True
+        ).first()
         if not membership:
-            return JsonResponse({"error": "You are not a member of this chat"}, status=403)
+            return JsonResponse(
+                {"error": "You are not a member of this chat"}, status=403
+            )
 
         if request.method == "GET":
-            messages = chat.messages.all().select_related('sender').order_by('created_at')
-            return JsonResponse({"success": True, "messages": [_message_to_json(m) for m in messages]})
+            messages = (
+                chat.messages.all().select_related("sender").order_by("created_at")
+            )
+            return JsonResponse(
+                {"success": True, "messages": [_message_to_json(m) for m in messages]}
+            )
 
         elif request.method == "POST":
             data = json.loads(request.body)
@@ -202,13 +266,12 @@ def api_chat_messages(request, chat_id):
             sender = request.user
 
             message = Message.objects.create(
-                chat=chat,
-                sender=sender,
-                message_type=actual_type,
-                body=body
+                chat=chat, sender=sender, message_type=actual_type, body=body
             )
 
-            return JsonResponse({"success": True, "message": _message_to_json(message)}, status=201)
+            return JsonResponse(
+                {"success": True, "message": _message_to_json(message)}, status=201
+            )
 
         return JsonResponse({"error": "Method not allowed"}, status=405)
 
@@ -232,16 +295,24 @@ def api_chat_message_detail(request, chat_id, message_id):
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
-        chat = Chat.objects.filter(models.Q(id=chat_id) | models.Q(group__id=chat_id)).first()
+        chat = Chat.objects.filter(
+            models.Q(id=chat_id) | models.Q(group__id=chat_id)
+        ).first()
         if not chat:
             return JsonResponse({"error": "Chat not found"}, status=404)
 
-        membership = ChatMember.objects.filter(chat=chat, user=request.user, left_at__isnull=True).first()
+        membership = ChatMember.objects.filter(
+            chat=chat, user=request.user, left_at__isnull=True
+        ).first()
         if not membership:
-            return JsonResponse({"error": "You are not a member of this chat"}, status=403)
+            return JsonResponse(
+                {"error": "You are not a member of this chat"}, status=403
+            )
 
         if membership.role != ChatMember.Role.ADMIN:
-            return JsonResponse({"error": "Only group leaders can delete messages"}, status=403)
+            return JsonResponse(
+                {"error": "Only group leaders can delete messages"}, status=403
+            )
 
         # Remove "msg-" prefix if passed via frontend
         if str(message_id).startswith("msg-"):
@@ -255,7 +326,7 @@ def api_chat_message_detail(request, chat_id, message_id):
             return JsonResponse({"error": "Message is already deleted"}, status=400)
 
         message.deleted_at = timezone.now()
-        message.save(update_fields=['deleted_at'])
+        message.save(update_fields=["deleted_at"])
 
         return JsonResponse({"success": True, "message": "Message deleted gracefully"})
 

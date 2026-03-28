@@ -69,6 +69,7 @@ class GroupConstraint(models.Model):
     """
     Stores group-level matchmaking parameters and constraints set by group leaders.
     """
+
     group = models.OneToOneField(
         Group,
         on_delete=models.CASCADE,
