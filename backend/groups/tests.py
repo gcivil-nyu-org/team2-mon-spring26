@@ -405,3 +405,671 @@ class SwipeEventAPITests(TestCase):
         venue_grades = [v["sanitationGrade"] for v in data["venues"]]
         # venue3 has grade B, should be excluded because member1 requires A
         self.assertNotIn("B", venue_grades)
+
+    def test_results_cached_after_match(self):
+        """Once a match is found and saved, subsequent calls return cached result."""
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Cached Event", created_by=self.leader
+        )
+        for user in [self.leader, self.member1, self.member2]:
+            Swipe.objects.create(
+                event=event, user=user, venue=self.venue1, direction="right"
+            )
+        # First call computes the match
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/results/"
+        )
+        # Second call should return cached result
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/results/"
+        )
+        data = response.json()
+        self.assertTrue(data["match_found"])
+        self.assertEqual(data["matched_venue"]["name"], "Pizza Place")
+
+    def test_results_no_swipes(self):
+        """Results with zero participants returns match_found=False."""
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Empty Event", created_by=self.leader
+        )
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/results/"
+        )
+        data = response.json()
+        self.assertFalse(data["match_found"])
+        self.assertEqual(data["total_participants"], 0)
+
+    def test_results_non_member_forbidden(self):
+        """Non-member cannot access results."""
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Secret Event", created_by=self.leader
+        )
+        self.client.login(email="outsider@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/results/"
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_results_method_not_allowed(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/{event.id}/results/"
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_results_unauthenticated(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/results/"
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_swipe_missing_venue_id(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="member1@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/{event.id}/swipes/",
+            json.dumps({"direction": "right"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_swipe_invalid_direction(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="member1@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/{event.id}/swipes/",
+            json.dumps({"venue_id": self.venue1.id, "direction": "up"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_swipe_venue_not_found(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="member1@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/{event.id}/swipes/",
+            json.dumps({"venue_id": 99999, "direction": "right"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_swipe_method_not_allowed(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/swipes/"
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_swipe_unauthenticated(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/{event.id}/swipes/",
+            json.dumps({"venue_id": self.venue1.id, "direction": "right"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_swipe_non_member_forbidden(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="outsider@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/{event.id}/swipes/",
+            json.dumps({"venue_id": self.venue1.id, "direction": "right"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_swipe_event_not_found(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/99999/swipes/",
+            json.dumps({"venue_id": self.venue1.id, "direction": "right"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_swipe_group_not_found(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/99999/events/1/swipes/",
+            json.dumps({"venue_id": self.venue1.id, "direction": "right"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_swipe_invalid_json(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="member1@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/{event.id}/swipes/",
+            "not json",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_venues_method_not_allowed(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_venues_unauthenticated(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_venues_non_member_forbidden(self):
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="outsider@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_venues_event_not_found(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/99999/venues/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_venues_group_not_found(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/99999/events/1/venues/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_events_method_not_allowed(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.delete(f"/api/groups/{self.group.id}/events/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_events_unauthenticated(self):
+        response = self.client.get(f"/api/groups/{self.group.id}/events/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_events_group_not_found(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get("/api/groups/99999/events/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_create_event_invalid_json(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/",
+            "not json",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_create_event_empty_name(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/",
+            json.dumps({"name": "  "}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_results_group_not_found(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get("/api/groups/99999/events/1/results/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_results_event_not_found(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/99999/results/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+
+class GroupManagementAPITests(TestCase):
+    """Tests for group CRUD, invite, remove, make leader, leave endpoints."""
+
+    def setUp(self):
+        self.client = Client()
+        self.leader = User.objects.create_user(
+            email="leader@example.com", password="pass123"
+        )
+        self.member = User.objects.create_user(
+            email="member@example.com", password="pass123"
+        )
+        self.outsider = User.objects.create_user(
+            email="outsider@example.com", password="pass123"
+        )
+
+        self.group = Group.objects.create(name="Test Group", created_by=self.leader)
+        GroupMembership.objects.create(
+            user=self.leader, group=self.group, role=GroupMembership.Role.LEADER
+        )
+        GroupMembership.objects.create(
+            user=self.member, group=self.group, role=GroupMembership.Role.MEMBER
+        )
+
+    # --- api_list_users ---
+
+    def test_list_users(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.get("/api/groups/users/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        # Leader should not see themselves
+        emails = [u["email"] for u in data["users"]]
+        self.assertNotIn("leader@example.com", emails)
+        self.assertIn("member@example.com", emails)
+
+    def test_list_users_with_search(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.get("/api/groups/users/?q=outsider")
+        data = response.json()
+        emails = [u["email"] for u in data["users"]]
+        self.assertIn("outsider@example.com", emails)
+        self.assertNotIn("member@example.com", emails)
+
+    def test_list_users_unauthenticated(self):
+        response = self.client.get("/api/groups/users/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_list_users_method_not_allowed(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post("/api/groups/users/")
+        self.assertEqual(response.status_code, 405)
+
+    # --- api_groups_list_create ---
+
+    def test_list_groups(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.get("/api/groups/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(len(data["groups"]), 1)
+        self.assertEqual(data["groups"][0]["name"], "Test Group")
+
+    def test_list_groups_unauthenticated(self):
+        response = self.client.get("/api/groups/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_create_group_missing_name(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(
+            "/api/groups/",
+            json.dumps({"name": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_create_group_invalid_json(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(
+            "/api/groups/",
+            "not json",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_groups_method_not_allowed(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.delete("/api/groups/")
+        self.assertEqual(response.status_code, 405)
+
+    # --- api_delete_group ---
+
+    def test_delete_group_as_leader(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.delete(f"/api/groups/{self.group.id}/delete/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Group.objects.filter(id=self.group.id).exists())
+
+    def test_delete_group_as_member_fails(self):
+        self.client.login(email="member@example.com", password="pass123")
+        response = self.client.delete(f"/api/groups/{self.group.id}/delete/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_delete_group_not_found(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.delete("/api/groups/99999/delete/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_group_unauthenticated(self):
+        response = self.client.delete(f"/api/groups/{self.group.id}/delete/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_delete_group_method_not_allowed(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.get(f"/api/groups/{self.group.id}/delete/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_delete_group_non_member(self):
+        self.client.login(email="outsider@example.com", password="pass123")
+        response = self.client.delete(f"/api/groups/{self.group.id}/delete/")
+        self.assertEqual(response.status_code, 403)
+
+    # --- api_edit_group ---
+
+    def test_edit_group_not_found(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.patch(
+            "/api/groups/99999/",
+            json.dumps({"name": "New"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_edit_group_invalid_json(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.patch(
+            f"/api/groups/{self.group.id}/",
+            "not json",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_edit_group_empty_name(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.patch(
+            f"/api/groups/{self.group.id}/",
+            json.dumps({"name": "  "}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_edit_group_description_and_fields(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.patch(
+            f"/api/groups/{self.group.id}/",
+            json.dumps({
+                "description": "A fun group",
+                "group_type": "casual",
+                "default_location": "Manhattan",
+                "privacy": "public",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.group.refresh_from_db()
+        self.assertEqual(self.group.description, "A fun group")
+        self.assertEqual(self.group.default_location, "Manhattan")
+
+    def test_edit_group_method_not_allowed(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/",
+            json.dumps({"name": "New"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_edit_group_unauthenticated(self):
+        response = self.client.patch(
+            f"/api/groups/{self.group.id}/",
+            json.dumps({"name": "New"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    # --- api_invite_to_group ---
+
+    def test_invite_by_username(self):
+        self.outsider.username = "outsider_user"
+        self.outsider.save()
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/invite/",
+            json.dumps({"username": "outsider_user"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            GroupMembership.objects.filter(user=self.outsider, group=self.group).exists()
+        )
+
+    def test_invite_already_member(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/invite/",
+            json.dumps({"email": "member@example.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_invite_user_not_found(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/invite/",
+            json.dumps({"email": "nobody@example.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_invite_missing_identifier(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/invite/",
+            json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_invite_as_member_fails(self):
+        self.client.login(email="member@example.com", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/invite/",
+            json.dumps({"email": "outsider@example.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_invite_group_not_found(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(
+            "/api/groups/99999/invite/",
+            json.dumps({"email": "outsider@example.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_invite_unauthenticated(self):
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/invite/",
+            json.dumps({"email": "outsider@example.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_invite_method_not_allowed(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.get(f"/api/groups/{self.group.id}/invite/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_invite_invalid_json(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/invite/",
+            "not json",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    # --- api_remove_from_group ---
+
+    def test_remove_member_as_leader(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.delete(
+            f"/api/groups/{self.group.id}/members/{self.member.id}/"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            GroupMembership.objects.filter(user=self.member, group=self.group).exists()
+        )
+
+    def test_remove_self_fails(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.delete(
+            f"/api/groups/{self.group.id}/members/{self.leader.id}/"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_remove_as_member_fails(self):
+        self.client.login(email="member@example.com", password="pass123")
+        response = self.client.delete(
+            f"/api/groups/{self.group.id}/members/{self.leader.id}/"
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_remove_nonexistent_member(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.delete(
+            f"/api/groups/{self.group.id}/members/{self.outsider.id}/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_remove_group_not_found(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.delete(
+            f"/api/groups/99999/members/{self.member.id}/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_remove_unauthenticated(self):
+        response = self.client.delete(
+            f"/api/groups/{self.group.id}/members/{self.member.id}/"
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_remove_method_not_allowed(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/members/{self.member.id}/"
+        )
+        self.assertEqual(response.status_code, 405)
+
+    # --- api_make_leader ---
+
+    def test_make_leader(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.patch(
+            f"/api/groups/{self.group.id}/members/{self.member.id}/role/"
+        )
+        self.assertEqual(response.status_code, 200)
+        membership = GroupMembership.objects.get(user=self.member, group=self.group)
+        self.assertEqual(membership.role, GroupMembership.Role.LEADER)
+
+    def test_make_leader_already_leader(self):
+        """Promoting someone who is already a leader is a no-op success."""
+        GroupMembership.objects.filter(user=self.member, group=self.group).update(
+            role=GroupMembership.Role.LEADER
+        )
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.patch(
+            f"/api/groups/{self.group.id}/members/{self.member.id}/role/"
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_make_leader_as_member_fails(self):
+        self.client.login(email="member@example.com", password="pass123")
+        response = self.client.patch(
+            f"/api/groups/{self.group.id}/members/{self.leader.id}/role/"
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_make_leader_nonexistent_user(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.patch(
+            f"/api/groups/{self.group.id}/members/{self.outsider.id}/role/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_make_leader_group_not_found(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.patch(
+            f"/api/groups/99999/members/{self.member.id}/role/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_make_leader_unauthenticated(self):
+        response = self.client.patch(
+            f"/api/groups/{self.group.id}/members/{self.member.id}/role/"
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_make_leader_method_not_allowed(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/members/{self.member.id}/role/"
+        )
+        self.assertEqual(response.status_code, 405)
+
+    # --- api_leave_group ---
+
+    def test_leave_group_as_member(self):
+        self.client.login(email="member@example.com", password="pass123")
+        response = self.client.post(f"/api/groups/{self.group.id}/leave/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            GroupMembership.objects.filter(user=self.member, group=self.group).exists()
+        )
+
+    def test_leave_group_as_leader_with_another_leader(self):
+        """Leader can leave if another leader exists."""
+        GroupMembership.objects.filter(user=self.member, group=self.group).update(
+            role=GroupMembership.Role.LEADER
+        )
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post(f"/api/groups/{self.group.id}/leave/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_leave_group_not_member(self):
+        self.client.login(email="outsider@example.com", password="pass123")
+        response = self.client.post(f"/api/groups/{self.group.id}/leave/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_leave_group_not_found(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.post("/api/groups/99999/leave/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_leave_group_unauthenticated(self):
+        response = self.client.post(f"/api/groups/{self.group.id}/leave/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_leave_group_method_not_allowed(self):
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.get(f"/api/groups/{self.group.id}/leave/")
+        self.assertEqual(response.status_code, 405)
