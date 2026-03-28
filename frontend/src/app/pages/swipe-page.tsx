@@ -131,13 +131,17 @@ export function SwipePage() {
     );
   }
 
+  const usingMockData = venues === mockRestaurants;
+
   const handleSwipe = async (direction: "left" | "right") => {
     const restaurant = venues[currentIndex];
 
-    try {
-      await addSwipe(event.id, group.id, restaurant.id, direction);
-    } catch (error) {
-      console.error("Failed to submit swipe:", error);
+    if (!usingMockData) {
+      try {
+        await addSwipe(event.id, group.id, restaurant.id, direction);
+      } catch (error) {
+        console.error("Failed to submit swipe:", error);
+      }
     }
 
     // Move to next card
