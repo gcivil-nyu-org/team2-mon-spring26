@@ -358,6 +358,23 @@ class SwipeEventAPITests(TestCase):
         venue_ids = [v["id"] for v in data["venues"]]
         self.assertNotIn(str(self.venue1.id), venue_ids)
 
+    def test_swipe_on_inactive_venue(self):
+        """Cannot swipe on a venue that is not active."""
+        inactive_venue = Venue.objects.create(
+            name="Closed Place", sanitation_grade="A", is_active=False
+        )
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Event", created_by=self.leader
+        )
+        self.client.login(email="member1@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/{event.id}/swipes/",
+            json.dumps({"venue_id": inactive_venue.id, "direction": "right"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not active", response.json()["error"])
+
     def test_swipe_on_inactive_event(self):
         event = SwipeEvent.objects.create(
             group=self.group,

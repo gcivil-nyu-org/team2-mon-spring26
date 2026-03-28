@@ -28,6 +28,7 @@ export function MatchPage() {
     if (!event || !group) return;
 
     let cancelled = false;
+    let confettiTimer: ReturnType<typeof setTimeout>;
     const loadResults = async () => {
       try {
         const results = await fetchMatchResults(group.id, event.id);
@@ -38,7 +39,7 @@ export function MatchPage() {
           setMatchStats({ totalLikes: results.likes_count });
           setShowMatch(true);
           setShowConfetti(true);
-          setTimeout(() => setShowConfetti(false), 5000);
+          confettiTimer = setTimeout(() => setShowConfetti(false), 5000);
         } else {
           setMatchedRestaurant(null);
           setShowMatch(true);
@@ -51,7 +52,7 @@ export function MatchPage() {
       }
     };
     loadResults();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(confettiTimer); };
   }, [event?.id, group?.id, fetchMatchResults]);
 
   if (!event || !group) {

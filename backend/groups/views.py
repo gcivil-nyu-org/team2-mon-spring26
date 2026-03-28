@@ -707,6 +707,9 @@ def api_submit_swipe(request, group_id, event_id):
 
         venue = Venue.objects.get(id=venue_id)
 
+        if not venue.is_active:
+            return JsonResponse({"error": "Venue is not active"}, status=400)
+
         Swipe.objects.update_or_create(
             event=event,
             user=request.user,
