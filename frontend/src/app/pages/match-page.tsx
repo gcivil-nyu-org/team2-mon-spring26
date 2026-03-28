@@ -82,6 +82,7 @@ export function MatchPage() {
     A: 'bg-green-500',
     B: 'bg-yellow-500',
     C: 'bg-orange-500',
+    N: 'bg-gray-400',
     P: 'bg-gray-500',
     Z: 'bg-red-500'
   };
