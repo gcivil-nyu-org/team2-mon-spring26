@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -14,7 +14,7 @@ export function ChatSidebar({ groupId, onClose }: ChatSidebarProps) {
   const { chatMessages, addChatMessage, currentUser } = useApp();
   const [message, setMessage] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const messages = chatMessages[groupId] || [];
+  const messages = useMemo(() => chatMessages[groupId] || [], [chatMessages, groupId]);
 
   useEffect(() => {
     if (scrollRef.current) {

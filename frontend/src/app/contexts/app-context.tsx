@@ -664,6 +664,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const newChatMessages: Record<string, ChatMessage[]> = {};
         const dms: DMConversation[] = [];
         
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         chats.forEach((chat: any) => {
           newChatMessages[chat.id] = chat.messages || [];
           if (chat.type === 'direct') {

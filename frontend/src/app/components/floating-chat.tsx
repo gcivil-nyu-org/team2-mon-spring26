@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { MessageCircle, X, Send, Plus, Users, Trash2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
@@ -70,10 +70,10 @@ export function FloatingChat() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedConversationId(conversations[0].id);
     }
-  }, [conversations.length, selectedConversationId]);
+  }, [conversations.length, selectedConversationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedConversation = conversations.find(c => c.id === selectedConversationId);
-  const messages = selectedConversationId ? chatMessages[selectedConversationId] || [] : [];
+  const messages = useMemo(() => selectedConversationId ? chatMessages[selectedConversationId] || [] : [], [selectedConversationId, chatMessages]);
   const isLeader = selectedConversation?.isGroup ? groups.find(g => g.id === selectedConversationId)?.members.find(m => m.userId === currentUser?.id)?.isLeader : false;
 
   // Auto-scroll to bottom when messages change

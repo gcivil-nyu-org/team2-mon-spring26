@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -24,7 +24,7 @@ export function GroupChatWindow({ groupId: initialGroupId, groupName: initialGro
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const selectedGroup = groups.find(g => g.id === selectedGroupId);
-  const messages = chatMessages[selectedGroupId] || [];
+  const messages = useMemo(() => chatMessages[selectedGroupId] || [], [chatMessages, selectedGroupId]);
   const isLeader = selectedGroup?.members.find(m => m.userId === currentUser?.id)?.isLeader;
 
   useEffect(() => {

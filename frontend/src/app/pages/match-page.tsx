@@ -78,7 +78,7 @@ export function MatchPage() {
       setMatchedRestaurant(null);
       setShowMatch(true);
     }
-  }, [eventId]); // Only depend on eventId
+  }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!event || !group) {
     return (
