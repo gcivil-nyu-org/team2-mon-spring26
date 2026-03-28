@@ -631,8 +631,17 @@ def api_swipe_event_venues(request, group_id, event_id):
             if rank < strictest_rank:
                 strictest_rank = rank
         allowed_grades = [g for g, r in GRADE_RANK.items() if r <= strictest_rank]
-        venues_qs = venues_qs.filter(sanitation_grade__in=allowed_grades)
 
+        # Include venues with blank sanitation_grade when "P" (the least strict)
+        # is allowed, since blanks are treated as "P" elsewhere (e.g., in the
+        # serializer via `venue.sanitation_grade or "P"`).
+        if "P" in allowed_grades:
+            venues_qs = venues_qs.filter(
+                models.Q(sanitation_grade__in=allowed_grades)
+                | models.Q(sanitation_grade__exact="")
+            )
+        else:
+            venues_qs = venues_qs.filter(sanitation_grade__in=allowed_grades)
         # Cuisine types: union of all members' preferences (if any)
         all_cuisine_ids = set()
         for pref in preferences:
