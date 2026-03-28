@@ -446,7 +446,7 @@ class SwipeEventAPITests(TestCase):
         self.assertEqual(data["matched_venue"]["name"], "Pizza Place")
 
     def test_results_no_swipes(self):
-        """Results with zero participants returns match_found=False."""
+        """Results with no swipes returns match_found=False; participants = group size."""
         event = SwipeEvent.objects.create(
             group=self.group, name="Empty Event", created_by=self.leader
         )
@@ -456,7 +456,8 @@ class SwipeEventAPITests(TestCase):
         )
         data = response.json()
         self.assertFalse(data["match_found"])
-        self.assertEqual(data["total_participants"], 0)
+        # total_participants is based on group member count, not swipe count
+        self.assertEqual(data["total_participants"], 3)
 
     def test_results_non_member_forbidden(self):
         """Non-member cannot access results."""

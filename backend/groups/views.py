@@ -453,29 +453,33 @@ def _event_to_json(event):
 
 
 def _venue_to_swipe_json(venue):
-    """Serialize a Venue for the swipe card UI."""
-    photos = list(
-        venue.photos.order_by("-is_primary").values_list("image_url", flat=True)[:3]
+    """Serialize a Venue for the swipe card UI.
+
+    Uses prefetched related objects when available to avoid N+1 queries.
+    """
+    # Use prefetched cache via .all() instead of queryset ops that bypass it
+    all_photos = sorted(
+        venue.photos.all(), key=lambda p: not p.is_primary
     )
-    dietary_tags = list(venue.dietary_tags.values_list("name", flat=True))
-    food_type_tags = list(venue.food_type_tags.values_list("name", flat=True))
+    photos = [p.image_url for p in all_photos[:3]]
+    dietary_tags = [t.name for t in venue.dietary_tags.all()]
+    food_type_tags = [t.name for t in venue.food_type_tags.all()]
 
     # Build badges list from tags and features
-    badges = []
-    for tag in dietary_tags:
-        badges.append(tag)
+    badges = list(dietary_tags)
     if venue.has_group_seating:
         badges.append("Group Seating")
 
-    # Get latest inspection
-    latest_inspection = venue.inspections.first()  # ordered by -inspection_date
+    # Get latest inspection from prefetched set (ordered by -inspection_date)
+    all_inspections = list(venue.inspections.all())
+    latest_inspection = all_inspections[0] if all_inspections else None
     health_inspection = None
     if latest_inspection:
-        violations = list(
-            venue.inspections.exclude(violation_description="").values_list(
-                "violation_description", flat=True
-            )[:5]
-        )
+        violations = [
+            i.violation_description
+            for i in all_inspections
+            if i.violation_description
+        ][:5]
         health_inspection = {
             "grade": latest_inspection.grade or venue.sanitation_grade,
             "score": latest_inspection.score or 0,
@@ -490,8 +494,9 @@ def _venue_to_swipe_json(venue):
             ],
         }
 
-    # Get active student discount
-    discount = venue.discounts.filter(is_active=True).first()
+    # Get active student discount from prefetched set
+    all_discounts = venue.discounts.all()
+    discount = next((d for d in all_discounts if d.is_active), None)
 
     return {
         "id": str(venue.id),
@@ -500,11 +505,9 @@ def _venue_to_swipe_json(venue):
         "sanitationGrade": venue.sanitation_grade or "P",
         "images": photos if photos else ["/placeholder-restaurant.jpg"],
         "badges": badges,
-        "address": (
-            f"{venue.street_address}, {venue.borough}"
-            if venue.street_address
-            else venue.borough
-        ),
+        "address": f"{venue.street_address}, {venue.borough}".strip(", ")
+        if venue.street_address or venue.borough
+        else "",
         "inspectionDate": (
             latest_inspection.inspection_date.isoformat()
             if latest_inspection and latest_inspection.inspection_date
@@ -786,9 +789,10 @@ def api_swipe_event_results(request, group_id, event_id):
                 }
             )
 
-        # Count unique participants
+        # Use group member count for threshold so matches require a true
+        # 2/3 majority of the group, not just of those who have swiped so far.
         all_swipes = event.swipes.all()
-        total_participants = all_swipes.values("user_id").distinct().count()
+        total_participants = group.memberships.count()
 
         if total_participants == 0:
             return JsonResponse(
@@ -802,7 +806,7 @@ def api_swipe_event_results(request, group_id, event_id):
                 }
             )
 
-        # 2/3 majority threshold
+        # 2/3 majority threshold based on group size
         threshold = math.ceil(total_participants * 2 / 3)
 
         # Count right swipes per venue (distinct users)

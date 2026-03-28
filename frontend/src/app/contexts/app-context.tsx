@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type { Restaurant } from '@/app/data/mock-restaurants';
 
@@ -1314,7 +1314,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const fetchSwipeVenues = async (
+  const fetchSwipeVenues = useCallback(async (
     groupId: string,
     eventId: string
   ): Promise<Restaurant[]> => {
@@ -1325,9 +1325,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const data = await response.json();
     if (!data.success) throw new Error('Failed to fetch venues');
     return data.venues as Restaurant[];
-  };
+  }, []);
 
-  const fetchMatchResults = async (
+  const fetchMatchResults = useCallback(async (
     groupId: string,
     eventId: string
   ) => {
@@ -1344,7 +1344,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       threshold: data.threshold as number,
       likes_count: data.likes_count as number,
     };
-  };
+  }, []);
 
   const addChatMessage = (conversationId: string, message: ChatMessage) => {
     setChatMessages((prev) => ({

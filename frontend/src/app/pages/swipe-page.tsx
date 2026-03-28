@@ -59,7 +59,7 @@ export function SwipePage() {
     };
     loadVenues();
     return () => { cancelled = true; };
-  }, [event?.id, group?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [event?.id, group?.id, fetchSwipeVenues]);
 
 
   if (!event || !group || !currentUser) {

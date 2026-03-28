@@ -121,7 +121,12 @@ class Swipe(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("event", "user", "venue")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event", "user", "venue"],
+                name="unique_swipe_per_user_venue_event",
+            )
+        ]
 
     def __str__(self):
         return f"{self.user.email} swiped {self.direction} on {self.venue.name}"
