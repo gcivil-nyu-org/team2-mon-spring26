@@ -671,7 +671,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               id: chat.id,
               participants: chat.participants,
               participantNames: chat.participantNames,
-              lastMessageTime: chat.lastMessageTime
+              lastMessageTime: chat.lastMessageTime ?? chat.created_at ?? ''
             });
           }
         });
@@ -1321,15 +1321,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ message: message.message, message_type: message.type }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setChatMessages((prev) => ({
-          ...prev,
-          [conversationId]: [...(prev[conversationId] || []), data.message],
-        }));
+      if (!response.ok) {
+        let errorDetail: unknown = null;
+        try {
+          const contentType = response.headers.get('Content-Type') || '';
+          if (contentType.includes('application/json')) {
+            errorDetail = await response.json();
+          } else {
+            errorDetail = await response.text();
+          }
+        } catch {
+          // Ignore secondary errors while parsing error response
+        }
+
+        console.error('Failed to send message', {
+          status: response.status,
+          statusText: response.statusText,
+          detail: errorDetail,
+        });
+
+        const errorMessage =
+          typeof errorDetail === 'string'
+            ? errorDetail
+            : 'Failed to send message';
+        throw new Error(errorMessage);
       }
+
+      const data = await response.json();
+      setChatMessages((prev) => ({
+        ...prev,
+        [conversationId]: [...(prev[conversationId] || []), data.message],
+      }));
+
+      return data.message;
     } catch (err) {
       console.error('Failed to send message', err);
+      throw err;
     }
   };
 
@@ -1384,7 +1411,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           id: chat.id,
           participants: chat.participants,
           participantNames: chat.participantNames,
-          lastMessageTime: chat.lastMessageTime
+          // Normalize lastMessageTime: backend may return null when there are no messages
+          lastMessageTime: chat.lastMessageTime || chat.created_at,
         };
         setDMConversations(prev => [...prev.filter(dm => dm.id !== chat.id), newDm]);
         setChatMessages(prev => ({ ...prev, [chat.id]: chat.messages || [] }));

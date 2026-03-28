@@ -454,38 +454,64 @@ export function GroupDetailPage() {
                 <div className="space-y-3">
                   <Label>Cuisines</Label>
                   <div className="flex flex-wrap gap-2">
-                    {preferenceOptions.cuisines.map(c => (
-                      <Badge 
-                        key={c}
-                        variant={cuisines.includes(c) ? "default" : "secondary"}
-                        className={`text-sm py-1.5 px-4 transition-colors ${cuisines.includes(c) ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
-                        onClick={() => {
-                          if (!isLeader) return;
-                          setCuisines(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])
-                        }}
-                      >
-                        {c}
-                      </Badge>
-                    ))}
+                    {preferenceOptions.cuisines.map(c => {
+                      const isSelected = cuisines.includes(c);
+                      return (
+                        <Badge
+                          asChild
+                          key={c}
+                          variant={isSelected ? "default" : "secondary"}
+                          className={`text-sm py-1.5 px-4 transition-colors ${isSelected ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!isLeader) return;
+                              setCuisines(prev =>
+                                prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c],
+                              );
+                            }}
+                            disabled={!isLeader}
+                            aria-disabled={!isLeader}
+                            aria-pressed={isSelected}
+                          >
+                            {c}
+                          </button>
+                        </Badge>
+                      );
+                    })}
                   </div>
                 </div>
                 {/* dietary */}
                 <div className="space-y-3">
                   <Label>Dietary Restrictions</Label>
                   <div className="flex flex-wrap gap-2">
-                    {preferenceOptions.dietary.map(d => (
-                      <Badge 
-                        key={d}
-                        variant={dietary.includes(d) ? "default" : "secondary"}
-                        className={`text-sm py-1.5 px-4 transition-colors ${dietary.includes(d) ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
-                        onClick={() => {
-                          if (!isLeader) return;
-                          setDietary(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
-                        }}
-                      >
-                        {d}
-                      </Badge>
-                    ))}
+                    {preferenceOptions.dietary.map(d => {
+                      const isSelected = dietary.includes(d);
+                      return (
+                        <Badge
+                          asChild
+                          key={d}
+                          variant={isSelected ? "default" : "secondary"}
+                          className={`text-sm py-1.5 px-4 transition-colors ${isSelected ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!isLeader) return;
+                              setDietary(prev =>
+                                prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d],
+                              );
+                            }}
+                            disabled={!isLeader}
+                            aria-disabled={!isLeader}
+                            aria-pressed={isSelected}
+                          >
+                            {d}
+                          </button>
+                        </Badge>
+                      );
+                    })}
                   </div>
                 </div>
                 {/* foodTypes */}

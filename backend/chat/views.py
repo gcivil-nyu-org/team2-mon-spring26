@@ -32,11 +32,13 @@ def _chat_to_json(chat):
         m.user.name if hasattr(m.user, 'name') and m.user.name else (f"{m.user.first_name} {m.user.last_name}".strip() or m.user.username)
         for m in memberships
     ]
-    
-    last_msg = chat.messages.order_by('-created_at').first()
+
+    # Load messages once, with sender preloaded, ordered by creation time
+    messages_qs = chat.messages.select_related('sender').order_by('created_at')
+    messages = list(messages_qs)
+
+    last_msg = messages[-1] if messages else None
     last_message_time = last_msg.created_at.isoformat().replace("+00:00", "Z") if last_msg else None
-    
-    messages = chat.messages.all().select_related('sender').order_by('created_at')
 
     return {
         "id": str(chat.id) if chat.type == Chat.ChatType.DIRECT else (str(chat.group.id) if getattr(chat, 'group', None) else str(chat.id)),
@@ -142,33 +144,40 @@ def api_chat_messages(request, chat_id):
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
-        # Resolve group_id to chat_id if necessary
-        chat = Chat.objects.filter(models.Q(id=chat_id) | models.Q(group__id=chat_id)).first()
+        # First, try to resolve chat_id as a direct Chat primary key
+        chat = None
+        try:
+            chat = Chat.objects.get(id=chat_id)
+        except Chat.DoesNotExist:
+            chat = None
+
         if not chat:
-            # Check if this is a group ID that needs lazy provisioning
+            # Treat chat_id as a potential group ID and resolve/create the group chat
             from groups.models import Group, GroupMembership
             try:
                 group = Group.objects.get(id=chat_id)
             except (Group.DoesNotExist, ValueError):
                 return JsonResponse({"error": "Chat not found"}, status=404)
-                
+
             if not GroupMembership.objects.filter(group=group, user=request.user).exists():
                 return JsonResponse({"error": "You are not a member of this group"}, status=403)
-                
-            with transaction.atomic():
-                chat = Chat.objects.create(
-                    type=Chat.ChatType.GROUP,
-                    name=group.name,
-                    created_by=group.created_by or request.user,
-                    group=group
-                )
-                group_memberships = GroupMembership.objects.filter(group=group)
-                chat_members = []
-                for gm in group_memberships:
-                    role = ChatMember.Role.ADMIN if gm.role == 'leader' else ChatMember.Role.MEMBER
-                    chat_members.append(ChatMember(chat=chat, user=gm.user, role=role))
-                ChatMember.objects.bulk_create(chat_members)
 
+            # Re-use existing chat for this group if it exists, otherwise lazily provision it
+            chat = Chat.objects.filter(group=group).first()
+            if not chat:
+                with transaction.atomic():
+                    chat = Chat.objects.create(
+                        type=Chat.ChatType.GROUP,
+                        name=group.name,
+                        created_by=group.created_by or request.user,
+                        group=group
+                    )
+                    group_memberships = GroupMembership.objects.filter(group=group)
+                    chat_members = []
+                    for gm in group_memberships:
+                        role = ChatMember.Role.ADMIN if gm.role == 'leader' else ChatMember.Role.MEMBER
+                        chat_members.append(ChatMember(chat=chat, user=gm.user, role=role))
+                    ChatMember.objects.bulk_create(chat_members)
         # Check membership
         membership = ChatMember.objects.filter(chat=chat, user=request.user, left_at__isnull=True).first()
         if not membership:
@@ -184,13 +193,10 @@ def api_chat_messages(request, chat_id):
             if not body:
                 return JsonResponse({"error": "Message body required"}, status=400)
 
-            msg_type = data.get("message_type")
-            if msg_type == 'system':
-                actual_type = Message.MessageType.SYSTEM
-                sender = None
-            else:
-                actual_type = Message.MessageType.TEXT
-                sender = request.user
+            # For user-initiated posts, always create a regular text message.
+            # System messages should only be created by trusted server-side flows.
+            actual_type = Message.MessageType.TEXT
+            sender = request.user
 
             message = Message.objects.create(
                 chat=chat,

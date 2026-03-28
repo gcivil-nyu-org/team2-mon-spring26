@@ -300,7 +300,14 @@ def api_invite_to_group(request, group_id):
         )
 
         if hasattr(group, 'chat'):
-            ChatRoomMember.objects.create(chat=group.chat, user=target_user, role=ChatRoomMember.Role.MEMBER)
+            ChatRoomMember.objects.update_or_create(
+                chat=group.chat,
+                user=target_user,
+                defaults={
+                    "role": ChatRoomMember.Role.MEMBER,
+                    "left_at": None,
+                },
+            )
             username_display = target_user.first_name or target_user.username
             Message.objects.create(
                 chat=group.chat, 
@@ -422,11 +429,14 @@ def api_make_leader(request, group_id, user_id):
             
             # Sync ChatMember role
             if hasattr(group, 'chat'):
-                from chat.models import ChatMember
-                chat_member = ChatMember.objects.filter(chat=group.chat, user_id=user_id, left_at__isnull=True).first()
-                if chat_member and chat_member.role != ChatMember.Role.ADMIN:
-                    chat_member.role = ChatMember.Role.ADMIN
-                    chat_member.save(update_fields=['role'])
+                chat_member = ChatRoomMember.objects.filter(
+                    chat=group.chat,
+                    user_id=user_id,
+                    left_at__isnull=True,
+                ).first()
+                if chat_member and chat_member.role != ChatRoomMember.Role.ADMIN:
+                    chat_member.role = ChatRoomMember.Role.ADMIN
+                    chat_member.save(update_fields=["role"])
 
         return JsonResponse({"success": True, "group": _group_to_json(group)})
 
