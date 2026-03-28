@@ -1,3 +1,8 @@
+MAIN
+[![Coverage Status](https://coveralls.io/repos/github/gcivil-nyu-org/team2-mon-spring26/badge.svg?branch=main)](https://coveralls.io/github/gcivil-nyu-org/team2-mon-spring26?branch=main)
+[![Build Status](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26.svg?token=JELzXxdXXHqneS9SacAF&branch=main)](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26)
+
+DEVELOP
 [![Coverage Status](https://coveralls.io/repos/github/gcivil-nyu-org/team2-mon-spring26/badge.svg?branch=develop)](https://coveralls.io/github/gcivil-nyu-org/team2-mon-spring26?branch=develop)
 [![Build Status](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26.svg?token=JELzXxdXXHqneS9SacAF&branch=develop)](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26)
 
@@ -194,9 +199,9 @@ Frontend URL: `http://localhost:5173`
 
 This repo deploys as two independent Elastic Beanstalk applications in **us-east-1**:
 
-| Component | EB Application      | EB Environment        | Platform                              |
-| --------- | ------------------- | --------------------- | ------------------------------------- |
-| Backend   | `mealswipe-backend` | `mealswipe-backend-env` | Python 3.x on 64bit Amazon Linux 2023 |
+| Component | EB Application       | EB Environment           | Platform                              |
+| --------- | -------------------- | ------------------------ | ------------------------------------- |
+| Backend   | `mealswipe-backend`  | `mealswipe-backend-env`  | Python 3.x on 64bit Amazon Linux 2023 |
 | Frontend  | `mealswipe-frontend` | `Mealswipe-frontend-env` | Node.js on 64bit Amazon Linux 2023    |
 
 ### 7.1 CI/CD via Travis CI
@@ -212,6 +217,7 @@ Deployments are **automated via Travis CI**. Every merge to `develop` triggers t
 **No manual `eb deploy` is needed for routine deployments.** Just merge to `develop`.
 
 Travis CI requires two environment variables set in the repository settings:
+
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 
@@ -220,6 +226,7 @@ Travis CI requires two environment variables set in the repository settings:
 If the EB environments need to be recreated from scratch, use the EB CLI to initialise and configure them. This is a one-time operation per environment.
 
 **Prerequisites:**
+
 - **AWS CLI** installed (`brew install awscli` on macOS)
 - **EB CLI** installed (`pip install awsebcli`)
 - AWS credentials configured: `aws configure` (set region to `us-east-1`)
