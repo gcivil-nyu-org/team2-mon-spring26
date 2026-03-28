@@ -52,7 +52,7 @@ export function MatchPage() {
     };
     loadResults();
     return () => { cancelled = true; };
-  }, [event?.id, group?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [event?.id, group?.id, fetchMatchResults]);
 
   if (!event || !group) {
     return (
