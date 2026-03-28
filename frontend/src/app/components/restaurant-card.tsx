@@ -90,7 +90,7 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
       handleSwipe('right');
     } else {
       // Cycle through images
-      setCurrentImageIndex((prev) => (prev + 1) % restaurant.images.length);
+      setCurrentImageIndex((prev) => restaurant.images.length > 0 ? (prev + 1) % restaurant.images.length : 0);
     }
   };
 
@@ -172,8 +172,8 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
 
               {/* Image Section */}
               <div className="relative h-96">
-                <img 
-                  src={restaurant.images[currentImageIndex]} 
+                <img
+                  src={restaurant.images[currentImageIndex] || '/placeholder-restaurant.jpg'}
                   alt={restaurant.name}
                   className="w-full h-full object-cover"
                 />

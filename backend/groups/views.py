@@ -498,7 +498,7 @@ def _venue_to_swipe_json(venue):
         "name": venue.name,
         "cuisine": [venue.cuisine_type.name] if venue.cuisine_type else [],
         "sanitationGrade": venue.sanitation_grade or "P",
-        "images": photos if photos else [],
+        "images": photos if photos else ["/placeholder-restaurant.jpg"],
         "badges": badges,
         "address": (
             f"{venue.street_address}, {venue.borough}"
