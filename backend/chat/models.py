@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 
+
 class Chat(models.Model):
     class ChatType(models.TextChoices):
         DIRECT = 'direct', 'Direct'
@@ -17,8 +18,8 @@ class Chat(models.Model):
         related_name='chat'
     )
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.CASCADE, 
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
         related_name='created_chats'
     )
     created_at = models.DateTimeField(auto_now_add=True)
@@ -39,12 +40,12 @@ class ChatMember(models.Model):
     joined_at = models.DateTimeField(auto_now_add=True)
     left_at = models.DateTimeField(null=True, blank=True)
     is_muted = models.BooleanField(default=False)
-    
+
     last_read_message = models.ForeignKey(
-        'Message', 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
+        'Message',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='+'
     )
 
@@ -66,23 +67,23 @@ class Message(models.Model):
 
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.CASCADE, 
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
         related_name='sent_messages',
         null=True,
         blank=True
     )  # sender is null for system messages sometimes, though we can use a system user or let sender be nullable
     message_type = models.CharField(max_length=20, choices=MessageType.choices, default=MessageType.TEXT)
     body = models.TextField()
-    
+
     reply_to_message = models.ForeignKey(
-        'self', 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='replies'
     )
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
     edited_at = models.DateTimeField(null=True, blank=True)
     deleted_at = models.DateTimeField(null=True, blank=True)

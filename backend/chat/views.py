@@ -11,6 +11,7 @@ from .models import Chat, ChatMember, Message
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
+
 def _message_to_json(message):
     return {
         "id": f"msg-{message.id}",
@@ -24,6 +25,7 @@ def _message_to_json(message):
         "message_type": message.message_type,
         "is_deleted": bool(message.deleted_at)
     }
+
 
 def _chat_to_json(chat):
     memberships = chat.members.select_related('user').filter(left_at__isnull=True)
@@ -52,6 +54,7 @@ def _chat_to_json(chat):
         "isGroup": chat.type == Chat.ChatType.GROUP,
         "messages": [_message_to_json(m) for m in messages]
     }
+
 
 @csrf_exempt
 def api_chat_list_create(request):
@@ -85,10 +88,10 @@ def api_chat_list_create(request):
                     ChatMember.objects.bulk_create(chat_members)
 
             chats = Chat.objects.filter(
-                members__user=request.user, 
+                members__user=request.user,
                 members__left_at__isnull=True
             ).distinct().prefetch_related('members__user', 'messages', 'group')
-            
+
             chat_data = [_chat_to_json(c) for c in chats]
             return JsonResponse({"success": True, "chats": chat_data})
         except Exception as e:
@@ -102,7 +105,7 @@ def api_chat_list_create(request):
             participant_id = data.get("participantId")
             if not participant_id:
                 return JsonResponse({"error": "participantId required"}, status=400)
-            
+
             try:
                 other_user = User.objects.get(id=participant_id)
             except User.DoesNotExist:
@@ -110,7 +113,7 @@ def api_chat_list_create(request):
 
             # Check if DM exists
             existing_dms = Chat.objects.filter(
-                type=Chat.ChatType.DIRECT, 
+                type=Chat.ChatType.DIRECT,
                 members__user=request.user
             ).filter(members__user=other_user).distinct()
 
@@ -215,6 +218,7 @@ def api_chat_messages(request, chat_id):
         logger.error(f"Message list/create error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
+
 @csrf_exempt
 def api_chat_message_detail(request, chat_id, message_id):
     """
@@ -235,18 +239,18 @@ def api_chat_message_detail(request, chat_id, message_id):
         membership = ChatMember.objects.filter(chat=chat, user=request.user, left_at__isnull=True).first()
         if not membership:
             return JsonResponse({"error": "You are not a member of this chat"}, status=403)
-            
+
         if membership.role != ChatMember.Role.ADMIN:
             return JsonResponse({"error": "Only group leaders can delete messages"}, status=403)
 
         # Remove "msg-" prefix if passed via frontend
         if str(message_id).startswith("msg-"):
             message_id = str(message_id)[4:]
-            
+
         message = Message.objects.filter(chat=chat, id=message_id).first()
         if not message:
             return JsonResponse({"error": "Message not found"}, status=404)
-            
+
         if message.deleted_at:
             return JsonResponse({"error": "Message is already deleted"}, status=400)
 
