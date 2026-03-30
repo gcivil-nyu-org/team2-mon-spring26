@@ -783,11 +783,13 @@ class SwipeEventAPITests(TestCase):
         self.client.login(email="leader@nyu.edu", password="pass123")
         response = self.client.post(
             f"/api/groups/{self.group.id}/events/",
-            json.dumps({
-                "name": "Brooklyn Dinner",
-                "borough": "Brooklyn",
-                "neighborhood": "DUMBO",
-            }),
+            json.dumps(
+                {
+                    "name": "Brooklyn Dinner",
+                    "borough": "Brooklyn",
+                    "neighborhood": "DUMBO",
+                }
+            ),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 201)
