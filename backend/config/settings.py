@@ -93,6 +93,7 @@ INSTALLED_APPS = [
     "accounts",
     "venues",
     "groups",
+    "chat",
 ]
 
 MIDDLEWARE = [
