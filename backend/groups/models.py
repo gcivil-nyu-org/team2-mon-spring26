@@ -93,6 +93,8 @@ class SwipeEvent(models.Model):
         blank=True,
         related_name="matched_events",
     )
+    borough = models.CharField(max_length=50, blank=True)
+    neighborhood = models.CharField(max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

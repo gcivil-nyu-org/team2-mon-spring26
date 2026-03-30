@@ -728,6 +728,98 @@ class SwipeEventAPITests(TestCase):
         response = self.client.get(f"/api/groups/{self.group.id}/events/99999/results/")
         self.assertEqual(response.status_code, 404)
 
+    def test_venues_filtered_by_borough(self):
+        """Venues are filtered to match the event's borough."""
+        # Set boroughs on venues
+        self.venue1.borough = "Manhattan"
+        self.venue1.save()
+        self.venue2.borough = "Brooklyn"
+        self.venue2.save()
+        self.venue3.borough = "Manhattan"
+        self.venue3.save()
+
+        event = SwipeEvent.objects.create(
+            group=self.group,
+            name="Manhattan Dinner",
+            created_by=self.leader,
+            borough="Manhattan",
+        )
+
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        data = response.json()
+        venue_names = [v["name"] for v in data["venues"]]
+        # Only Manhattan venues should appear
+        self.assertIn("Pizza Place", venue_names)
+        self.assertNotIn("Sushi Spot", venue_names)  # Brooklyn
+
+    def test_venues_no_borough_filter_returns_all(self):
+        """When event has no borough set, all venues are returned."""
+        self.venue1.borough = "Manhattan"
+        self.venue1.save()
+        self.venue2.borough = "Brooklyn"
+        self.venue2.save()
+
+        event = SwipeEvent.objects.create(
+            group=self.group,
+            name="Any Location",
+            created_by=self.leader,
+            borough="",
+        )
+
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        data = response.json()
+        venue_names = [v["name"] for v in data["venues"]]
+        self.assertIn("Pizza Place", venue_names)
+        self.assertIn("Sushi Spot", venue_names)
+
+    def test_create_event_with_borough(self):
+        """Creating an event with borough/neighborhood stores them."""
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/",
+            json.dumps(
+                {
+                    "name": "Brooklyn Dinner",
+                    "borough": "Brooklyn",
+                    "neighborhood": "DUMBO",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["event"]["borough"], "Brooklyn")
+        self.assertEqual(data["event"]["neighborhood"], "DUMBO")
+
+    def test_venues_filtered_by_borough_case_insensitive(self):
+        """Borough filtering is case-insensitive."""
+        self.venue1.borough = "manhattan"
+        self.venue1.save()
+        self.venue2.borough = "Brooklyn"
+        self.venue2.save()
+
+        event = SwipeEvent.objects.create(
+            group=self.group,
+            name="Manhattan Dinner",
+            created_by=self.leader,
+            borough="Manhattan",
+        )
+
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        data = response.json()
+        venue_names = [v["name"] for v in data["venues"]]
+        self.assertIn("Pizza Place", venue_names)
+        self.assertNotIn("Sushi Spot", venue_names)
+
 
 class GroupManagementAPITests(TestCase):
     """Tests for group CRUD, invite, remove, make leader, leave endpoints."""

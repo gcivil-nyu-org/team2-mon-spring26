@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { X, Heart, Info, MapPin, Calendar, AlertTriangle, ExternalLink, Star, Users, Ticket, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '@/app/contexts/app-context';
+import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -172,8 +173,8 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
 
               {/* Image Section */}
               <div className="relative h-96">
-                <img
-                  src={restaurant.images[currentImageIndex] || '/placeholder-restaurant.jpg'}
+                <ImageWithFallback
+                  src={restaurant.images?.[currentImageIndex] ?? ''}
                   alt={restaurant.name}
                   className="w-full h-full object-cover"
                 />
