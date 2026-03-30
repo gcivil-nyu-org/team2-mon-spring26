@@ -131,8 +131,8 @@ class Swipe(models.Model):
 
     def __str__(self):
         return f"{self.user.email} swiped {self.direction} on {self.venue.name}"
-      
-      
+
+
 class GroupConstraint(models.Model):
     """
     Stores group-level matchmaking parameters and constraints set by group leaders.

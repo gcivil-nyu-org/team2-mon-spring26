@@ -628,9 +628,7 @@ def _venue_to_swipe_json(venue):
     Uses prefetched related objects when available to avoid N+1 queries.
     """
     # Use prefetched cache via .all() instead of queryset ops that bypass it
-    all_photos = sorted(
-        venue.photos.all(), key=lambda p: not p.is_primary
-    )
+    all_photos = sorted(venue.photos.all(), key=lambda p: not p.is_primary)
     photos = [p.image_url for p in all_photos[:3]]
     dietary_tags = [t.name for t in venue.dietary_tags.all()]
     food_type_tags = [t.name for t in venue.food_type_tags.all()]
@@ -646,9 +644,7 @@ def _venue_to_swipe_json(venue):
     health_inspection = None
     if latest_inspection:
         violations = [
-            i.violation_description
-            for i in all_inspections
-            if i.violation_description
+            i.violation_description for i in all_inspections if i.violation_description
         ][:5]
         health_inspection = {
             "grade": latest_inspection.grade or venue.sanitation_grade,
@@ -675,9 +671,11 @@ def _venue_to_swipe_json(venue):
         "sanitationGrade": venue.sanitation_grade or "P",
         "images": photos if photos else ["/placeholder-restaurant.jpg"],
         "badges": badges,
-        "address": f"{venue.street_address}, {venue.borough}".strip(", ")
-        if venue.street_address or venue.borough
-        else "",
+        "address": (
+            f"{venue.street_address}, {venue.borough}".strip(", ")
+            if venue.street_address or venue.borough
+            else ""
+        ),
         "inspectionDate": (
             latest_inspection.inspection_date.isoformat()
             if latest_inspection and latest_inspection.inspection_date

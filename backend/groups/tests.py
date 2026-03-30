@@ -495,9 +495,7 @@ class SwipeEventAPITests(TestCase):
             )
         # First call computes the match
         self.client.login(email="leader@nyu.edu", password="pass123")
-        self.client.get(
-            f"/api/groups/{self.group.id}/events/{event.id}/results/"
-        )
+        self.client.get(f"/api/groups/{self.group.id}/events/{event.id}/results/")
         # Second call should return cached result
         response = self.client.get(
             f"/api/groups/{self.group.id}/events/{event.id}/results/"
@@ -631,7 +629,7 @@ class SwipeEventAPITests(TestCase):
     def test_swipe_group_not_found(self):
         self.client.login(email="leader@nyu.edu", password="pass123")
         response = self.client.post(
-            f"/api/groups/99999/events/1/swipes/",
+            "/api/groups/99999/events/1/swipes/",
             json.dumps({"venue_id": self.venue1.id, "direction": "right"}),
             content_type="application/json",
         )
@@ -680,16 +678,12 @@ class SwipeEventAPITests(TestCase):
 
     def test_venues_event_not_found(self):
         self.client.login(email="leader@nyu.edu", password="pass123")
-        response = self.client.get(
-            f"/api/groups/{self.group.id}/events/99999/venues/"
-        )
+        response = self.client.get(f"/api/groups/{self.group.id}/events/99999/venues/")
         self.assertEqual(response.status_code, 404)
 
     def test_venues_group_not_found(self):
         self.client.login(email="leader@nyu.edu", password="pass123")
-        response = self.client.get(
-            f"/api/groups/99999/events/1/venues/"
-        )
+        response = self.client.get("/api/groups/99999/events/1/venues/")
         self.assertEqual(response.status_code, 404)
 
     def test_events_method_not_allowed(self):
@@ -731,9 +725,7 @@ class SwipeEventAPITests(TestCase):
 
     def test_results_event_not_found(self):
         self.client.login(email="leader@nyu.edu", password="pass123")
-        response = self.client.get(
-            f"/api/groups/{self.group.id}/events/99999/results/"
-        )
+        response = self.client.get(f"/api/groups/{self.group.id}/events/99999/results/")
         self.assertEqual(response.status_code, 404)
 
 
@@ -893,12 +885,14 @@ class GroupManagementAPITests(TestCase):
         self.client.login(email="leader@example.com", password="pass123")
         response = self.client.patch(
             f"/api/groups/{self.group.id}/",
-            json.dumps({
-                "description": "A fun group",
-                "group_type": "casual",
-                "default_location": "Manhattan",
-                "privacy": "public",
-            }),
+            json.dumps(
+                {
+                    "description": "A fun group",
+                    "group_type": "casual",
+                    "default_location": "Manhattan",
+                    "privacy": "public",
+                }
+            ),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
@@ -936,7 +930,9 @@ class GroupManagementAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(
-            GroupMembership.objects.filter(user=self.outsider, group=self.group).exists()
+            GroupMembership.objects.filter(
+                user=self.outsider, group=self.group
+            ).exists()
         )
 
     def test_invite_already_member(self):
@@ -1041,9 +1037,7 @@ class GroupManagementAPITests(TestCase):
 
     def test_remove_group_not_found(self):
         self.client.login(email="leader@example.com", password="pass123")
-        response = self.client.delete(
-            f"/api/groups/99999/members/{self.member.id}/"
-        )
+        response = self.client.delete(f"/api/groups/99999/members/{self.member.id}/")
         self.assertEqual(response.status_code, 404)
 
     def test_remove_unauthenticated(self):

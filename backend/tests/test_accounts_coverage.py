@@ -1,9 +1,9 @@
 """Tests to cover uncovered lines in accounts app (models, email_service, smtp_backend, views)."""
 
 import smtplib
-from unittest.mock import patch, PropertyMock
+from unittest.mock import patch
 
-from django.test import TestCase, Client, override_settings
+from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 
 from accounts.models import (
@@ -11,7 +11,6 @@ from accounts.models import (
     DietaryTag,
     FoodTypeTag,
     UserPreference,
-    VenueManagerProfile,
     normalize_sanitation_grade,
 )
 from accounts.email_service import send_password_reset_email, EmailSendError
@@ -108,7 +107,9 @@ class EmailServiceTests(TestCase):
 
     @patch("accounts.email_service.send_mail")
     def test_send_password_reset_email_smtp_auth_error(self, mock_send_mail):
-        mock_send_mail.side_effect = smtplib.SMTPAuthenticationError(535, b"Auth failed")
+        mock_send_mail.side_effect = smtplib.SMTPAuthenticationError(
+            535, b"Auth failed"
+        )
         with self.assertRaises(EmailSendError):
             send_password_reset_email("user@example.com", "https://example.com/reset")
 
@@ -142,8 +143,11 @@ class CertifiSMTPBackendTests(TestCase):
     def test_ssl_context_without_certifi(self, mock_ctx):
         backend = CertifiSMTPBackend()
         # Simulate certifi not installed
-        import accounts.smtp_backend as mod
-        original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+        original_import = (
+            __builtins__.__import__
+            if hasattr(__builtins__, "__import__")
+            else __import__
+        )
 
         def fake_import(name, *args, **kwargs):
             if name == "certifi":
@@ -152,7 +156,7 @@ class CertifiSMTPBackendTests(TestCase):
 
         with patch("builtins.__import__", side_effect=fake_import):
             backend._ssl_context = None
-            ctx = backend.ssl_context
+            backend.ssl_context  # noqa: B018
             mock_ctx.assert_called()
 
 
@@ -261,4 +265,5 @@ class AccountsViewEdgeCaseTests(TestCase):
     def test_get_user_from_uid_invalid(self):
         """Invalid uidb64 returns None."""
         from accounts.views import _get_user_from_uid
+
         self.assertIsNone(_get_user_from_uid("invalid!!!"))

@@ -1425,12 +1425,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const addChatMessage = (conversationId: string, message: ChatMessage) => {
-    setChatMessages((prev) => ({
-      ...prev,
-      [conversationId]: [...(prev[conversationId] || []), message],
-    }));
-  };
   const addChatMessage = async (conversationId: string, message: ChatMessage) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
