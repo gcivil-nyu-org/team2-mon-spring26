@@ -456,6 +456,89 @@ def api_make_leader(request, group_id, user_id):
 
 
 @csrf_exempt
+def api_update_group_constraints(request, group_id):
+    if request.method not in ("PATCH", "PUT"):
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).first()
+        if not membership or membership.role != GroupMembership.Role.LEADER:
+            return JsonResponse(
+                {"error": "Only leaders can modify constraints"}, status=403
+            )
+
+        data = json.loads(request.body)
+
+        from .models import GroupConstraint
+
+        constraints, _ = GroupConstraint.objects.get_or_create(
+            group=group, defaults={"minimum_sanitation_grade": "A"}
+        )
+
+        from accounts.models import (
+            DietaryTag,
+            CuisineType,
+            FoodTypeTag,
+            SANITATION_GRADE_CHOICES,
+        )
+        from django.utils.text import slugify
+
+        if isinstance(data.get("dietary"), list):
+            tags = []
+            for name in data["dietary"]:
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                tag, _ = DietaryTag.objects.get_or_create(
+                    slug=slugify(name.strip()), defaults={"name": name.strip()}
+                )
+                tags.append(tag)
+            constraints.dietary_tags.set(tags)
+
+        if isinstance(data.get("cuisines"), list):
+            tags = []
+            for name in data["cuisines"]:
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                tag, _ = CuisineType.objects.get_or_create(
+                    slug=slugify(name.strip()), defaults={"name": name.strip()}
+                )
+                tags.append(tag)
+            constraints.cuisine_types.set(tags)
+
+        if isinstance(data.get("foodTypes"), list):
+            tags = []
+            for name in data["foodTypes"]:
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                tag, _ = FoodTypeTag.objects.get_or_create(
+                    slug=slugify(name.strip()), defaults={"name": name.strip()}
+                )
+                tags.append(tag)
+            constraints.food_type_tags.set(tags)
+
+        grade = data.get("minimumSanitationGrade")
+        valid_grades = {c[0] for c in SANITATION_GRADE_CHOICES}
+        if grade in valid_grades:
+            constraints.minimum_sanitation_grade = grade
+            constraints.save(update_fields=["minimum_sanitation_grade", "updated_at"])
+
+        return JsonResponse({"success": True, "group": _group_to_json(group)})
+
+    except Group.DoesNotExist:
+        return JsonResponse({"error": "Group not found"}, status=404)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    except Exception as e:
+        logger.error(f"Error updating constraints: {e}", exc_info=True)
+        return JsonResponse({"error": "Internal server error"}, status=500)
+
+
+@csrf_exempt
 def api_leave_group(request, group_id):
     """
     POST /api/groups/<id>/leave/
@@ -684,11 +767,6 @@ def api_swipe_event_venues(request, group_id, event_id):
     excluding venues the requesting user has already swiped on.
     """
     if request.method != "GET":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-
-@csrf_exempt
-def api_update_group_constraints(request, group_id):
-    if request.method not in ("PATCH", "PUT"):
         return JsonResponse({"error": "Method not allowed"}, status=405)
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
@@ -942,72 +1020,3 @@ def api_swipe_event_results(request, group_id, event_id):
     except Exception as e:
         logger.error(f"Match results error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "An unexpected error occurred"}, status=500)
-        if not membership or membership.role != GroupMembership.Role.LEADER:
-            return JsonResponse(
-                {"error": "Only leaders can modify constraints"}, status=403
-            )
-
-        data = json.loads(request.body)
-
-        from .models import GroupConstraint
-
-        constraints, _ = GroupConstraint.objects.get_or_create(
-            group=group, defaults={"minimum_sanitation_grade": "A"}
-        )
-
-        from accounts.models import (
-            DietaryTag,
-            CuisineType,
-            FoodTypeTag,
-            SANITATION_GRADE_CHOICES,
-        )
-        from django.utils.text import slugify
-
-        if isinstance(data.get("dietary"), list):
-            tags = []
-            for name in data["dietary"]:
-                if not isinstance(name, str) or not name.strip():
-                    continue
-                tag, _ = DietaryTag.objects.get_or_create(
-                    slug=slugify(name.strip()), defaults={"name": name.strip()}
-                )
-                tags.append(tag)
-            constraints.dietary_tags.set(tags)
-
-        if isinstance(data.get("cuisines"), list):
-            tags = []
-            for name in data["cuisines"]:
-                if not isinstance(name, str) or not name.strip():
-                    continue
-                tag, _ = CuisineType.objects.get_or_create(
-                    slug=slugify(name.strip()), defaults={"name": name.strip()}
-                )
-                tags.append(tag)
-            constraints.cuisine_types.set(tags)
-
-        if isinstance(data.get("foodTypes"), list):
-            tags = []
-            for name in data["foodTypes"]:
-                if not isinstance(name, str) or not name.strip():
-                    continue
-                tag, _ = FoodTypeTag.objects.get_or_create(
-                    slug=slugify(name.strip()), defaults={"name": name.strip()}
-                )
-                tags.append(tag)
-            constraints.food_type_tags.set(tags)
-
-        grade = data.get("minimumSanitationGrade")
-        valid_grades = {c[0] for c in SANITATION_GRADE_CHOICES}
-        if grade in valid_grades:
-            constraints.minimum_sanitation_grade = grade
-            constraints.save(update_fields=["minimum_sanitation_grade", "updated_at"])
-
-        return JsonResponse({"success": True, "group": _group_to_json(group)})
-
-    except Group.DoesNotExist:
-        return JsonResponse({"error": "Group not found"}, status=404)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
-    except Exception as e:
-        logger.error(f"Error updating constraints: {e}", exc_info=True)
-        return JsonResponse({"error": "Internal server error"}, status=500)
