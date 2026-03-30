@@ -23,6 +23,12 @@ urlpatterns = [
         views.api_make_leader,
         name="api_make_leader",
     ),
+    # Constraints
+    path(
+        "<int:group_id>/constraints/",
+        views.api_update_group_constraints,
+        name="api_update_group_constraints",
+    ),
     path("<int:group_id>/leave/", views.api_leave_group, name="api_leave_group"),
     # Swipe Events
     path(

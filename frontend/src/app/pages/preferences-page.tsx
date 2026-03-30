@@ -112,7 +112,11 @@ export function PreferencesPage() {
                   key={cuisine}
                   asChild
                   variant={cuisines.includes(cuisine) ? 'default' : 'secondary'}
-                  className="text-sm"
+                  className={`text-sm py-1.5 px-4 transition-colors ${
+                    cuisines.includes(cuisine)
+                      ? 'bg-zinc-950 hover:bg-zinc-800 text-zinc-50 border-transparent shadow-sm'
+                      : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border-zinc-200'
+                  }`}
                 >
                   <button
                     type="button"
@@ -140,7 +144,11 @@ export function PreferencesPage() {
                   key={diet}
                   asChild
                   variant={dietary.includes(diet) ? 'default' : 'secondary'}
-                  className="text-sm"
+                  className={`text-sm py-1.5 px-4 transition-colors ${
+                    dietary.includes(diet)
+                      ? 'bg-zinc-950 hover:bg-zinc-800 text-zinc-50 border-transparent shadow-sm'
+                      : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border-zinc-200'
+                  }`}
                 >
                   <button
                     type="button"
@@ -168,7 +176,11 @@ export function PreferencesPage() {
                   key={type}
                   asChild
                   variant={foodTypes.includes(type) ? 'default' : 'secondary'}
-                  className="text-sm"
+                  className={`text-sm py-1.5 px-4 transition-colors ${
+                    foodTypes.includes(type)
+                      ? 'bg-zinc-950 hover:bg-zinc-800 text-zinc-50 border-transparent shadow-sm'
+                      : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border-zinc-200'
+                  }`}
                 >
                   <button
                     type="button"

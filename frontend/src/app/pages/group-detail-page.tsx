@@ -18,6 +18,15 @@ import {
 } from "@/app/components/ui/dialog";
 import { Input } from "@/app/components/ui/input";
 import { Badge } from "@/app/components/ui/badge";
+import { Label } from "@/app/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/app/components/ui/select";
+import preferenceOptions from '@/app/data/preference-options.json';
 import {
   ArrowLeft,
   Plus,
@@ -29,9 +38,10 @@ import {
   Crown,
   Search,
   X,
+  Settings2,
 } from "lucide-react";
 import { ChatSidebar } from "@/app/components/chat-sidebar";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function GroupDetailPage() {
   const { groupId } = useParams();
@@ -49,15 +59,37 @@ export function GroupDetailPage() {
     deleteGroup,
     removeMember,
     makeLeader,
+    updateGroupConstraints,
   } = useApp();
   const [showChat, setShowChat] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [searchEmail, setSearchEmail] = useState("");
+  const [showConstraintsDialog, setShowConstraintsDialog] = useState(false);
+  
+  const [dietary, setDietary] = useState<string[]>([]);
+  const [cuisines, setCuisines] = useState<string[]>([]);
+  const [foodTypes, setFoodTypes] = useState<string[]>([]);
+  const [minimumSanitationGrade, setMinimumSanitationGrade] = useState<string>('A');
+  const [savingConstraints, setSavingConstraints] = useState(false);
 
   const group = groups.find((g) => g.id === groupId);
   const groupEvents = swipeEvents.filter(
     (e) => e.groupId === groupId,
   );
+
+  useEffect(() => {
+    if (showConstraintsDialog && group?.constraints) {
+      setDietary(group.constraints.dietary ?? []);
+      setCuisines(group.constraints.cuisines ?? []);
+      setFoodTypes(group.constraints.foodTypes ?? []);
+      setMinimumSanitationGrade(group.constraints.minimumSanitationGrade ?? 'A');
+    } else if (showConstraintsDialog) {
+      setDietary([]);
+      setCuisines([]);
+      setFoodTypes([]);
+      setMinimumSanitationGrade('A');
+    }
+  }, [showConstraintsDialog, group]);
 
   // Check if current user is a leader
   const isLeader = group?.members.find(m => m.userId === currentUser?.id)?.isLeader || false;
@@ -99,6 +131,21 @@ export function GroupDetailPage() {
   const handlePlanReservation = () => {
     // Navigates to a new page where users input Date, Name, and Location
     navigate(`/group/${group.id}/plan`);
+  };
+
+  const handleSaveConstraints = async () => {
+    if (!group) return;
+    setSavingConstraints(true);
+    try {
+      await updateGroupConstraints(group.id, {
+        dietary, cuisines, foodTypes, minimumSanitationGrade
+      });
+      setShowConstraintsDialog(false);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSavingConstraints(false);
+    }
   };
 
   const handleViewEvent = (eventId: string) => {
@@ -347,7 +394,7 @@ export function GroupDetailPage() {
         </Card>
 
         {/* Action Buttons Grid */}
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Create New Swipe Event */}
           <Card
             className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-purple-500 to-indigo-500 text-white border-0"
@@ -383,6 +430,137 @@ export function GroupDetailPage() {
               </CardDescription>
             </CardHeader>
           </Card>
+
+          {/* Group Constraints Card */}
+          <Dialog open={showConstraintsDialog} onOpenChange={setShowConstraintsDialog}>
+            <DialogTrigger asChild>
+              <Card className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-0">
+                <CardHeader className="pb-6">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
+                    <Settings2 className="w-6 h-6" />
+                  </div>
+                  <CardTitle className="mb-2">Dietary Settings</CardTitle>
+                  <CardDescription className="text-emerald-100">
+                    {isLeader ? "Manage group food filters" : "View group food filters"}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Group Dietary Constraints</DialogTitle>
+                <DialogDescription>
+                  {isLeader ? "As a leader, you can set restrictions for the whole group matching algorithm." : "These are the constraints set by the group leaders."}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-6 py-4">
+                {/* cuisines */}
+                <div className="space-y-3">
+                  <Label>Cuisines</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {preferenceOptions.cuisines.map(c => {
+                      const isSelected = cuisines.includes(c);
+                      return (
+                        <Badge
+                          asChild
+                          key={c}
+                          variant={isSelected ? "default" : "secondary"}
+                          className={`text-sm py-1.5 px-4 transition-colors ${isSelected ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!isLeader) return;
+                              setCuisines(prev =>
+                                prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c],
+                              );
+                            }}
+                            disabled={!isLeader}
+                            aria-disabled={!isLeader}
+                            aria-pressed={isSelected}
+                          >
+                            {c}
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* dietary */}
+                <div className="space-y-3">
+                  <Label>Dietary Restrictions</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {preferenceOptions.dietary.map(d => {
+                      const isSelected = dietary.includes(d);
+                      return (
+                        <Badge
+                          asChild
+                          key={d}
+                          variant={isSelected ? "default" : "secondary"}
+                          className={`text-sm py-1.5 px-4 transition-colors ${isSelected ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!isLeader) return;
+                              setDietary(prev =>
+                                prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d],
+                              );
+                            }}
+                            disabled={!isLeader}
+                            aria-disabled={!isLeader}
+                            aria-pressed={isSelected}
+                          >
+                            {d}
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* foodTypes */}
+                <div className="space-y-3">
+                  <Label>Food Types</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {preferenceOptions.foodTypes.map(ft => (
+                      <Badge 
+                        key={ft}
+                        variant={foodTypes.includes(ft) ? "default" : "secondary"}
+                        className={`text-sm py-1.5 px-4 transition-colors ${foodTypes.includes(ft) ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
+                        onClick={() => {
+                          if (!isLeader) return;
+                          setFoodTypes(prev => prev.includes(ft) ? prev.filter(x => x !== ft) : [...prev, ft])
+                        }}
+                      >
+                        {ft}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                {/* sanitation */}
+                <div className="space-y-3">
+                  <Label>Minimum Sanitation Grade</Label>
+                  <Select disabled={!isLeader} value={minimumSanitationGrade} onValueChange={setMinimumSanitationGrade}>
+                    <SelectTrigger className="max-w-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {preferenceOptions.minimumSanitationGrades.map(sg => (
+                        <SelectItem key={sg} value={sg}>{sg}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {isLeader && (
+                <div className="flex justify-end pt-4 mt-auto">
+                  <Button disabled={savingConstraints} onClick={handleSaveConstraints}>
+                    {savingConstraints ? 'Saving...' : 'Save Constraints'}
+                  </Button>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Events History */}

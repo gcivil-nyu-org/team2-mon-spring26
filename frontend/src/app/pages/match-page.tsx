@@ -54,6 +54,12 @@ export function MatchPage() {
     loadResults();
     return () => { cancelled = true; clearTimeout(confettiTimer); };
   }, [event?.id, group?.id, fetchMatchResults]);
+    } else {
+      // No match found - show conflict resolution
+      setMatchedRestaurant(null);
+      setShowMatch(true);
+    }
+  }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!event || !group) {
     return (

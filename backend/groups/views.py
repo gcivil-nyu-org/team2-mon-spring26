@@ -8,10 +8,12 @@ from django.db import transaction, models
 from django.db.models import Count
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.utils import timezone
 
 from .models import Group, GroupMembership, SwipeEvent, Swipe
 from accounts.models import UserPreference
 from venues.models import Venue
+from chat.models import Chat, ChatMember as ChatRoomMember, Message
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -58,9 +60,26 @@ def api_list_users(request):
 def _group_to_json(group):
     """Serialize a Group instance and its memberships"""
     memberships = group.memberships.select_related("user").all()
+
+    constraints_data = None
+    if hasattr(group, "constraints"):
+        constraints = group.constraints
+        constraints_data = {
+            "dietary": list(constraints.dietary_tags.values_list("name", flat=True)),
+            "cuisines": list(constraints.cuisine_types.values_list("name", flat=True)),
+            "foodTypes": list(
+                constraints.food_type_tags.values_list("name", flat=True)
+            ),
+            "minimumSanitationGrade": constraints.minimum_sanitation_grade,
+        }
+
     return {
         "id": group.id,
         "name": group.name,
+        "chat_id": (
+            getattr(group, "chat", None).id if getattr(group, "chat", None) else None
+        ),
+        "constraints": constraints_data,
         "description": group.description,
         "group_type": group.group_type,
         "default_location": group.default_location,
@@ -121,6 +140,23 @@ def api_groups_list_create(request):
                 # Creator is automatically a leader
                 GroupMembership.objects.create(
                     user=request.user, group=group, role=GroupMembership.Role.LEADER
+                )
+
+                # Auto-provision chat
+                chat = Chat.objects.create(
+                    type=Chat.ChatType.GROUP,
+                    name=group.name,
+                    created_by=request.user,
+                    group=group,
+                )
+                ChatRoomMember.objects.create(
+                    chat=chat, user=request.user, role=ChatRoomMember.Role.ADMIN
+                )
+                username_display = request.user.first_name or request.user.username
+                Message.objects.create(
+                    chat=chat,
+                    message_type=Message.MessageType.SYSTEM,
+                    body=f"{username_display} created the group",
                 )
 
             return JsonResponse({"success": True, "group": _group_to_json(group)})
@@ -269,6 +305,22 @@ def api_invite_to_group(request, group_id):
             group=group, user=target_user, role=GroupMembership.Role.MEMBER
         )
 
+        if hasattr(group, "chat"):
+            ChatRoomMember.objects.update_or_create(
+                chat=group.chat,
+                user=target_user,
+                defaults={
+                    "role": ChatRoomMember.Role.MEMBER,
+                    "left_at": None,
+                },
+            )
+            username_display = target_user.first_name or target_user.username
+            Message.objects.create(
+                chat=group.chat,
+                message_type=Message.MessageType.SYSTEM,
+                body=f"{username_display} joined the group",
+            )
+
         return JsonResponse({"success": True, "group": _group_to_json(group)})
 
     except Group.DoesNotExist:
@@ -322,6 +374,19 @@ def api_remove_from_group(request, group_id, user_id):
             )
 
         target_membership.delete()
+
+        if hasattr(group, "chat"):
+            ChatRoomMember.objects.filter(chat=group.chat, user_id=user_id).update(
+                left_at=timezone.now()
+            )
+            user = User.objects.get(id=user_id)
+            username_display = user.first_name or user.username
+            Message.objects.create(
+                chat=group.chat,
+                message_type=Message.MessageType.SYSTEM,
+                body=f"{username_display} was removed from the group",
+            )
+
         return JsonResponse({"success": True, "group": _group_to_json(group)})
 
     except Group.DoesNotExist:
@@ -369,6 +434,17 @@ def api_make_leader(request, group_id, user_id):
         if target_membership.role != GroupMembership.Role.LEADER:
             target_membership.role = GroupMembership.Role.LEADER
             target_membership.save(update_fields=["role"])
+
+            # Sync ChatMember role
+            if hasattr(group, "chat"):
+                chat_member = ChatRoomMember.objects.filter(
+                    chat=group.chat,
+                    user_id=user_id,
+                    left_at__isnull=True,
+                ).first()
+                if chat_member and chat_member.role != ChatRoomMember.Role.ADMIN:
+                    chat_member.role = ChatRoomMember.Role.ADMIN
+                    chat_member.save(update_fields=["role"])
 
         return JsonResponse({"success": True, "group": _group_to_json(group)})
 
@@ -421,6 +497,17 @@ def api_leave_group(request, group_id):
                     )
 
             membership.delete()
+
+            if hasattr(group, "chat"):
+                ChatRoomMember.objects.filter(
+                    chat=group.chat, user=request.user
+                ).update(left_at=timezone.now())
+                username_display = request.user.first_name or request.user.username
+                Message.objects.create(
+                    chat=group.chat,
+                    message_type=Message.MessageType.SYSTEM,
+                    body=f"{username_display} left the group",
+                )
 
         return JsonResponse({"success": True, "message": "You have left the group"})
 
@@ -599,6 +686,10 @@ def api_swipe_event_venues(request, group_id, event_id):
     if request.method != "GET":
         return JsonResponse({"error": "Method not allowed"}, status=405)
 
+@csrf_exempt
+def api_update_group_constraints(request, group_id):
+    if request.method not in ("PATCH", "PUT"):
+        return JsonResponse({"error": "Method not allowed"}, status=405)
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
 
@@ -851,3 +942,72 @@ def api_swipe_event_results(request, group_id, event_id):
     except Exception as e:
         logger.error(f"Match results error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "An unexpected error occurred"}, status=500)
+        if not membership or membership.role != GroupMembership.Role.LEADER:
+            return JsonResponse(
+                {"error": "Only leaders can modify constraints"}, status=403
+            )
+
+        data = json.loads(request.body)
+
+        from .models import GroupConstraint
+
+        constraints, _ = GroupConstraint.objects.get_or_create(
+            group=group, defaults={"minimum_sanitation_grade": "A"}
+        )
+
+        from accounts.models import (
+            DietaryTag,
+            CuisineType,
+            FoodTypeTag,
+            SANITATION_GRADE_CHOICES,
+        )
+        from django.utils.text import slugify
+
+        if isinstance(data.get("dietary"), list):
+            tags = []
+            for name in data["dietary"]:
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                tag, _ = DietaryTag.objects.get_or_create(
+                    slug=slugify(name.strip()), defaults={"name": name.strip()}
+                )
+                tags.append(tag)
+            constraints.dietary_tags.set(tags)
+
+        if isinstance(data.get("cuisines"), list):
+            tags = []
+            for name in data["cuisines"]:
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                tag, _ = CuisineType.objects.get_or_create(
+                    slug=slugify(name.strip()), defaults={"name": name.strip()}
+                )
+                tags.append(tag)
+            constraints.cuisine_types.set(tags)
+
+        if isinstance(data.get("foodTypes"), list):
+            tags = []
+            for name in data["foodTypes"]:
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                tag, _ = FoodTypeTag.objects.get_or_create(
+                    slug=slugify(name.strip()), defaults={"name": name.strip()}
+                )
+                tags.append(tag)
+            constraints.food_type_tags.set(tags)
+
+        grade = data.get("minimumSanitationGrade")
+        valid_grades = {c[0] for c in SANITATION_GRADE_CHOICES}
+        if grade in valid_grades:
+            constraints.minimum_sanitation_grade = grade
+            constraints.save(update_fields=["minimum_sanitation_grade", "updated_at"])
+
+        return JsonResponse({"success": True, "group": _group_to_json(group)})
+
+    except Group.DoesNotExist:
+        return JsonResponse({"error": "Group not found"}, status=404)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    except Exception as e:
+        logger.error(f"Error updating constraints: {e}", exc_info=True)
+        return JsonResponse({"error": "Internal server error"}, status=500)

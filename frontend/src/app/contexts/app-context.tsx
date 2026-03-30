@@ -62,12 +62,20 @@ export interface GroupMember {
   isLeader: boolean;
 }
 
+export interface GroupConstraints {
+  dietary?: string[];
+  cuisines?: string[];
+  foodTypes?: string[];
+  minimumSanitationGrade?: string;
+}
+
 export interface Group {
   id: string;
   name: string;
   members: GroupMember[];
   createdBy: string;
   createdAt: string;
+  constraints?: GroupConstraints;
 }
 
 export interface SwipeEvent {
@@ -137,6 +145,7 @@ interface BackendGroup {
   members: BackendMember[];
   created_by: number | string;
   created_at: string;
+  constraints?: GroupConstraints;
 }
 
 interface BackendUser {
@@ -173,6 +182,7 @@ interface AppContextType {
   joinGroup: (groupId: string) => void;
   leaveGroup: (groupId: string) => Promise<void>;
   deleteGroup: (groupId: string) => Promise<void>;
+  updateGroupConstraints: (groupId: string, constraints: GroupConstraints) => Promise<void>;
   removeMember: (groupId: string, userId: string) => Promise<void>;
   makeLeader: (groupId: string, userId: string) => Promise<void>;
   inviteMember: (groupId: string, userEmail: string) => Promise<void>;
@@ -208,9 +218,10 @@ interface AppContextType {
     likes_count: number;
   }>;
   chatMessages: Record<string, ChatMessage[]>; // groupId or dmId -> messages
-  addChatMessage: (conversationId: string, message: ChatMessage) => void;
+  addChatMessage: (conversationId: string, message: ChatMessage) => Promise<void>;
+  deleteChatMessage: (conversationId: string, messageId: string) => Promise<void>;
   dmConversations: DMConversation[];
-  createDMConversation: (participantId: string) => DMConversation;
+  createDMConversation: (participantId: string) => Promise<DMConversation>;
   updateSwipeEventStatus: (
     eventId: string,
     status: SwipeEvent['status'],
@@ -653,11 +664,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })),
           createdBy: String(g.created_by),
           createdAt: g.created_at,
+          constraints: g.constraints,
         }));
         setGroups(mappedGroups);
       }
     } catch (err) {
       console.error('Failed to fetch user groups', err);
+    }
+  };
+
+  const fetchUserChats = async () => {
+    try {
+      const response = await fetch(apiUrl('/api/chat/'), {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const chats = data.chats;
+        
+        const newChatMessages: Record<string, ChatMessage[]> = {};
+        const dms: DMConversation[] = [];
+        
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        chats.forEach((chat: any) => {
+          newChatMessages[chat.id] = chat.messages || [];
+          if (chat.type === 'direct') {
+            dms.push({
+              id: chat.id,
+              participants: chat.participants,
+              participantNames: chat.participantNames,
+              lastMessageTime: chat.lastMessageTime ?? chat.created_at ?? ''
+            });
+          }
+        });
+        
+        setChatMessages(newChatMessages);
+        setDMConversations(dms);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user chats', err);
     }
   };
 
@@ -674,6 +719,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (data.authenticated && data.user) {
             setCurrentUser(normalizeApiUser(data.user));
             await fetchUserGroups();
+            await fetchUserChats();
           }
         }
       } catch (error) {
@@ -702,6 +748,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (response.ok && data.success) {
         setCurrentUser(normalizeApiUser(data.user));
         await fetchUserGroups();
+        await fetchUserChats();
       } else {
         throw new Error(data.error || 'Login failed');
       }
@@ -761,6 +808,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (response.ok && data.success) {
         setCurrentUser(normalizeApiUser(data.user));
         await fetchUserGroups();
+        await fetchUserChats();
       } else {
         let errorMessage = data.error || 'Registration failed';
         if (data.errors && typeof data.errors === 'object') {
@@ -946,6 +994,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })),
       createdBy: String(newGroupBackend.created_by),
       createdAt: newGroupBackend.created_at,
+      constraints: newGroupBackend.constraints,
     };
 
     setGroups((prev) => [...prev, newGroup]);
@@ -1146,6 +1195,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Remove member error:', error);
       throw error;
+    }
+  };
+
+  const updateGroupConstraints = async (groupId: string, constraints: GroupConstraints) => {
+    const csrftoken = getCookie('csrftoken') || '';
+    const body: Record<string, unknown> = {};
+    if (constraints.dietary !== undefined) body.dietary = constraints.dietary;
+    if (constraints.cuisines !== undefined) body.cuisines = constraints.cuisines;
+    if (constraints.foodTypes !== undefined) body.foodTypes = constraints.foodTypes;
+    if (constraints.minimumSanitationGrade !== undefined) {
+      body.minimumSanitationGrade = constraints.minimumSanitationGrade;
+    }
+    const response = await fetch(apiUrl(`/api/groups/${groupId}/constraints/`), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update constraints');
+    }
+    const data = await response.json();
+    const updatedBg = data.group as BackendGroup;
+    setGroups(prev => prev.map(g => g.id === String(updatedBg.id) ? { ...g, constraints: updatedBg.constraints } : g));
+    if (currentGroup?.id === String(updatedBg.id)) {
+      setCurrentGroup(prev => prev ? { ...prev, constraints: updatedBg.constraints } : null);
     }
   };
 
@@ -1352,36 +1431,120 @@ export function AppProvider({ children }: { children: ReactNode }) {
       [conversationId]: [...(prev[conversationId] || []), message],
     }));
   };
+  const addChatMessage = async (conversationId: string, message: ChatMessage) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ message: message.message, message_type: message.type }),
+      });
 
-  const createDMConversation = (participantId: string): DMConversation => {
+      if (!response.ok) {
+        let errorDetail: unknown = null;
+        try {
+          const contentType = response.headers.get('Content-Type') || '';
+          if (contentType.includes('application/json')) {
+            errorDetail = await response.json();
+          } else {
+            errorDetail = await response.text();
+          }
+        } catch {
+          // Ignore secondary errors while parsing error response
+        }
+
+        console.error('Failed to send message', {
+          status: response.status,
+          statusText: response.statusText,
+          detail: errorDetail,
+        });
+
+        const errorMessage =
+          typeof errorDetail === 'string'
+            ? errorDetail
+            : 'Failed to send message';
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setChatMessages((prev) => ({
+        ...prev,
+        [conversationId]: [...(prev[conversationId] || []), data.message],
+      }));
+
+      return data.message;
+    } catch (err) {
+      console.error('Failed to send message', err);
+      throw err;
+    }
+  };
+
+  const deleteChatMessage = async (conversationId: string, messageId: string) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/${messageId}/`), {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      if (response.ok) {
+        setChatMessages((prev) => {
+          const messages = prev[conversationId] || [];
+          return {
+            ...prev,
+            [conversationId]: messages.map(msg => 
+              msg.id === (messageId.startsWith('msg-') ? messageId : `msg-${messageId}`)
+                ? { ...msg, message: '[This message has been deleted]' }
+                : msg
+            ),
+          };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to delete message', err);
+    }
+  };
+
+  const createDMConversation = async (participantId: string): Promise<DMConversation> => {
     if (!currentUser) throw new Error('Must be logged in');
 
-    const participant = mockUsers.find((u) => u.id === participantId);
-    if (!participant) throw new Error('Participant not found');
-
-    const newConversation: DMConversation = {
-      id: `dm-${Date.now()}`,
-      participants: [currentUser.id, participantId],
-      participantNames: [currentUser.name, participant.name],
-      lastMessageTime: new Date().toISOString(),
-    };
-
-    setDMConversations([...dmConversations, newConversation]);
-
-    // Initialize chat for this DM conversation
-    setChatMessages((prev) => ({
-      ...prev,
-      [newConversation.id]: [
-        {
-          id: `msg-${Date.now()}`,
-          type: 'system',
-          message: `${currentUser.name} started a conversation with ${participant.name}`,
-          timestamp: new Date().toISOString(),
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/chat/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
         },
-      ],
-    }));
+        body: JSON.stringify({ participantId }),
+      });
 
-    return newConversation;
+      if (response.ok) {
+        const data = await response.json();
+        const chat = data.chat;
+        const newDm: DMConversation = {
+          id: chat.id,
+          participants: chat.participants,
+          participantNames: chat.participantNames,
+          // Normalize lastMessageTime: backend may return null when there are no messages
+          lastMessageTime: chat.lastMessageTime || chat.created_at,
+        };
+        setDMConversations(prev => [...prev.filter(dm => dm.id !== chat.id), newDm]);
+        setChatMessages(prev => ({ ...prev, [chat.id]: chat.messages || [] }));
+        return newDm;
+      }
+    } catch (err) {
+      console.error('Failed to create DM', err);
+    }
+    throw new Error('Failed to create DM');
   };
 
   const updateSwipeEventStatus = (
@@ -1447,6 +1610,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         joinGroup,
         leaveGroup,
         deleteGroup,
+        updateGroupConstraints,
         removeMember,
         makeLeader,
         inviteMember,
@@ -1466,6 +1630,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fetchMatchResults,
         chatMessages,
         addChatMessage,
+        deleteChatMessage,
         dmConversations,
         createDMConversation,
         updateSwipeEventStatus,
