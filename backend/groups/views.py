@@ -618,6 +618,8 @@ def _event_to_json(event):
         "status": event.status,
         "created_by": event.created_by_id,
         "matched_venue_id": event.matched_venue_id,
+        "borough": event.borough,
+        "neighborhood": event.neighborhood,
         "created_at": event.created_at.isoformat(),
     }
 
@@ -669,7 +671,7 @@ def _venue_to_swipe_json(venue):
         "name": venue.name,
         "cuisine": [venue.cuisine_type.name] if venue.cuisine_type else [],
         "sanitationGrade": venue.sanitation_grade or "P",
-        "images": photos if photos else ["/placeholder-restaurant.jpg"],
+        "images": photos if photos else [],
         "badges": badges,
         "address": (
             f"{venue.street_address}, {venue.borough}".strip(", ")
@@ -741,6 +743,8 @@ def api_swipe_events(request, group_id):
                 group=group,
                 name=name,
                 created_by=request.user,
+                borough=(data.get("borough") or "").strip(),
+                neighborhood=(data.get("neighborhood") or "").strip(),
             )
             return JsonResponse(
                 {"success": True, "event": _event_to_json(event)}, status=201
@@ -787,6 +791,12 @@ def api_swipe_event_venues(request, group_id, event_id):
         )
 
         venues_qs = Venue.objects.filter(is_active=True)
+
+        # --- Location-based filtering ---
+        if event.borough:
+            venues_qs = venues_qs.filter(borough__iexact=event.borough)
+        if event.neighborhood:
+            venues_qs = venues_qs.filter(neighborhood__iexact=event.neighborhood)
 
         # --- Preference-based filtering ---
         preferences = UserPreference.objects.filter(

@@ -30,13 +30,13 @@ import {
 
 // NYU Locations organized by area
 const nyuLocations = [
-  { value: "washington-square", label: "Washington Square Campus", area: "Greenwich Village" },
-  { value: "kimmel-center", label: "Kimmel Center", area: "Greenwich Village" },
-  { value: "bobst-library", label: "Bobst Library", area: "Greenwich Village" },
-  { value: "stern-school", label: "Stern School of Business", area: "Greenwich Village" },
-  { value: "tisch-school", label: "Tisch School of the Arts", area: "Greenwich Village" },
-  { value: "tandon-school", label: "Tandon School of Engineering", area: "Downtown Brooklyn" },
-  { value: "brooklyn-campus", label: "Brooklyn Campus", area: "Downtown Brooklyn" },
+  { value: "washington-square", label: "Washington Square Campus", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "kimmel-center", label: "Kimmel Center", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "bobst-library", label: "Bobst Library", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "stern-school", label: "Stern School of Business", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "tisch-school", label: "Tisch School of the Arts", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "tandon-school", label: "Tandon School of Engineering", area: "Downtown Brooklyn", borough: "Brooklyn" },
+  { value: "brooklyn-campus", label: "Brooklyn Campus", area: "Downtown Brooklyn", borough: "Brooklyn" },
 ];
 
 // Manhattan neighborhoods
@@ -115,23 +115,35 @@ export function PlanEventPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Build location string
+    // Build location string and determine borough/neighborhood for filtering
     let locationString = "";
+    let eventBorough = "";
+    let eventNeighborhood = "";
     if (locationType === "nyu") {
       const selectedNYU = nyuLocations.find(l => l.value === nyuLocation);
       locationString = selectedNYU?.label || "";
+      eventBorough = selectedNYU?.borough || "Manhattan";
+      eventNeighborhood = selectedNYU?.area || "";
     } else {
-      const selectedNeighborhood = 
+      const boroughMap: Record<string, string> = {
+        manhattan: "Manhattan",
+        brooklyn: "Brooklyn",
+        queens: "Queens",
+        bronx: "Bronx",
+      };
+      const selectedNeighborhood =
         borough === "manhattan" ? manhattanAreas.find(a => a.value === neighborhood) :
         borough === "brooklyn" ? brooklynAreas.find(a => a.value === neighborhood) :
         borough === "queens" ? queensAreas.find(a => a.value === neighborhood) :
         bronxAreas.find(a => a.value === neighborhood);
       locationString = selectedNeighborhood?.label || "";
+      eventBorough = boroughMap[borough] || "Manhattan";
+      eventNeighborhood = selectedNeighborhood?.label || "";
     }
 
     const finalName = eventName || `Dining Plan - ${locationString}`;
     try {
-      const newEvent = await createSwipeEvent(group.id, finalName);
+      const newEvent = await createSwipeEvent(group.id, finalName, eventBorough, eventNeighborhood);
       setCurrentGroup(group);
       setCurrentSwipeEvent(newEvent);
       navigate(`/swipe/${newEvent.id}`);

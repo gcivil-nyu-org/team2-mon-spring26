@@ -9,6 +9,7 @@ import { MapPin, AlertTriangle, ExternalLink, PartyPopper, Users, ArrowLeft, Sta
 import { motion, AnimatePresence } from 'motion/react';
 import Confetti from 'react-confetti';
 import { Separator } from '@/app/components/ui/separator';
+import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 
 export function MatchPage() {
   const { eventId } = useParams();
@@ -151,8 +152,8 @@ export function MatchPage() {
                 <Card className="overflow-hidden shadow-xl">
                   {/* Hero Image */}
                   <div className="relative h-64">
-                    <img 
-                      src={matchedRestaurant.images[0]} 
+                    <ImageWithFallback
+                      src={matchedRestaurant.images[0]}
                       alt={matchedRestaurant.name}
                       className="w-full h-full object-cover"
                     />

@@ -85,6 +85,8 @@ export interface SwipeEvent {
   status: 'pending' | 'active' | 'completed';
   createdAt: string;
   matchedRestaurantId?: string;
+  borough?: string;
+  neighborhood?: string;
 }
 
 export interface Swipe {
@@ -192,7 +194,7 @@ interface AppContextType {
   currentGroup: Group | null;
   setCurrentGroup: (group: Group | null) => void;
   swipeEvents: SwipeEvent[];
-  createSwipeEvent: (groupId: string, name: string) => Promise<SwipeEvent>;
+  createSwipeEvent: (groupId: string, name: string, borough?: string, neighborhood?: string) => Promise<SwipeEvent>;
   fetchSwipeEvents: (groupId: string) => Promise<void>;
   currentSwipeEvent: SwipeEvent | null;
   setCurrentSwipeEvent: (event: SwipeEvent | null) => void;
@@ -1297,7 +1299,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const createSwipeEvent = async (
     groupId: string,
-    name: string
+    name: string,
+    borough?: string,
+    neighborhood?: string
   ): Promise<SwipeEvent> => {
     const csrftoken = getCookie('csrftoken') || '';
     const response = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
@@ -1307,7 +1311,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         'Content-Type': 'application/json',
         'X-CSRFToken': csrftoken,
       },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, borough, neighborhood }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to create event');
@@ -1321,6 +1325,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       matchedRestaurantId: data.event.matched_venue_id
         ? String(data.event.matched_venue_id)
         : undefined,
+      borough: data.event.borough || '',
+      neighborhood: data.event.neighborhood || '',
     };
 
     setSwipeEvents((prev) => [...prev, newEvent]);
