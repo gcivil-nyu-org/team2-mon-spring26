@@ -174,9 +174,7 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
               {/* Image Section */}
               <div className="relative h-96">
                 <ImageWithFallback
-                  src={restaurant.images && restaurant.images.length > 0
-                    ? restaurant.images[currentImageIndex]
-                    : '/placeholder.png'}
+                  src={restaurant.images[currentImageIndex]}
                   alt={restaurant.name}
                   className="w-full h-full object-cover"
                 />
