@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import type { Restaurant } from '@/app/data/mock-restaurants';
 
 const DEFAULT_PREFERENCES = {
   cuisines: [] as string[],
@@ -191,11 +192,31 @@ interface AppContextType {
   currentGroup: Group | null;
   setCurrentGroup: (group: Group | null) => void;
   swipeEvents: SwipeEvent[];
-  createSwipeEvent: (groupId: string, name: string) => SwipeEvent;
+  createSwipeEvent: (groupId: string, name: string) => Promise<SwipeEvent>;
+  fetchSwipeEvents: (groupId: string) => Promise<void>;
   currentSwipeEvent: SwipeEvent | null;
   setCurrentSwipeEvent: (event: SwipeEvent | null) => void;
   swipes: Record<string, Swipe[]>; // eventId -> swipes
-  addSwipe: (eventId: string, swipe: Swipe) => void;
+  addSwipe: (
+    eventId: string,
+    groupId: string,
+    venueId: string,
+    direction: 'left' | 'right'
+  ) => Promise<void>;
+  fetchSwipeVenues: (
+    groupId: string,
+    eventId: string
+  ) => Promise<Restaurant[]>;
+  fetchMatchResults: (
+    groupId: string,
+    eventId: string
+  ) => Promise<{
+    match_found: boolean;
+    matched_venue: Restaurant | null;
+    total_participants: number;
+    threshold: number;
+    likes_count: number;
+  }>;
   chatMessages: Record<string, ChatMessage[]>; // groupId or dmId -> messages
   addChatMessage: (conversationId: string, message: ChatMessage) => Promise<void>;
   deleteChatMessage: (conversationId: string, messageId: string) => Promise<void>;
@@ -1274,24 +1295,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return availableUsers.length > 0 ? availableUsers : mockUsers;
   };
 
-  const createSwipeEvent = (groupId: string, name: string): SwipeEvent => {
+  const createSwipeEvent = async (
+    groupId: string,
+    name: string
+  ): Promise<SwipeEvent> => {
+    const csrftoken = getCookie('csrftoken') || '';
+    const response = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken,
+      },
+      body: JSON.stringify({ name }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to create event');
+
     const newEvent: SwipeEvent = {
-      id: `event-${Date.now()}`,
-      groupId,
-      name,
-      status: 'active',
-      createdAt: new Date().toISOString(),
+      id: String(data.event.id),
+      groupId: String(data.event.group_id),
+      name: data.event.name,
+      status: data.event.status,
+      createdAt: data.event.created_at,
+      matchedRestaurantId: data.event.matched_venue_id
+        ? String(data.event.matched_venue_id)
+        : undefined,
     };
 
-    setSwipeEvents([...swipeEvents, newEvent]);
+    setSwipeEvents((prev) => [...prev, newEvent]);
 
-    // Initialize swipes array for this event
-    setSwipes((prev) => ({
-      ...prev,
-      [newEvent.id]: [],
-    }));
-
-    // Add system message
     addChatMessage(groupId, {
       id: `msg-${Date.now()}`,
       type: 'system',
@@ -1302,12 +1335,95 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return newEvent;
   };
 
-  const addSwipe = (eventId: string, swipe: Swipe) => {
-    setSwipes((prev) => ({
-      ...prev,
-      [eventId]: [...(prev[eventId] || []), swipe],
-    }));
+  const fetchSwipeEvents = async (groupId: string) => {
+    try {
+      const response = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
+        credentials: 'include',
+      });
+      const data = await response.json();
+      if (data.success) {
+        const events: SwipeEvent[] = data.events.map(
+          (e: {
+            id: number;
+            group_id: number;
+            name: string;
+            status: string;
+            created_at: string;
+            matched_venue_id: number | null;
+          }) => ({
+            id: String(e.id),
+            groupId: String(e.group_id),
+            name: e.name,
+            status: e.status as SwipeEvent['status'],
+            createdAt: e.created_at,
+            matchedRestaurantId: e.matched_venue_id
+              ? String(e.matched_venue_id)
+              : undefined,
+          })
+        );
+        setSwipeEvents(events);
+      }
+    } catch (error) {
+      console.error('Failed to fetch swipe events:', error);
+    }
   };
+
+  const addSwipe = async (
+    eventId: string,
+    groupId: string,
+    venueId: string,
+    direction: 'left' | 'right'
+  ) => {
+    const csrftoken = getCookie('csrftoken') || '';
+    const response = await fetch(
+      apiUrl(`/api/groups/${groupId}/events/${eventId}/swipes/`),
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ venue_id: Number(venueId), direction }),
+      }
+    );
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to submit swipe');
+    }
+  };
+
+  const fetchSwipeVenues = useCallback(async (
+    groupId: string,
+    eventId: string
+  ): Promise<Restaurant[]> => {
+    const response = await fetch(
+      apiUrl(`/api/groups/${groupId}/events/${eventId}/venues/`),
+      { credentials: 'include' }
+    );
+    const data = await response.json();
+    if (!data.success) throw new Error('Failed to fetch venues');
+    return data.venues as Restaurant[];
+  }, []);
+
+  const fetchMatchResults = useCallback(async (
+    groupId: string,
+    eventId: string
+  ) => {
+    const response = await fetch(
+      apiUrl(`/api/groups/${groupId}/events/${eventId}/results/`),
+      { credentials: 'include' }
+    );
+    const data = await response.json();
+    if (!data.success) throw new Error('Failed to fetch results');
+    return {
+      match_found: data.match_found as boolean,
+      matched_venue: data.matched_venue as Restaurant | null,
+      total_participants: data.total_participants as number,
+      threshold: data.threshold as number,
+      likes_count: data.likes_count as number,
+    };
+  }, []);
 
   const addChatMessage = async (conversationId: string, message: ChatMessage) => {
     try {
@@ -1499,10 +1615,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setCurrentGroup,
         swipeEvents,
         createSwipeEvent,
+        fetchSwipeEvents,
         currentSwipeEvent,
         setCurrentSwipeEvent,
         swipes,
         addSwipe,
+        fetchSwipeVenues,
+        fetchMatchResults,
         chatMessages,
         addChatMessage,
         deleteChatMessage,

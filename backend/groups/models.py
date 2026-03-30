@@ -65,6 +65,74 @@ class GroupMembership(models.Model):
         return f"{self.user.email} in {self.group.name} ({self.role})"
 
 
+class SwipeEvent(models.Model):
+    """A swipe session where group members vote on venues."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACTIVE = "active", "Active"
+        COMPLETED = "completed", "Completed"
+
+    group = models.ForeignKey(
+        Group, on_delete=models.CASCADE, related_name="swipe_events"
+    )
+    name = models.CharField(max_length=150)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.ACTIVE
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_swipe_events",
+    )
+    matched_venue = models.ForeignKey(
+        "venues.Venue",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="matched_events",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.group.name})"
+
+
+class Swipe(models.Model):
+    """An individual user's swipe on a venue within a swipe event."""
+
+    class Direction(models.TextChoices):
+        LEFT = "left", "Left"
+        RIGHT = "right", "Right"
+
+    event = models.ForeignKey(
+        SwipeEvent, on_delete=models.CASCADE, related_name="swipes"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="swipes",
+    )
+    venue = models.ForeignKey(
+        "venues.Venue", on_delete=models.CASCADE, related_name="swipes"
+    )
+    direction = models.CharField(max_length=5, choices=Direction.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event", "user", "venue"],
+                name="unique_swipe_per_user_venue_event",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} swiped {self.direction} on {self.venue.name}"
+
+
 class GroupConstraint(models.Model):
     """
     Stores group-level matchmaking parameters and constraints set by group leaders.

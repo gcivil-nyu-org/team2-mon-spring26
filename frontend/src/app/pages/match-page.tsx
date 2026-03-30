@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useApp } from '@/app/contexts/app-context';
-import { mockRestaurants, type Restaurant } from '@/app/data/mock-restaurants';
+import type { Restaurant } from '@/app/data/mock-restaurants';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
@@ -13,72 +13,47 @@ import { Separator } from '@/app/components/ui/separator';
 export function MatchPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const { currentGroup, swipes, groups, swipeEvents } = useApp();
-  
+  const { currentGroup, groups, swipeEvents, fetchMatchResults } = useApp();
+
   const [matchedRestaurant, setMatchedRestaurant] = useState<Restaurant | null>(null);
   const [showMatch, setShowMatch] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [matchStats, setMatchStats] = useState<{ totalLikes: number; membersWhoLiked: string[] }>({ totalLikes: 0, membersWhoLiked: [] });
+  const [matchStats, setMatchStats] = useState<{ totalLikes: number }>({ totalLikes: 0 });
 
   // Find event and group
   const event = swipeEvents.find(e => e.id === eventId);
   const group = currentGroup || (event ? groups.find(g => g.id === event.groupId) : null);
 
   useEffect(() => {
-    if (!event || !swipes[event.id]) return;
+    if (!event || !group) return;
 
-    // Simple matching algorithm: find first restaurant that everyone swiped right on
-    const eventSwipes = swipes[event.id];
-    
-    // For demo purposes, if current user finished, find matches
-    const rightSwipes = eventSwipes.filter(s => s.direction === 'right');
-    
-    // Count right swipes per restaurant
-    const restaurantLikes: Record<string, { count: number; userNames: string[] }> = {};
-    rightSwipes.forEach(swipe => {
-      if (!restaurantLikes[swipe.restaurantId]) {
-        restaurantLikes[swipe.restaurantId] = { count: 0, userNames: [] };
-      }
-      restaurantLikes[swipe.restaurantId].count += 1;
-      
-      // Find member name
-      const member = group?.members.find(m => m.userId === swipe.userId);
-      if (member) {
-        restaurantLikes[swipe.restaurantId].userNames.push(member.userName);
-      }
-    });
+    let cancelled = false;
+    let confettiTimer: ReturnType<typeof setTimeout>;
+    const loadResults = async () => {
+      try {
+        const results = await fetchMatchResults(group.id, event.id);
+        if (cancelled) return;
 
-    // Find restaurant with most likes (simple algorithm for demo)
-    let bestMatch: string | null = null;
-    let maxLikes = 0;
-    let bestMatchUserNames: string[] = [];
-    
-    Object.entries(restaurantLikes).forEach(([restaurantId, data]) => {
-      if (data.count > maxLikes) {
-        maxLikes = data.count;
-        bestMatch = restaurantId;
-        bestMatchUserNames = data.userNames;
+        if (results.match_found && results.matched_venue) {
+          setMatchedRestaurant(results.matched_venue);
+          setMatchStats({ totalLikes: results.likes_count });
+          setShowMatch(true);
+          setShowConfetti(true);
+          confettiTimer = setTimeout(() => setShowConfetti(false), 5000);
+        } else {
+          setMatchedRestaurant(null);
+          setShowMatch(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setMatchedRestaurant(null);
+          setShowMatch(true);
+        }
       }
-    });
-
-    if (bestMatch) {
-      const restaurant = mockRestaurants.find(r => r.id === bestMatch);
-      if (restaurant) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setMatchedRestaurant(restaurant);
-        setMatchStats({ totalLikes: maxLikes, membersWhoLiked: bestMatchUserNames });
-        setShowMatch(true);
-        setShowConfetti(true);
-        
-        // Stop confetti after 5 seconds
-        setTimeout(() => setShowConfetti(false), 5000);
-      }
-    } else {
-      // No match found - show conflict resolution
-      setMatchedRestaurant(null);
-      setShowMatch(true);
-    }
-  }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps
+    };
+    loadResults();
+    return () => { cancelled = true; clearTimeout(confettiTimer); };
+  }, [event?.id, group?.id, fetchMatchResults]);
 
   if (!event || !group) {
     return (
@@ -108,6 +83,7 @@ export function MatchPage() {
     A: 'bg-green-500',
     B: 'bg-yellow-500',
     C: 'bg-orange-500',
+    N: 'bg-gray-400',
     P: 'bg-gray-500',
     Z: 'bg-red-500'
   };
@@ -162,7 +138,7 @@ export function MatchPage() {
                 </div>
                 <h1 className="text-4xl mb-2">It's a Match!</h1>
                 <p className="text-lg text-muted-foreground">
-                  {matchStats.membersWhoLiked.length} {matchStats.membersWhoLiked.length === 1 ? 'person' : 'people'} loved this restaurant
+                  {matchStats.totalLikes} {matchStats.totalLikes === 1 ? 'person' : 'people'} loved this restaurant
                 </p>
               </motion.div>
 

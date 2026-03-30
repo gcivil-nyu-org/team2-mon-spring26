@@ -115,12 +115,16 @@ export function GroupDetailPage() {
     );
   }
 
-  const handleCreateEvent = () => {
-    const eventName = `Dining Session ${new Date().toLocaleDateString()}`;
-    const newEvent = createSwipeEvent(group.id, eventName);
-    setCurrentGroup(group);
-    setCurrentSwipeEvent(newEvent);
-    navigate(`/swipe/${newEvent.id}`);
+  const handleCreateEvent = async () => {
+    try {
+      const eventName = `Dining Session ${new Date().toLocaleDateString()}`;
+      const newEvent = await createSwipeEvent(group.id, eventName);
+      setCurrentGroup(group);
+      setCurrentSwipeEvent(newEvent);
+      navigate(`/swipe/${newEvent.id}`);
+    } catch (error) {
+      console.error('Failed to create event:', error);
+    }
   };
 
   // New handler for the reservation planning page

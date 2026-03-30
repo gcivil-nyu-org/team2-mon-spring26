@@ -2,7 +2,7 @@ export interface Restaurant {
   id: string;
   name: string;
   cuisine: string[];
-  sanitationGrade: 'A' | 'B' | 'C' | 'P' | 'Z';
+  sanitationGrade: 'A' | 'B' | 'C' | 'N' | 'P' | 'Z';
   images: string[];
   badges: string[];
   address: string;
@@ -20,7 +20,7 @@ export interface Restaurant {
   rating: number; // 1-5 stars
   reviewCount: number;
   healthInspection?: {
-    grade: 'A' | 'B' | 'C' | 'P' | 'Z';
+    grade: 'A' | 'B' | 'C' | 'N' | 'P' | 'Z';
     score: number; // 0-100, lower is better
     inspectionDate: string;
     violations: Array<{

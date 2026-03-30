@@ -30,4 +30,25 @@ urlpatterns = [
         name="api_update_group_constraints",
     ),
     path("<int:group_id>/leave/", views.api_leave_group, name="api_leave_group"),
+    # Swipe Events
+    path(
+        "<int:group_id>/events/",
+        views.api_swipe_events,
+        name="api_swipe_events",
+    ),
+    path(
+        "<int:group_id>/events/<int:event_id>/venues/",
+        views.api_swipe_event_venues,
+        name="api_swipe_event_venues",
+    ),
+    path(
+        "<int:group_id>/events/<int:event_id>/swipes/",
+        views.api_submit_swipe,
+        name="api_submit_swipe",
+    ),
+    path(
+        "<int:group_id>/events/<int:event_id>/results/",
+        views.api_swipe_event_results,
+        name="api_swipe_event_results",
+    ),
 ]
