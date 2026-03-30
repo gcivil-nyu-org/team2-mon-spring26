@@ -153,7 +153,7 @@ export function MatchPage() {
                   {/* Hero Image */}
                   <div className="relative h-64">
                     <ImageWithFallback
-                      src={matchedRestaurant.images[0]}
+                      src={matchedRestaurant.images?.[0] ?? ''}
                       alt={matchedRestaurant.name}
                       className="w-full h-full object-cover"
                     />
