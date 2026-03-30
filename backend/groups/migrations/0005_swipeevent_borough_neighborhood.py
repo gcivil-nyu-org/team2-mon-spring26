@@ -11,11 +11,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="swipeevent",
             name="borough",
-            field=models.CharField(blank=True, max_length=50),
+            field=models.CharField(blank=True, max_length=50, default=""),
         ),
         migrations.AddField(
             model_name="swipeevent",
             name="neighborhood",
-            field=models.CharField(blank=True, max_length=100),
+            field=models.CharField(blank=True, max_length=100, default=""),
         ),
     ]
