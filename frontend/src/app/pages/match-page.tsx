@@ -152,11 +152,18 @@ export function MatchPage() {
                 <Card className="overflow-hidden shadow-xl">
                   {/* Hero Image */}
                   <div className="relative h-64">
-                    <ImageWithFallback
-                      src={matchedRestaurant.images[0]}
-                      alt={matchedRestaurant.name}
-                      className="w-full h-full object-cover"
-                    />
+                    {matchedRestaurant.images && matchedRestaurant.images.length > 0 ? (
+                      <ImageWithFallback
+                        src={matchedRestaurant.images[0]}
+                        alt={matchedRestaurant.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="w-full h-full bg-muted"
+                        aria-hidden="true"
+                      />
+                    )}
                     
                     {/* Gradient Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
