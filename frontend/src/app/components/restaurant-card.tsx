@@ -173,11 +173,20 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
 
               {/* Image Section */}
               <div className="relative h-96">
-                <ImageWithFallback
-                  src={restaurant.images?.[currentImageIndex] ?? ''}
-                  alt={restaurant.name}
-                  className="w-full h-full object-cover"
-                />
+                {restaurant.images && restaurant.images.length > 0 ? (
+                  <ImageWithFallback
+                    src={restaurant.images[currentImageIndex]}
+                    alt={restaurant.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                    <div className="text-gray-400 text-center">
+                      <MapPin className="w-12 h-12 mx-auto mb-2" />
+                      <span className="text-sm">No photo available</span>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Image Indicators */}
                 <div className="absolute top-4 left-0 right-0 flex justify-center gap-1 px-4">

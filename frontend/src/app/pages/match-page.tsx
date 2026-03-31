@@ -152,11 +152,20 @@ export function MatchPage() {
                 <Card className="overflow-hidden shadow-xl">
                   {/* Hero Image */}
                   <div className="relative h-64">
-                    <ImageWithFallback
-                      src={matchedRestaurant.images?.[0] ?? ''}
-                      alt={matchedRestaurant.name}
-                      className="w-full h-full object-cover"
-                    />
+                    {matchedRestaurant.images && matchedRestaurant.images.length > 0 ? (
+                      <ImageWithFallback
+                        src={matchedRestaurant.images[0]}
+                        alt={matchedRestaurant.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                        <div className="text-gray-400 text-center">
+                          <MapPin className="w-12 h-12 mx-auto mb-2" />
+                          <span className="text-sm">No photo available</span>
+                        </div>
+                      </div>
+                    )}
                     
                     {/* Gradient Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
