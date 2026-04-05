@@ -1,5 +1,6 @@
 /**
  * Login page tests.
+ * Cache invalidation comment
  *
  * Run: npm run test:run (from frontend/)
  *
@@ -44,9 +45,9 @@ describe('LoginPage', () => {
     });
   });
 
-  it('renders login form with title and main actions', () => {
+  it('renders login form with title and main actions', async () => {
     render(<LoginPage />);
-    expect(screen.getByRole('heading', { name: /meal swipe/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /meal swipe/i })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /email/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
@@ -74,35 +75,36 @@ describe('LoginPage', () => {
 
     const user = userEvent.setup();
     render(<LoginPage />);
-    const email = screen.getByRole('textbox', { name: /email/i });
+    const email = await screen.findByRole('textbox', { name: /email/i });
     const password = screen.getByLabelText(/password/i);
     await user.clear(email);
     await user.type(email, 'wrong@nyu.edu');
     await user.type(password, 'wrongpass');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
-    expect(await screen.findByText(/invalid credentials|login failed/i)).toBeInTheDocument();
+    expect(await screen.findByText(/invalid email or password/i)).toBeInTheDocument();
   });
 
   it('opens forgot password dialog when Forgot Password is clicked', async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
-    await user.click(screen.getByRole('button', { name: /forgot password/i }));
+    await user.click(await screen.findByRole('button', { name: /forgot password/i }));
 
-    expect(screen.getByRole('dialog', { name: /forgot password/i })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/your\.email@nyu\.edu/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /send reset link/i })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: /forgot password/i });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByPlaceholderText(/your\.email@nyu\.edu/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /send reset link/i })).toBeInTheDocument();
   });
 
   it('shows validation message when reset is submitted without email', async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
-    await user.click(screen.getByRole('button', { name: /forgot password/i }));
+    await user.click(await screen.findByRole('button', { name: /forgot password/i }));
 
     const dialog = screen.getByRole('dialog', { name: /forgot password/i });
     await user.click(within(dialog).getByRole('button', { name: /send reset link/i }));
 
-    expect(await within(dialog).findByText(/enter your email|email is required/i)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/Please enter your email address/i)).toBeInTheDocument();
   });
 
   it('shows success message after password reset request', async () => {
@@ -129,7 +131,7 @@ describe('LoginPage', () => {
 
     const user = userEvent.setup();
     render(<LoginPage />);
-    await user.click(screen.getByRole('button', { name: /forgot password/i }));
+    await user.click(await screen.findByRole('button', { name: /forgot password/i }));
 
     const dialog = screen.getByRole('dialog', { name: /forgot password/i });
     await user.type(within(dialog).getByPlaceholderText(/your\.email@nyu\.edu/i), 'user@nyu.edu');

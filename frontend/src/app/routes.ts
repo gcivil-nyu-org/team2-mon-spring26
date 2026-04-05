@@ -15,6 +15,7 @@ import { EditRestaurantPage } from '@/app/pages/edit-restaurant-page';
 import { VenueLoginPage } from '@/app/pages/venue-login-page';
 import { VenueRegisterPage } from '@/app/pages/venue-register-page';
 import { ResetPasswordPage } from '@/app/pages/reset-password-page';
+import { ProtectedRoute } from '@/app/components/protected-route';
 
 export const router = createBrowserRouter([
   {
@@ -32,34 +33,6 @@ export const router = createBrowserRouter([
       {
         path: 'reset-password/:uid/:token',
         Component: ResetPasswordPage,
-      },
-      {
-        path: 'home',
-        Component: HomePage,
-      },
-      {
-        path: 'create-group',
-        Component: CreateGroupPage,
-      },
-      {
-        path: 'preferences',
-        Component: PreferencesPage,
-      },
-      {
-        path: 'group/:groupId',
-        Component: GroupDetailPage,
-      },
-      {
-        path: 'group/:groupId/plan',
-        Component: PlanEventPage,
-      },
-      {
-        path: 'swipe/:eventId',
-        Component: SwipePage,
-      },
-      {
-        path: 'match/:eventId',
-        Component: MatchPage,
       },
       {
         path: 'venue/login',
@@ -80,6 +53,39 @@ export const router = createBrowserRouter([
       {
         path: 'venue/edit-restaurant/:restaurantId',
         Component: EditRestaurantPage,
+      },
+      {
+        Component: ProtectedRoute,
+        children: [
+          {
+            path: 'home',
+            Component: HomePage,
+          },
+          {
+            path: 'create-group',
+            Component: CreateGroupPage,
+          },
+          {
+            path: 'preferences',
+            Component: PreferencesPage,
+          },
+          {
+            path: 'group/:groupId',
+            Component: GroupDetailPage,
+          },
+          {
+            path: 'group/:groupId/plan',
+            Component: PlanEventPage,
+          },
+          {
+            path: 'swipe/:eventId',
+            Component: SwipePage,
+          },
+          {
+            path: 'match/:eventId',
+            Component: MatchPage,
+          },
+        ],
       },
     ],
   },

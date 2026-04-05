@@ -19,6 +19,7 @@ export interface User {
     foodTypes: string[];
     minimumSanitationGrade?: string;
   };
+  is_invited?: boolean;
 }
 
 /** Normalize API user payload to User (fill missing/partial preferences). */
@@ -33,6 +34,7 @@ export function normalizeApiUser(apiUser: {
     foodTypes?: string[];
     minimum_sanitation_grade?: string;
   };
+  is_invited?: boolean;
 }): User {
   const prefs = apiUser.preferences ?? {};
   const grade = prefs.minimum_sanitation_grade ?? 'A';
@@ -52,6 +54,7 @@ export function normalizeApiUser(apiUser: {
         : DEFAULT_PREFERENCES.foodTypes,
       minimumSanitationGrade: grade,
     },
+    is_invited: apiUser.is_invited,
   };
 }
 
@@ -67,6 +70,7 @@ export interface GroupConstraints {
   cuisines?: string[];
   foodTypes?: string[];
   minimumSanitationGrade?: string;
+  priceRange?: string;
 }
 
 export interface Group {
@@ -111,15 +115,23 @@ export interface DMConversation {
   lastMessageTime: string;
 }
 
-export interface Notification {
-  id: string;
-  type: 'group_invite' | 'match_found' | 'swipe_reminder';
-  title: string;
-  message: string;
-  groupId?: string;
-  eventId?: string;
-  read: boolean;
-  timestamp: string;
+export interface Invitation {
+  id: string | number;
+  group_id: string | number;
+  group_name: string;
+  inviter_name: string;
+  created_at: string;
+}
+
+export interface SwipeNotification {
+  id: string | number;
+  event_id: string | number;
+  event_name: string;
+  group_id: string | number;
+  group_name: string;
+  creator_name: string;
+  created_at: string;
+  is_read: boolean;
 }
 
 interface RegisterData {
@@ -189,13 +201,13 @@ interface AppContextType {
   makeLeader: (groupId: string, userId: string) => Promise<void>;
   inviteMember: (groupId: string, userEmail: string) => Promise<void>;
   getAllUsers: () => User[];
-  fetchAvailableUsers: (query?: string) => Promise<void>;
+  fetchAvailableUsers: (query?: string, groupId?: string) => Promise<void>;
   availableUsers: User[];
   currentGroup: Group | null;
   setCurrentGroup: (group: Group | null) => void;
   swipeEvents: SwipeEvent[];
   createSwipeEvent: (groupId: string, name: string, borough?: string, neighborhood?: string) => Promise<SwipeEvent>;
-  fetchSwipeEvents: (groupId: string) => Promise<void>;
+  fetchSwipeEvents: (groupId: string, signal?: AbortSignal) => Promise<void>;
   currentSwipeEvent: SwipeEvent | null;
   setCurrentSwipeEvent: (event: SwipeEvent | null) => void;
   swipes: Record<string, Swipe[]>; // eventId -> swipes
@@ -222,6 +234,9 @@ interface AppContextType {
   chatMessages: Record<string, ChatMessage[]>; // groupId or dmId -> messages
   addChatMessage: (conversationId: string, message: ChatMessage) => Promise<void>;
   deleteChatMessage: (conversationId: string, messageId: string) => Promise<void>;
+  chatMutedParticipants: Record<string, string[]>;
+  toggleMuteChatMember: (chatId: string, userId: string) => Promise<void>;
+  openUserDM: (userId: string) => Promise<void>;
   dmConversations: DMConversation[];
   createDMConversation: (participantId: string) => Promise<DMConversation>;
   updateSwipeEventStatus: (
@@ -229,74 +244,17 @@ interface AppContextType {
     status: SwipeEvent['status'],
     matchedId?: string
   ) => void;
-  notifications: Notification[];
-  addNotification: (
-    notification: Omit<Notification, 'id' | 'read' | 'timestamp'>
-  ) => void;
-  markNotificationAsRead: (notificationId: string) => void;
-  clearAllNotifications: () => void;
+  invitations: Invitation[];
+  swipeNotifications: SwipeNotification[];
+  fetchInvitations: () => Promise<void>;
+  acceptInvitation: (id: string | number) => Promise<void>;
+  declineInvitation: (id: string | number) => Promise<void>;
+  markSwipeNotificationRead: (id: string | number) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Mock users for demo
-const mockUsers: User[] = [
-  {
-    id: '1',
-    name: 'Alex Chen',
-    email: 'alex@nyu.edu',
-    preferences: {
-      cuisines: ['Italian', 'Japanese', 'Mexican'],
-      dietary: ['Vegetarian'],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-  {
-    id: '2',
-    name: 'Sarah Kim',
-    email: 'sarah@nyu.edu',
-    preferences: {
-      cuisines: ['Korean', 'Chinese', 'Thai'],
-      dietary: ['Halal'],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-  {
-    id: '3',
-    name: 'Jordan Lee',
-    email: 'jordan@nyu.edu',
-    preferences: {
-      cuisines: ['American', 'Mediterranean'],
-      dietary: [],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-  {
-    id: '4',
-    name: 'Emma Rodriguez',
-    email: 'emma@nyu.edu',
-    preferences: {
-      cuisines: ['Mexican', 'Italian', 'Mediterranean'],
-      dietary: ['Vegan', 'Gluten-Free'],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-  {
-    id: '5',
-    name: 'Michael Zhang',
-    email: 'michael@nyu.edu',
-    preferences: {
-      cuisines: ['Chinese', 'Japanese', 'Vietnamese'],
-      dietary: ['Dairy-Free'],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-];
+
 
 // CSRF token helper
 function getCookie(name: string) {
@@ -332,7 +290,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [swipes, setSwipes] = useState<Record<string, Swipe[]>>({});
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
   const [dmConversations, setDMConversations] = useState<DMConversation[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [chatMutedParticipants, setChatMutedParticipants] = useState<Record<string, string[]>>({});
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [swipeNotifications, setSwipeNotifications] = useState<SwipeNotification[]>([]);
 
   // Seed initial data if not exists
   useEffect(() => {
@@ -394,28 +354,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         createdAt: '2026-02-01T10:00:00.000Z',
       };
 
-      // Add some initial notifications
-      const initialNotifications: Notification[] = [
-        {
-          id: 'notif-1',
-          type: 'group_invite',
-          title: 'Group Invitation',
-          message: 'Alex Chen invited you to join "Friday Night Dinner Club"',
-          groupId: 'group-feb7-2026',
-          read: false,
-          timestamp: '2026-02-01T10:00:00.000Z',
-        },
-        {
-          id: 'notif-2',
-          type: 'swipe_reminder',
-          title: 'Swipe Reminder',
-          message: 'Your group has a dinner planned for Feb 7! Start swiping.',
-          groupId: 'group-feb7-2026',
-          eventId: 'event-feb7-2026',
-          read: false,
-          timestamp: '2026-02-04T09:00:00.000Z',
-        },
-      ];
 
       // Add initial chat messages
       const initialMessages: Record<string, ChatMessage[]> = {
@@ -586,10 +524,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       localStorage.setItem('mealswipe_groups', JSON.stringify([feb7Group]));
       localStorage.setItem('mealswipe_events', JSON.stringify([feb7Event]));
-      localStorage.setItem(
-        'mealswipe_notifications',
-        JSON.stringify(initialNotifications)
-      );
       localStorage.setItem('mealswipe_messages', JSON.stringify(initialMessages));
       localStorage.setItem(
         'mealswipe_dm_conversations',
@@ -600,7 +534,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       setGroups([feb7Group]);
       setSwipeEvents([feb7Event]);
-      setNotifications(initialNotifications);
       setChatMessages(initialMessages);
       setDMConversations(initialDMConversations);
     }
@@ -636,11 +569,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const storedDMConversations = localStorage.getItem('mealswipe_dm_conversations');
     if (storedDMConversations) {
       setDMConversations(JSON.parse(storedDMConversations));
-    }
-
-    const storedNotifications = localStorage.getItem('mealswipe_notifications');
-    if (storedNotifications) {
-      setNotifications(JSON.parse(storedNotifications));
     }
   }, []);
 
@@ -686,10 +614,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         const newChatMessages: Record<string, ChatMessage[]> = {};
         const dms: DMConversation[] = [];
+        const newMutedParticipants: Record<string, string[]> = {};
         
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         chats.forEach((chat: any) => {
-          newChatMessages[chat.id] = chat.messages || [];
+          const msgKey = chat.type === 'direct' ? `dm-${chat.id}` : chat.id;
+          newChatMessages[msgKey] = chat.messages || [];
+          newMutedParticipants[chat.id] = chat.mutedParticipants || [];
           if (chat.type === 'direct') {
             dms.push({
               id: chat.id,
@@ -702,9 +633,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         setChatMessages(newChatMessages);
         setDMConversations(dms);
+        setChatMutedParticipants(newMutedParticipants);
       }
     } catch (err) {
       console.error('Failed to fetch user chats', err);
+    }
+  };
+
+  const fetchInvitations = async () => {
+    try {
+      const response = await fetch(apiUrl('/api/groups/invitations/'), {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setInvitations(data.invitations || []);
+        setSwipeNotifications(data.swipe_sessions || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch invitations', err);
+    }
+  };
+
+  const acceptInvitation = async (id: string | number) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/invitations/${id}/accept/`), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        credentials: 'include',
+      });
+      if (response.ok) {
+        await fetchInvitations();
+        await fetchUserGroups();
+        await fetchUserChats();
+      }
+    } catch (err) {
+      console.error('Failed to accept invitation', err);
+    }
+  };
+
+  const declineInvitation = async (id: string | number) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/invitations/${id}/decline/`), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        credentials: 'include',
+      });
+      if (response.ok) {
+        await fetchInvitations();
+      }
+    } catch (err) {
+      console.error('Failed to decline invitation', err);
+    }
+  };
+
+  const markSwipeNotificationRead = async (id: string | number) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/swipe-notifications/${id}/read/`), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        credentials: 'include',
+      });
+      if (response.ok) {
+        await fetchInvitations();
+      }
+    } catch (err) {
+      console.error('Failed to mark swipe notification read', err);
     }
   };
 
@@ -722,6 +719,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setCurrentUser(normalizeApiUser(data.user));
             await fetchUserGroups();
             await fetchUserChats();
+            await fetchInvitations();
           }
         }
       } catch (error) {
@@ -732,6 +730,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     checkSession();
   }, []);
+
+  // Short polling for chat updates
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => {
+      // Basic optimization: only poll if document is visible
+      if (document.visibilityState === 'visible') {
+        // Background fetch without loading spin
+        fetchUserChats();
+        fetchInvitations();
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -944,13 +956,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('mealswipe_dm_conversations', JSON.stringify(dmConversations));
   }, [dmConversations]);
 
-  useEffect(() => {
-    localStorage.setItem('mealswipe_notifications', JSON.stringify(notifications));
-  }, [notifications]);
 
-  useEffect(() => {
-    localStorage.setItem('mealswipe_notifications', JSON.stringify(notifications));
-  }, [notifications]);
 
   const createGroup = async (
     name: string,
@@ -1129,34 +1135,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(err.error || 'Failed to invite user');
       }
 
-      const data = await response.json();
-      const updatedBackendGroup = data.group;
+      // Invitation sent successfully, nothing more to do locally since they aren't added to the group yet
+      // The pending invitation requires the other user to accept it.
+      
 
-      // Update the group in local state with the new member list
-      setGroups((prevGroups) =>
-        prevGroups.map((group) => {
-          if (group.id === groupId) {
-            return {
-              ...group,
-              members: updatedBackendGroup.members.map((m: BackendMember) => ({
-                userId: String(m.id),
-                userName: m.name,
-                hasFinishedSwiping: false,
-                isLeader: m.role === 'leader',
-              })),
-            };
-          }
-          return group;
-        })
-      );
 
-      // Add system message
-      addChatMessage(groupId, {
-        id: `msg-${Date.now()}`,
-        type: 'system',
-        message: `${currentUser.name} invited ${userEmail} to the group`,
-        timestamp: new Date().toISOString(),
-      });
     } catch (error) {
       console.error('Invite member error:', error);
       throw error;
@@ -1269,22 +1252,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const fetchAvailableUsers = async (query: string = '') => {
+  const fetchAvailableUsers = async (query: string = '', groupId?: string) => {
     if (!currentUser) return;
     try {
+      let url = `/api/groups/users/?q=${encodeURIComponent(query)}`;
+      if (groupId) {
+        url += `&group_id=${encodeURIComponent(groupId)}`;
+      }
       const response = await fetch(
-        apiUrl(`/api/groups/users/?q=${encodeURIComponent(query)}`),
+        apiUrl(url),
         {
           credentials: 'include',
         }
       );
       if (response.ok) {
         const data = await response.json();
-        const users = data.users.map((u: BackendUser) => ({
+        const users = data.users.map((u: BackendUser & { is_invited?: boolean }) => ({
           id: String(u.id),
           email: u.email,
           name: u.name,
           preferences: { cuisines: [], dietary: [], foodTypes: [] }, // Minimal mock for interface
+          is_invited: u.is_invited,
         }));
         setAvailableUsers(users);
       }
@@ -1294,7 +1282,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const getAllUsers = () => {
-    return availableUsers.length > 0 ? availableUsers : mockUsers;
+    return availableUsers;
   };
 
   const createSwipeEvent = async (
@@ -1341,10 +1329,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return newEvent;
   };
 
-  const fetchSwipeEvents = async (groupId: string) => {
+  const fetchSwipeEvents = useCallback(async (groupId: string, signal?: AbortSignal) => {
     try {
       const response = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
         credentials: 'include',
+        signal,
       });
       const data = await response.json();
       if (data.success) {
@@ -1370,9 +1359,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSwipeEvents(events);
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('Failed to fetch swipe events:', error);
     }
-  };
+  }, []);
 
   const addSwipe = async (
     eventId: string,
@@ -1434,7 +1424,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addChatMessage = async (conversationId: string, message: ChatMessage) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/`), {
+      const rawId = conversationId.startsWith('dm-') ? conversationId.slice(3) : conversationId;
+      const response = await fetch(apiUrl(`/api/chat/${rawId}/messages/`), {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -1486,7 +1477,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteChatMessage = async (conversationId: string, messageId: string) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/${messageId}/`), {
+      const rawId = conversationId.startsWith('dm-') ? conversationId.slice(3) : conversationId;
+      const response = await fetch(apiUrl(`/api/chat/${rawId}/messages/${messageId}/`), {
         method: 'DELETE',
         credentials: 'include',
         headers: {
@@ -1538,13 +1530,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
           lastMessageTime: chat.lastMessageTime || chat.created_at,
         };
         setDMConversations(prev => [...prev.filter(dm => dm.id !== chat.id), newDm]);
-        setChatMessages(prev => ({ ...prev, [chat.id]: chat.messages || [] }));
+        setChatMessages(prev => ({ ...prev, [`dm-${chat.id}`]: chat.messages || [] }));
         return newDm;
       }
     } catch (err) {
       console.error('Failed to create DM', err);
     }
     throw new Error('Failed to create DM');
+  };
+
+  const toggleMuteChatMember = async (chatId: string, userId: string): Promise<void> => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/chat/${chatId}/members/${userId}/mute/`), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to toggle mute');
+      await fetchUserChats();
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const openUserDM = async (userId: string): Promise<void> => {
+    window.dispatchEvent(new CustomEvent('open-chat-dm', { detail: userId }));
   };
 
   const updateSwipeEventStatus = (
@@ -1561,33 +1573,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addNotification = (
-    notification: Omit<Notification, 'id' | 'read' | 'timestamp'>
-  ) => {
-    setNotifications((prev) => [
-      ...prev,
-      {
-        ...notification,
-        id: `notification-${Date.now()}`,
-        read: false,
-        timestamp: new Date().toISOString(),
-      },
-    ]);
-  };
 
-  const markNotificationAsRead = (notificationId: string) => {
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        notification.id === notificationId
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
-  };
-
-  const clearAllNotifications = () => {
-    setNotifications([]);
-  };
 
   // Skip rendering the rest of the application until we've checked the auth state
   if (isInitializingAuth) {
@@ -1631,13 +1617,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         chatMessages,
         addChatMessage,
         deleteChatMessage,
+        chatMutedParticipants,
+        toggleMuteChatMember,
+        openUserDM,
         dmConversations,
         createDMConversation,
         updateSwipeEventStatus,
-        notifications,
-        addNotification,
-        markNotificationAsRead,
-        clearAllNotifications,
+        invitations,
+        swipeNotifications,
+        fetchInvitations,
+        acceptInvitation,
+        declineInvitation,
+        markSwipeNotificationRead,
       }}
     >
       {children}
@@ -1648,8 +1639,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function useApp() {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp must be used within AppProvider');
+  if (context === undefined) {
+    throw new Error('useApp must be used within an AppProvider');
   }
   return context;
 }

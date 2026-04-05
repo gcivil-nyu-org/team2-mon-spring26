@@ -28,7 +28,6 @@ import {
 } from "@/app/components/ui/select";
 import preferenceOptions from '@/app/data/preference-options.json';
 import {
-  ArrowLeft,
   Plus,
   Users,
   History,
@@ -39,6 +38,8 @@ import {
   Search,
   X,
   Settings2,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import { ChatSidebar } from "@/app/components/chat-sidebar";
 import { useState, useEffect } from "react";
@@ -55,21 +56,29 @@ export function GroupDetailPage() {
     createSwipeEvent,
     inviteMember,
     getAllUsers,
+    fetchAvailableUsers,
+    fetchSwipeEvents,
     leaveGroup,
     deleteGroup,
     removeMember,
     makeLeader,
     updateGroupConstraints,
+    chatMutedParticipants,
+    toggleMuteChatMember,
+    openUserDM,
   } = useApp();
   const [showChat, setShowChat] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [searchEmail, setSearchEmail] = useState("");
   const [showConstraintsDialog, setShowConstraintsDialog] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState<Set<string>>(new Set());
+  const [inviteSuccessMsg, setInviteSuccessMsg] = useState<string | null>(null);
   
   const [dietary, setDietary] = useState<string[]>([]);
   const [cuisines, setCuisines] = useState<string[]>([]);
   const [foodTypes, setFoodTypes] = useState<string[]>([]);
   const [minimumSanitationGrade, setMinimumSanitationGrade] = useState<string>('A');
+  const [priceRange, setPriceRange] = useState<string>('any');
   const [savingConstraints, setSavingConstraints] = useState(false);
 
   const group = groups.find((g) => g.id === groupId);
@@ -78,34 +87,48 @@ export function GroupDetailPage() {
   );
 
   useEffect(() => {
+    if (!groupId) return;
+    const controller = new AbortController();
+    fetchSwipeEvents(groupId, controller.signal);
+    return () => controller.abort();
+  }, [groupId, fetchSwipeEvents]);
+
+  useEffect(() => {
     if (showConstraintsDialog && group?.constraints) {
       setDietary(group.constraints.dietary ?? []);
       setCuisines(group.constraints.cuisines ?? []);
       setFoodTypes(group.constraints.foodTypes ?? []);
       setMinimumSanitationGrade(group.constraints.minimumSanitationGrade ?? 'A');
+      setPriceRange(group.constraints.priceRange || 'any');
     } else if (showConstraintsDialog) {
       setDietary([]);
       setCuisines([]);
       setFoodTypes([]);
       setMinimumSanitationGrade('A');
+      setPriceRange('any');
     }
   }, [showConstraintsDialog, group]);
 
   // Check if current user is a leader
   const isLeader = group?.members.find(m => m.userId === currentUser?.id)?.isLeader || false;
 
+  // Fetch available users when search changes
+  useEffect(() => {
+    if (showInviteDialog && group) {
+      const timer = setTimeout(() => {
+        fetchAvailableUsers(searchEmail, group.id);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [searchEmail, showInviteDialog, group, fetchAvailableUsers]);
+
   // Get all available users to invite (excluding current members)
   const availableUsers = getAllUsers().filter(
-    user => !group?.members.some(m => m.userId === user.id)
+    user => !group?.members.some(m => m.userId === String(user.id)) && String(user.id) !== String(currentUser?.id)
   );
 
-  // Filter users based on email search
-  const filteredUsers = searchEmail
-    ? availableUsers.filter(user =>
-        user.email.toLowerCase().includes(searchEmail.toLowerCase()) ||
-        user.name.toLowerCase().includes(searchEmail.toLowerCase())
-      )
-    : availableUsers;
+  // We no longer need to do client-side filtering because fetchAvailableUsers handles the search query backend
+  const filteredUsers = availableUsers;
 
   if (!group) {
     return (
@@ -138,7 +161,7 @@ export function GroupDetailPage() {
     setSavingConstraints(true);
     try {
       await updateGroupConstraints(group.id, {
-        dietary, cuisines, foodTypes, minimumSanitationGrade
+        dietary, cuisines, foodTypes, minimumSanitationGrade, priceRange: priceRange === 'any' ? '' : priceRange
       });
       setShowConstraintsDialog(false);
     } catch (e) {
@@ -166,74 +189,7 @@ export function GroupDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
-      <header className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/home")}
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl">{group.name}</h1>
-              <p className="text-sm text-muted-foreground">
-                {group.members.length} member
-                {group.members.length !== 1 ? "s" : ""}
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setShowChat(!showChat)}
-          >
-            <MessageCircle className="w-5 h-5" />
-          </Button>
-        </div>
-        
-        {/* Group Actions */}
-        <div className="max-w-4xl mx-auto px-4 pb-4 flex justify-end gap-2">
-          {isLeader ? (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={async () => {
-                if (window.confirm("Are you sure you want to delete this group?")) {
-                  try {
-                    await deleteGroup(group.id);
-                    navigate("/home");
-                  } catch (e) {
-                    alert((e as Error).message);
-                  }
-                }
-              }}
-            >
-              Delete Group
-            </Button>
-          ) : (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={async () => {
-                if (window.confirm("Are you sure you want to leave this group?")) {
-                  try {
-                    await leaveGroup(group.id);
-                    navigate("/home");
-                  } catch (e) {
-                    alert((e as Error).message);
-                  }
-                }
-              }}
-            >
-              Leave Group
-            </Button>
-          )}
-        </div>
-      </header>
-
+    <>
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
         {/* Members Section */}
         <Card>
@@ -248,78 +204,143 @@ export function GroupDetailPage() {
                   People in this group
                 </CardDescription>
               </div>
-              {isLeader && (
-                <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <UserPlus className="w-4 h-4 mr-2" />
-                      Invite
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Invite Member</DialogTitle>
-                      <DialogDescription>
-                        Search for users by email to invite to the group
-                      </DialogDescription>
-                    </DialogHeader>
-                    
-                    <div className="space-y-4">
-                      {/* Search Input */}
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search by email or name..."
-                          value={searchEmail}
-                          onChange={(e) => setSearchEmail(e.target.value)}
-                          className="pl-9"
-                        />
-                      </div>
-
-                      {/* User List */}
-                      <div className="max-h-80 overflow-y-auto space-y-2">
-                        {filteredUsers.length === 0 ? (
-                          <p className="text-sm text-muted-foreground text-center py-8">
-                            {searchEmail ? 'No users found' : 'All available users are already members'}
-                          </p>
-                        ) : (
-                          filteredUsers.map((user) => (
-                            <div
-                              key={user.id}
-                              className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white text-sm">
-                                  {user.name.charAt(0)}
-                                </div>
-                                <div>
-                                  <p className="font-medium text-sm">{user.name}</p>
-                                  <p className="text-xs text-muted-foreground">{user.email}</p>
-                                </div>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  if (group) {
-                                    inviteMember(group.id, user.email);
-                                    setSearchEmail("");
-                                    setShowInviteDialog(false);
-                                  }
-                                }}
-                                className="bg-gradient-to-r from-purple-600 to-pink-600"
-                              >
-                                Invite
-                              </Button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowChat(!showChat)}
+                  className="flex items-center gap-2"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span className="hidden sm:inline">Group Chat</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowInviteDialog(true)}
+                  className="flex items-center gap-2"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span className="hidden sm:inline">Invite</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-100 flex items-center gap-2"
+                  onClick={async () => {
+                    if (window.confirm("Are you sure you want to leave this group?")) {
+                      try {
+                        await leaveGroup(group.id);
+                        navigate("/home");
+                      } catch (e) {
+                        alert((e as Error).message);
+                      }
+                    }
+                  }}
+                >
+                  <span className="hidden sm:inline">Leave Group</span>
+                  <span className="sm:hidden">Leave</span>
+                </Button>
+                {isLeader && (
+                  <Button
+                    variant="outline"
+                    className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-100 flex items-center gap-2"
+                    onClick={async () => {
+                      if (window.confirm("Are you sure you want to delete this group?")) {
+                        try {
+                          await deleteGroup(group.id);
+                          navigate("/home");
+                        } catch (e) {
+                          alert((e as Error).message);
+                        }
+                      }
+                    }}
+                  >
+                    <span className="hidden sm:inline">Delete Group</span>
+                    <span className="sm:hidden">Delete</span>
+                  </Button>
+                )}
+              </div>
             </div>
           </CardHeader>
+          <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Invite Member</DialogTitle>
+                <DialogDescription>
+                  Search for users by email to invite to the group
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                {inviteSuccessMsg && (
+                  <div className="p-3 bg-green-100 text-green-800 text-sm rounded-lg flex items-center justify-between transition-opacity duration-500">
+                    {inviteSuccessMsg}
+                  </div>
+                )}
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by email or name..."
+                    value={searchEmail}
+                    onChange={(e) => setSearchEmail(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                {/* User List */}
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  {filteredUsers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      {searchEmail ? 'No users found' : 'All available users are already members'}
+                    </p>
+                  ) : (
+                    filteredUsers.map((user) => (
+                      <div
+                        key={user.id}
+                        className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white text-sm">
+                            {user.name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{user.name}</p>
+                            <p className="text-xs text-muted-foreground">{user.email}</p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          disabled={pendingInvites.has(user.email) || user.is_invited}
+                          variant={pendingInvites.has(user.email) || user.is_invited ? "secondary" : "default"}
+                          onClick={async () => {
+                            if (group) {
+                              try {
+                                await inviteMember(group.id, user.email);
+                                setPendingInvites(prev => new Set(prev).add(user.email));
+                                setInviteSuccessMsg(`Invite successfully sent to ${user.name}!`);
+                                setTimeout(() => setInviteSuccessMsg(null), 3000);
+                              } catch (err: unknown) {
+                                // If they send an invite but it was already pending from a previous session, recover gracefully:
+                                if (err instanceof Error && err.message === 'User has already been invited') {
+                                  setPendingInvites(prev => new Set(prev).add(user.email));
+                                  setInviteSuccessMsg(`Invite was already sent to ${user.name}!`);
+                                  setTimeout(() => setInviteSuccessMsg(null), 3000);
+                                } else {
+                                  console.error("Failed to send invite", err);
+                                }
+                              }
+                            }
+                          }}
+                          className={pendingInvites.has(user.email) || user.is_invited ? "" : "bg-gradient-to-r from-purple-600 to-pink-600"}
+                        >
+                          {pendingInvites.has(user.email) || user.is_invited ? "Invite Pending" : "Invite"}
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
           <CardContent>
             <div className="grid gap-3">
               {group.members.map((member) => (
@@ -343,46 +364,84 @@ export function GroupDetailPage() {
                           </Badge>
                         )}
                       </div>
-                      
-                      {/* Leader Controls over other members */}
-                      {isLeader && member.userId !== currentUser?.id && (
-                        <div className="flex items-center gap-2">
-                          {!member.isLeader && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-8 px-2 text-xs"
-                              onClick={async () => {
-                                if (window.confirm(`Make ${member.userName} a leader?`)) {
-                                  try {
-                                    await makeLeader(group.id, member.userId);
-                                  } catch (e) {
-                                    alert((e as Error).message);
-                                  }
-                                }
-                              }}
-                            >
-                              <Crown className="w-3 h-3 mr-1" />
-                              Promote
-                            </Button>
-                          )}
+                      {/* Controls over other members */}
+                      {member.userId !== currentUser?.id && (
+                        <div className="flex flex-wrap items-center justify-end gap-1 mt-2 sm:mt-0">
                           <Button 
                             variant="ghost" 
                             size="sm" 
-                            className="h-8 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={async () => {
-                              if (window.confirm(`Remove ${member.userName} from the group?`)) {
-                                try {
-                                  await removeMember(group.id, member.userId);
-                                } catch (e) {
-                                  alert((e as Error).message);
-                                }
-                              }
-                            }}
+                            className="h-8 px-2 text-xs"
+                            onClick={() => openUserDM(member.userId)}
                           >
-                            <X className="w-3 h-3 mr-1" />
-                            Remove
+                            <MessageCircle className="w-3 h-3 mr-1" />
+                            Message
                           </Button>
+                          
+                          {isLeader && (
+                            <>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-8 px-2 text-xs"
+                                onClick={async () => {
+                                  try {
+                                    await toggleMuteChatMember(group.id, member.userId);
+                                  } catch (e) {
+                                    console.error("Failed to toggle mute", e);
+                                  }
+                                }}
+                              >
+                                {chatMutedParticipants[group.id]?.includes(member.userId) ? (
+                                  <>
+                                    <Mic className="w-3 h-3 mr-1" />
+                                    Unmute
+                                  </>
+                                ) : (
+                                  <>
+                                    <MicOff className="w-3 h-3 mr-1" />
+                                    Mute
+                                  </>
+                                )}
+                              </Button>
+
+                              {!member.isLeader && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-8 px-2 text-xs"
+                                  onClick={async () => {
+                                    if (window.confirm(`Make ${member.userName} a leader?`)) {
+                                      try {
+                                        await makeLeader(group.id, member.userId);
+                                      } catch (e) {
+                                        alert((e as Error).message);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  <Crown className="w-3 h-3 mr-1" />
+                                  Promote
+                                </Button>
+                              )}
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-8 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={async () => {
+                                  if (window.confirm(`Remove ${member.userName} from the group?`)) {
+                                    try {
+                                      await removeMember(group.id, member.userId);
+                                    } catch (e) {
+                                      alert((e as Error).message);
+                                    }
+                                  }
+                                }}
+                              >
+                                <X className="w-3 h-3 mr-1" />
+                                Remove
+                              </Button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -395,41 +454,45 @@ export function GroupDetailPage() {
 
         {/* Action Buttons Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Create New Swipe Event */}
-          <Card
-            className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-purple-500 to-indigo-500 text-white border-0"
-            onClick={handleCreateEvent}
-          >
-            <CardHeader className="pb-6">
-              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
-                <Plus className="w-6 h-6" />
-              </div>
-              <CardTitle className="mb-2">
-                Start Swipe Session
-              </CardTitle>
-              <CardDescription className="text-purple-100">
-                Quickly swipe on restaurants now
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          {/* Create New Swipe Event - leaders only */}
+          {isLeader && (
+            <Card
+              className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-purple-500 to-indigo-500 text-white border-0"
+              onClick={handleCreateEvent}
+            >
+              <CardHeader className="pb-6">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
+                  <Plus className="w-6 h-6" />
+                </div>
+                <CardTitle className="mb-2">
+                  Start Swipe Session
+                </CardTitle>
+                <CardDescription className="text-purple-100">
+                  Quickly swipe on restaurants now
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
 
-          {/* NEW: Plan Reservation Button */}
-          <Card
-            className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-pink-500 to-purple-600 text-white border-0"
-            onClick={handlePlanReservation}
-          >
-            <CardHeader className="pb-6">
-              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
-                <CalendarDays className="w-6 h-6" />
-              </div>
-              <CardTitle className="mb-2">
-                Plan Reservation
-              </CardTitle>
-              <CardDescription className="text-pink-100">
-                Set date, location & specific plans
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          {/* Plan Reservation Button - leaders only */}
+          {isLeader && (
+            <Card
+              className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-pink-500 to-purple-600 text-white border-0"
+              onClick={handlePlanReservation}
+            >
+              <CardHeader className="pb-6">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
+                  <CalendarDays className="w-6 h-6" />
+                </div>
+                <CardTitle className="mb-2">
+                  Plan Reservation
+                </CardTitle>
+                <CardDescription className="text-pink-100">
+                  Set date, location & specific plans
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
 
           {/* Group Constraints Card */}
           <Dialog open={showConstraintsDialog} onOpenChange={setShowConstraintsDialog}>
@@ -551,6 +614,21 @@ export function GroupDetailPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                {/* priceRange */}
+                <div className="space-y-3">
+                  <Label>Maximum Price Range</Label>
+                  <Select disabled={!isLeader} value={priceRange} onValueChange={setPriceRange}>
+                    <SelectTrigger className="max-w-xs">
+                      <SelectValue placeholder="Any Price" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any Price</SelectItem>
+                      {preferenceOptions.priceRanges.map(pr => (
+                        <SelectItem key={pr} value={pr}>{pr}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               {isLeader && (
                 <div className="flex justify-end pt-4 mt-auto">
@@ -562,7 +640,6 @@ export function GroupDetailPage() {
             </DialogContent>
           </Dialog>
         </div>
-
         {/* Events History */}
         <div>
           <h2 className="text-xl mb-4 flex items-center gap-2">
@@ -635,6 +712,6 @@ export function GroupDetailPage() {
           onClose={() => setShowChat(false)}
         />
       )}
-    </div>
+    </>
   );
 }

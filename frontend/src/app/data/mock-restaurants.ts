@@ -29,6 +29,14 @@ export interface Restaurant {
       severity: 'critical' | 'major' | 'minor';
     }>;
   };
+  neighborhood?: string;
+  seatingCapacity?: number | null;
+  hasTakeout?: boolean;
+  hasDelivery?: boolean;
+  hasDineIn?: boolean;
+  isReservable?: boolean;
+  googleMapsUrl?: string;
+  hours?: Record<string, string>;
 }
 
 export const mockRestaurants: Restaurant[] = [
