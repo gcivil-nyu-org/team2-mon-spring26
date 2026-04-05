@@ -17,7 +17,8 @@ import { useApp } from '@/app/contexts/app-context';
 type ConversationType = 'group' | 'dm';
 
 interface Conversation {
-  id: string;
+  id: string;      // namespaced UI key: "group-{id}" or "dm-{id}"
+  chatId: string;  // raw backend ID for message/API calls
   type: ConversationType;
   name: string;
   lastMessage?: string;
@@ -37,7 +38,8 @@ export function FloatingChat() {
   // Build conversation list
   const conversations: Conversation[] = [
     ...groups.map(g => ({
-      id: g.id,
+      id: `group-${g.id}`,
+      chatId: g.id,
       type: 'group' as ConversationType,
       name: g.name,
       isGroup: true,
@@ -45,14 +47,14 @@ export function FloatingChat() {
       lastMessageTime: chatMessages[g.id]?.slice(-1)[0]?.timestamp
     })),
     ...dmConversations.map(dm => {
-      // Get the other participant's name
       const otherParticipantName = dm.participantNames.find(name => name !== currentUser?.name) || 'Unknown';
       return {
-        id: dm.id,
+        id: `dm-${dm.id}`,
+        chatId: `dm-${dm.id}`,
         type: 'dm' as ConversationType,
         name: otherParticipantName,
         isGroup: false,
-        lastMessage: chatMessages[dm.id]?.slice(-1)[0]?.message,
+        lastMessage: chatMessages[`dm-${dm.id}`]?.slice(-1)[0]?.message,
         lastMessageTime: dm.lastMessageTime
       };
     })
@@ -74,8 +76,9 @@ export function FloatingChat() {
   }, [conversations.length, selectedConversationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedConversation = conversations.find(c => c.id === selectedConversationId);
-  const messages = useMemo(() => selectedConversationId ? chatMessages[selectedConversationId] || [] : [], [selectedConversationId, chatMessages]);
-  const isLeader = selectedConversation?.isGroup ? groups.find(g => g.id === selectedConversationId)?.members.find(m => m.userId === currentUser?.id)?.isLeader : false;
+  const selectedChatId = selectedConversation?.chatId ?? '';
+  const messages = useMemo(() => selectedChatId ? chatMessages[selectedChatId] || [] : [], [selectedChatId, chatMessages]);
+  const isLeader = selectedConversation?.isGroup ? groups.find(g => g.id === selectedChatId)?.members.find(m => m.userId === currentUser?.id)?.isLeader : false;
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -83,9 +86,9 @@ export function FloatingChat() {
   }, [messages]);
 
   const handleSendMessage = () => {
-    if (!newMessage.trim() || !selectedConversationId || !currentUser) return;
+    if (!newMessage.trim() || !selectedChatId || !currentUser) return;
 
-    addChatMessage(selectedConversationId, {
+    addChatMessage(selectedChatId, {
       id: `msg-${Date.now()}`,
       type: 'user',
       userId: currentUser.id,
@@ -111,11 +114,11 @@ export function FloatingChat() {
     );
 
     if (existingDM) {
-      setSelectedConversationId(existingDM.id);
+      setSelectedConversationId(`dm-${existingDM.id}`);
     } else {
       try {
         const newDM = await createDMConversation(participantId);
-        setSelectedConversationId(newDM.id);
+        setSelectedConversationId(`dm-${newDM.id}`);
       } catch (err) {
         console.error('Failed to create or navigate to DM', err);
       }
@@ -167,7 +170,7 @@ export function FloatingChat() {
       {isOpen && (
         <Card className={`fixed bottom-6 right-6 ${isExpanded ? 'w-[calc(100vw-3rem)] h-[calc(100vh-3rem)]' : 'w-[680px] h-[580px]'} shadow-2xl flex flex-row z-50 overflow-hidden transition-all duration-300 ease-in-out`}>
           {/* Conversations List - Left Side */}
-          <div className="w-[240px] border-r flex flex-col bg-muted/30">
+          <div className="w-[240px] border-r flex flex-col bg-muted/30 min-h-0 overflow-hidden">
             {/* Header */}
             <div className="px-4 py-3 border-b bg-background flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -217,7 +220,7 @@ export function FloatingChat() {
             </div>
 
             {/* Conversations */}
-            <ScrollArea className="flex-1">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="py-2">
                 {conversations.map(conversation => {
                   const isSelected = conversation.id === selectedConversationId;
@@ -258,7 +261,7 @@ export function FloatingChat() {
                   );
                 })}
               </div>
-            </ScrollArea>
+            </div>
           </div>
 
           {/* Messages - Right Side */}
@@ -338,9 +341,9 @@ export function FloatingChat() {
                               <div className={`max-w-[75%] rounded-2xl px-4 py-2 bg-muted text-foreground ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
                                 <p className="text-sm break-words">{msg.message}</p>
                               </div>
-                              {isLeader && msg.message !== '[This message has been deleted]' && selectedConversationId && (
-                                <button 
-                                  onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
+                              {isLeader && msg.message !== '[This message has been deleted]' && selectedChatId && (
+                                <button
+                                  onClick={() => deleteChatMessage(selectedChatId, msg.id)}
                                   className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
                                   title="Delete message"
                                 >
@@ -350,9 +353,9 @@ export function FloatingChat() {
                             </div>
                           ) : (
                             <div className="flex items-center gap-2 w-full justify-end">
-                              {isLeader && msg.message !== '[This message has been deleted]' && selectedConversationId && (
-                                <button 
-                                  onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
+                              {isLeader && msg.message !== '[This message has been deleted]' && selectedChatId && (
+                                <button
+                                  onClick={() => deleteChatMessage(selectedChatId, msg.id)}
                                   className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
                                   title="Delete message"
                                 >
