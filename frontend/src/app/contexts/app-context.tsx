@@ -207,7 +207,7 @@ interface AppContextType {
   setCurrentGroup: (group: Group | null) => void;
   swipeEvents: SwipeEvent[];
   createSwipeEvent: (groupId: string, name: string, borough?: string, neighborhood?: string) => Promise<SwipeEvent>;
-  fetchSwipeEvents: (groupId: string) => Promise<void>;
+  fetchSwipeEvents: (groupId: string, signal?: AbortSignal) => Promise<void>;
   currentSwipeEvent: SwipeEvent | null;
   setCurrentSwipeEvent: (event: SwipeEvent | null) => void;
   swipes: Record<string, Swipe[]>; // eventId -> swipes
@@ -618,7 +618,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         chats.forEach((chat: any) => {
-          newChatMessages[chat.id] = chat.messages || [];
+          const msgKey = chat.type === 'direct' ? `dm-${chat.id}` : chat.id;
+          newChatMessages[msgKey] = chat.messages || [];
           newMutedParticipants[chat.id] = chat.mutedParticipants || [];
           if (chat.type === 'direct') {
             dms.push({
@@ -1328,10 +1329,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return newEvent;
   };
 
-  const fetchSwipeEvents = async (groupId: string) => {
+  const fetchSwipeEvents = useCallback(async (groupId: string, signal?: AbortSignal) => {
     try {
       const response = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
         credentials: 'include',
+        signal,
       });
       const data = await response.json();
       if (data.success) {
@@ -1357,9 +1359,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSwipeEvents(events);
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('Failed to fetch swipe events:', error);
     }
-  };
+  }, []);
 
   const addSwipe = async (
     eventId: string,
@@ -1421,7 +1424,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addChatMessage = async (conversationId: string, message: ChatMessage) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/`), {
+      const rawId = conversationId.startsWith('dm-') ? conversationId.slice(3) : conversationId;
+      const response = await fetch(apiUrl(`/api/chat/${rawId}/messages/`), {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -1473,7 +1477,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteChatMessage = async (conversationId: string, messageId: string) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/${messageId}/`), {
+      const rawId = conversationId.startsWith('dm-') ? conversationId.slice(3) : conversationId;
+      const response = await fetch(apiUrl(`/api/chat/${rawId}/messages/${messageId}/`), {
         method: 'DELETE',
         credentials: 'include',
         headers: {
@@ -1525,7 +1530,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           lastMessageTime: chat.lastMessageTime || chat.created_at,
         };
         setDMConversations(prev => [...prev.filter(dm => dm.id !== chat.id), newDm]);
-        setChatMessages(prev => ({ ...prev, [chat.id]: chat.messages || [] }));
+        setChatMessages(prev => ({ ...prev, [`dm-${chat.id}`]: chat.messages || [] }));
         return newDm;
       }
     } catch (err) {

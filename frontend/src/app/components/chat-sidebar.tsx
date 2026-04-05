@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
-import { ScrollArea } from '@/app/components/ui/scroll-area';
 import { X, Send } from 'lucide-react';
 
 interface ChatSidebarProps {
@@ -49,7 +48,7 @@ export function ChatSidebar({ groupId, onClose }: ChatSidebarProps) {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4">
         <div className="space-y-4">
           {messages.map((msg) => (
             <div key={msg.id}>
@@ -82,7 +81,7 @@ export function ChatSidebar({ groupId, onClose }: ChatSidebarProps) {
             </div>
           ))}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
       <form onSubmit={handleSend} className="p-4 border-t flex gap-2">

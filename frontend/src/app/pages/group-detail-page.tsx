@@ -87,9 +87,10 @@ export function GroupDetailPage() {
   );
 
   useEffect(() => {
-    if (groupId) {
-      fetchSwipeEvents(groupId);
-    }
+    if (!groupId) return;
+    const controller = new AbortController();
+    fetchSwipeEvents(groupId, controller.signal);
+    return () => controller.abort();
   }, [groupId, fetchSwipeEvents]);
 
   useEffect(() => {
@@ -453,41 +454,45 @@ export function GroupDetailPage() {
 
         {/* Action Buttons Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Create New Swipe Event */}
-          <Card
-            className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-purple-500 to-indigo-500 text-white border-0"
-            onClick={handleCreateEvent}
-          >
-            <CardHeader className="pb-6">
-              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
-                <Plus className="w-6 h-6" />
-              </div>
-              <CardTitle className="mb-2">
-                Start Swipe Session
-              </CardTitle>
-              <CardDescription className="text-purple-100">
-                Quickly swipe on restaurants now
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          {/* Create New Swipe Event - leaders only */}
+          {isLeader && (
+            <Card
+              className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-purple-500 to-indigo-500 text-white border-0"
+              onClick={handleCreateEvent}
+            >
+              <CardHeader className="pb-6">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
+                  <Plus className="w-6 h-6" />
+                </div>
+                <CardTitle className="mb-2">
+                  Start Swipe Session
+                </CardTitle>
+                <CardDescription className="text-purple-100">
+                  Quickly swipe on restaurants now
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
 
-          {/* NEW: Plan Reservation Button */}
-          <Card
-            className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-pink-500 to-purple-600 text-white border-0"
-            onClick={handlePlanReservation}
-          >
-            <CardHeader className="pb-6">
-              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
-                <CalendarDays className="w-6 h-6" />
-              </div>
-              <CardTitle className="mb-2">
-                Plan Reservation
-              </CardTitle>
-              <CardDescription className="text-pink-100">
-                Set date, location & specific plans
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          {/* Plan Reservation Button - leaders only */}
+          {isLeader && (
+            <Card
+              className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-pink-500 to-purple-600 text-white border-0"
+              onClick={handlePlanReservation}
+            >
+              <CardHeader className="pb-6">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
+                  <CalendarDays className="w-6 h-6" />
+                </div>
+                <CardTitle className="mb-2">
+                  Plan Reservation
+                </CardTitle>
+                <CardDescription className="text-pink-100">
+                  Set date, location & specific plans
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
 
           {/* Group Constraints Card */}
           <Dialog open={showConstraintsDialog} onOpenChange={setShowConstraintsDialog}>
