@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { MessageCircle, X, Send, Plus, Users, Trash2, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
@@ -35,49 +35,52 @@ export function FloatingChat() {
   const [showNewDMDialog, setShowNewDMDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Build conversation list
-  const conversations: Conversation[] = [
-    ...groups.map(g => ({
-      id: `group-${g.id}`,
-      chatId: g.id,
-      type: 'group' as ConversationType,
-      name: g.name,
-      isGroup: true,
-      lastMessage: chatMessages[g.id]?.slice(-1)[0]?.message,
-      lastMessageTime: chatMessages[g.id]?.slice(-1)[0]?.timestamp
-    })),
-    ...dmConversations.map(dm => {
-      const otherParticipantName = dm.participantNames.find(name => name !== currentUser?.name) || 'Unknown';
-      return {
-        id: `dm-${dm.id}`,
-        chatId: `dm-${dm.id}`,
-        type: 'dm' as ConversationType,
-        name: otherParticipantName,
-        isGroup: false,
-        lastMessage: chatMessages[`dm-${dm.id}`]?.slice(-1)[0]?.message,
-        lastMessageTime: dm.lastMessageTime
-      };
-    })
-  ];
+  // Build and sort conversation list
+  const conversations = useMemo((): Conversation[] => {
+    const list: Conversation[] = [
+      ...groups.map(g => ({
+        id: `group-${g.id}`,
+        chatId: g.id,
+        type: 'group' as ConversationType,
+        name: g.name,
+        isGroup: true,
+        lastMessage: chatMessages[g.id]?.slice(-1)[0]?.message,
+        lastMessageTime: chatMessages[g.id]?.slice(-1)[0]?.timestamp
+      })),
+      ...dmConversations.map(dm => {
+        const otherParticipantName = dm.participantNames.find(name => name !== currentUser?.name) || 'Unknown';
+        return {
+          id: `dm-${dm.id}`,
+          chatId: `dm-${dm.id}`,
+          type: 'dm' as ConversationType,
+          name: otherParticipantName,
+          isGroup: false,
+          lastMessage: chatMessages[`dm-${dm.id}`]?.slice(-1)[0]?.message,
+          lastMessageTime: dm.lastMessageTime
+        };
+      })
+    ];
+    list.sort((a, b) => (b.lastMessageTime || '0').localeCompare(a.lastMessageTime || '0'));
+    return list;
+  }, [groups, dmConversations, chatMessages, currentUser?.name]);
 
-  // Sort conversations by last message time
-  conversations.sort((a, b) => {
-    const aTime = a.lastMessageTime || '0';
-    const bTime = b.lastMessageTime || '0';
-    return bTime.localeCompare(aTime);
-  });
+  // Derive the active conversation ID: use explicit selection if valid, else fall back to first
+  const activeConversationId = useMemo(
+    () => (selectedConversationId && conversations.some(c => c.id === selectedConversationId))
+      ? selectedConversationId
+      : (conversations[0]?.id ?? ''),
+    [conversations, selectedConversationId]
+  );
 
-  // Set initial conversation when data loads
-  useEffect(() => {
-    if (conversations.length > 0 && !selectedConversationId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSelectedConversationId(conversations[0].id);
-    }
-  }, [conversations.length, selectedConversationId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const selectedConversation = conversations.find(c => c.id === selectedConversationId);
+  const selectedConversation = useMemo(
+    () => conversations.find(c => c.id === activeConversationId),
+    [conversations, activeConversationId]
+  );
   const selectedChatId = selectedConversation?.chatId ?? '';
-  const messages = useMemo(() => selectedChatId ? chatMessages[selectedChatId] || [] : [], [selectedChatId, chatMessages]);
+  const messages = useMemo(
+    () => (selectedChatId ? chatMessages[selectedChatId] || [] : []),
+    [selectedChatId, chatMessages]
+  );
   const isLeader = selectedConversation?.isGroup ? groups.find(g => g.id === selectedChatId)?.members.find(m => m.userId === currentUser?.id)?.isLeader : false;
 
   // Auto-scroll to bottom when messages change
@@ -85,7 +88,7 @@ export function FloatingChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = useCallback(() => {
     if (!newMessage.trim() || !selectedChatId || !currentUser) return;
 
     addChatMessage(selectedChatId, {
@@ -98,7 +101,7 @@ export function FloatingChat() {
     });
 
     setNewMessage('');
-  };
+  }, [newMessage, selectedChatId, currentUser, addChatMessage]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -223,7 +226,7 @@ export function FloatingChat() {
             <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="py-2">
                 {conversations.map(conversation => {
-                  const isSelected = conversation.id === selectedConversationId;
+                  const isSelected = conversation.id === activeConversationId;
                   return (
                     <button
                       key={conversation.id}
