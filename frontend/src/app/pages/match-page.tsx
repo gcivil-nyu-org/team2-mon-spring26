@@ -4,12 +4,10 @@ import { useApp } from '@/app/contexts/app-context';
 import type { Restaurant } from '@/app/data/mock-restaurants';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
-import { Badge } from '@/app/components/ui/badge';
-import { MapPin, AlertTriangle, ExternalLink, PartyPopper, Users, ArrowLeft, Star, Ticket, Navigation } from 'lucide-react';
+import { Users, PartyPopper } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Confetti from 'react-confetti';
-import { Separator } from '@/app/components/ui/separator';
-import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
+import { RestaurantCard } from "@/app/components/restaurant-card";
 
 export function MatchPage() {
   const { eventId } = useParams();
@@ -54,18 +52,12 @@ export function MatchPage() {
     };
     loadResults();
     return () => { cancelled = true; clearTimeout(confettiTimer); };
-  }, [event?.id, group?.id, fetchMatchResults]);
+  }, [event, group, fetchMatchResults]);
 
   if (!event || !group) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
-        <header className="bg-white border-b">
-          <div className="max-w-4xl mx-auto px-4 py-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/home')}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </div>
-        </header>
+      <>
+
         <div className="flex items-center justify-center p-8">
           <Card>
             <CardContent className="p-8 text-center">
@@ -76,21 +68,14 @@ export function MatchPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
+      </>
     );
   }
 
-  const gradeColors = {
-    A: 'bg-green-500',
-    B: 'bg-yellow-500',
-    C: 'bg-orange-500',
-    N: 'bg-gray-400',
-    P: 'bg-gray-500',
-    Z: 'bg-red-500'
-  };
+
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
+    <>
       {/* Confetti */}
       {showConfetti && matchedRestaurant && (
         <Confetti
@@ -102,20 +87,7 @@ export function MatchPage() {
         />
       )}
 
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate(`/group/${group.id}`)}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl">{event.name}</h1>
-              <p className="text-sm text-muted-foreground">{group.name}</p>
-            </div>
-          </div>
-        </div>
-      </header>
+
 
       {/* Main Content */}
       <main className="max-w-3xl mx-auto px-4 py-6">
@@ -149,159 +121,16 @@ export function MatchPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.4 }}
               >
-                <Card className="overflow-hidden shadow-xl">
-                  {/* Hero Image */}
-                  <div className="relative h-64">
-                    <ImageWithFallback
-                      src={matchedRestaurant.images?.[0] ?? ''}
-                      alt={matchedRestaurant.name}
-                      className="w-full h-full object-cover"
-                    />
-                    
-                    {/* Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                    
-                    {/* Sanitation Grade */}
-                    <div className="absolute top-4 right-4">
-                      <div className={`${gradeColors[matchedRestaurant.sanitationGrade]} text-white w-16 h-16 rounded-xl flex items-center justify-center shadow-lg`}>
-                        <div className="text-center">
-                          <div className="text-xs">Grade</div>
-                          <div className="text-3xl font-bold">{matchedRestaurant.sanitationGrade}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Rating & Distance */}
-                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-                      <div className="bg-black/70 backdrop-blur-sm text-white px-3 py-2 rounded-lg flex items-center gap-2">
-                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        <span className="font-semibold">{matchedRestaurant.rating.toFixed(1)}</span>
-                        <span className="text-sm text-white/80">({matchedRestaurant.reviewCount})</span>
-                      </div>
-                      <div className="bg-black/70 backdrop-blur-sm text-white px-3 py-2 rounded-lg flex items-center gap-2">
-                        <Navigation className="w-4 h-4" />
-                        <span className="text-sm font-medium">{matchedRestaurant.distance}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Content */}
-                  <CardContent className="p-6 space-y-4">
-                    {/* Restaurant Name & Price */}
-                    <div>
-                      <div className="flex items-start justify-between mb-2">
-                        <h2 className="text-3xl">{matchedRestaurant.name}</h2>
-                        <span className="text-2xl font-semibold text-muted-foreground">{matchedRestaurant.cost}</span>
-                      </div>
-                      
-                      {/* Location */}
-                      <div className="flex items-start gap-2 text-muted-foreground">
-                        <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        <p className="text-sm">{matchedRestaurant.address}</p>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Cuisine Tags */}
-                    <div className="flex flex-wrap gap-2">
-                      {matchedRestaurant.cuisine.map((cuisine) => (
-                        <Badge key={cuisine} variant="secondary">
-                          {cuisine}
-                        </Badge>
-                      ))}
-                    </div>
-
-                    {/* Student Perks - Highlighted */}
-                    {(matchedRestaurant.hasGroupSeating || matchedRestaurant.hasStudentDiscount) && (
-                      <div className="bg-gradient-to-r from-blue-50 to-amber-50 border-2 border-blue-200/50 rounded-lg p-4">
-                        <h3 className="text-xs font-semibold text-blue-900 mb-2 uppercase tracking-wide flex items-center gap-1.5">
-                          <Star className="w-3.5 h-3.5 fill-blue-600 text-blue-600" />
-                          Student Perks
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
-                          {matchedRestaurant.hasGroupSeating && (
-                            <Badge className="bg-blue-600 text-white hover:bg-blue-700 border-0">
-                              <Users className="w-3.5 h-3.5 mr-1" />
-                              Group Seating
-                            </Badge>
-                          )}
-                          {matchedRestaurant.hasStudentDiscount && (
-                            <Badge className="bg-amber-600 text-white hover:bg-amber-700 border-0">
-                              <Ticket className="w-3.5 h-3.5 mr-1" />
-                              {matchedRestaurant.studentDiscountAmount}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Dietary Options */}
-                    {matchedRestaurant.badges.filter(badge => 
-                      badge.includes('Vegan') || badge.includes('Halal') || badge.includes('Kosher') || badge.includes('Vegetarian')
-                    ).length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {matchedRestaurant.badges.filter(badge => 
-                          badge.includes('Vegan') || badge.includes('Halal') || badge.includes('Kosher') || badge.includes('Vegetarian')
-                        ).map((badge) => (
-                          <Badge 
-                            key={badge}
-                            className="bg-gradient-to-r from-purple-600 to-pink-600 text-white border-0"
-                          >
-                            {badge}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Health Inspection Warning (if violations exist) */}
-                    {matchedRestaurant.healthInspection && matchedRestaurant.healthInspection.violations.length > 0 && (
-                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                        <p className="text-xs font-semibold flex items-center gap-2 mb-1 text-orange-900">
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          Health Inspection Notes
-                        </p>
-                        <p className="text-xs text-orange-800">
-                          {matchedRestaurant.healthInspection.violations.length} violation{matchedRestaurant.healthInspection.violations.length !== 1 ? 's' : ''} found during last inspection.
-                        </p>
-                      </div>
-                    )}
-
-                    <Separator />
-
-                    {/* Action Buttons */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          const address = encodeURIComponent(matchedRestaurant.address);
-                          window.open(`https://maps.google.com/?q=${address}`, '_blank');
-                        }}
-                      >
-                        <MapPin className="w-4 h-4 mr-2" />
-                        Directions
-                      </Button>
-                      
-                      {matchedRestaurant.menuLink && (
-                        <Button
-                          className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                          onClick={() => window.open(matchedRestaurant.menuLink, '_blank')}
-                        >
-                          <ExternalLink className="w-4 h-4 mr-2" />
-                          Menu
-                        </Button>
-                      )}
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => navigate(`/group/${group.id}`)}
-                    >
-                      Back to Group
-                    </Button>
-                  </CardContent>
-                </Card>
+                <div className="mb-6">
+                  <RestaurantCard restaurant={matchedRestaurant} isReadonly={true} />
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => navigate(`/group/${group.id}`)}
+                >
+                  Back to Group
+                </Button>
               </motion.div>
             </motion.div>
           ) : showMatch && !matchedRestaurant ? (
@@ -347,6 +176,6 @@ export function MatchPage() {
           )}
         </AnimatePresence>
       </main>
-    </div>
+    </>
   );
 }

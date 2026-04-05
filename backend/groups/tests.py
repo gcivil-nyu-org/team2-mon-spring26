@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 import json
 
-from .models import Group, GroupMembership, SwipeEvent, Swipe
+from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
 from venues.models import Venue
 from accounts.models import UserPreference
 
@@ -95,7 +95,9 @@ class GroupAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(
-            GroupMembership.objects.filter(user=self.user2, group=group).exists()
+            GroupInvitation.objects.filter(
+                invitee=self.user2, group=group, status="pending"
+            ).exists()
         )
 
     def test_cannot_leave_if_only_leader(self):
@@ -1022,6 +1024,53 @@ class GroupManagementAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(
+            GroupInvitation.objects.filter(
+                invitee=self.outsider, group=self.group, status="pending"
+            ).exists()
+        )
+
+    def test_invitation_list_and_action(self):
+        # Create an invitation
+        invitation = GroupInvitation.objects.create(
+            group=self.group,
+            inviter=self.leader,
+            invitee=self.outsider,
+            status="pending",
+        )
+
+        # Test listing invitations
+        self.client.login(email="outsider@example.com", password="pass123")
+        response = self.client.get("/api/groups/invitations/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json().get("invitations", [])), 1)
+        self.assertEqual(response.json()["invitations"][0]["id"], invitation.id)
+
+        # Test accepting invitation
+        response = self.client.post(f"/api/groups/invitations/{invitation.id}/accept/")
+        self.assertEqual(response.status_code, 200)
+
+        invitation.refresh_from_db()
+        self.assertEqual(invitation.status, "accepted")
+        self.assertTrue(
+            GroupMembership.objects.filter(
+                user=self.outsider, group=self.group
+            ).exists()
+        )
+
+    def test_invitation_decline(self):
+        invitation = GroupInvitation.objects.create(
+            group=self.group,
+            inviter=self.leader,
+            invitee=self.outsider,
+            status="pending",
+        )
+        self.client.login(email="outsider@example.com", password="pass123")
+        response = self.client.post(f"/api/groups/invitations/{invitation.id}/decline/")
+        self.assertEqual(response.status_code, 200)
+
+        invitation.refresh_from_db()
+        self.assertEqual(invitation.status, "declined")
+        self.assertFalse(
             GroupMembership.objects.filter(
                 user=self.outsider, group=self.group
             ).exists()

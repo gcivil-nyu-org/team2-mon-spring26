@@ -11,10 +11,11 @@ import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
-  onSwipe: (direction: 'left' | 'right') => void;
+  onSwipe?: (direction: 'left' | 'right') => void;
+  isReadonly?: boolean;
 }
 
-export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
+export function RestaurantCard({ restaurant, onSwipe, isReadonly = false }: RestaurantCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showInfo, setShowInfo] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
@@ -70,6 +71,7 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
   const hasViolations = dietaryViolations.length > 0;
 
   const handleSwipe = (direction: 'left' | 'right') => {
+    if (isReadonly || !onSwipe) return;
     setSwipeDirection(direction);
     setTimeout(() => {
       onSwipe(direction);
@@ -107,31 +109,35 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
   return (
     <>
       <div className="relative">
-        {/* Left Arrow Button - Always Visible */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleSwipe('left');
-          }}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-14 h-14 bg-white/90 hover:bg-white shadow-lg backdrop-blur-sm border-2 border-red-200 hover:border-red-300 text-red-600 hover:text-red-700 rounded-full -translate-x-[calc(100%+12px)]"
-        >
-          <ChevronLeft className="w-8 h-8" />
-        </Button>
+        {/* Left Arrow Button - Only Visible if NOT Readonly */}
+        {!isReadonly && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSwipe('left');
+            }}
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-14 h-14 bg-white/90 hover:bg-white shadow-lg backdrop-blur-sm border-2 border-red-200 hover:border-red-300 text-red-600 hover:text-red-700 rounded-full -translate-x-[calc(100%+12px)] hide-on-mobile"
+          >
+            <ChevronLeft className="w-8 h-8" />
+          </Button>
+        )}
 
-        {/* Right Arrow Button - Always Visible */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleSwipe('right');
-          }}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-14 h-14 bg-white/90 hover:bg-white shadow-lg backdrop-blur-sm border-2 border-green-200 hover:border-green-300 text-green-600 hover:text-green-700 rounded-full translate-x-[calc(100%+12px)]"
-        >
-          <ChevronRight className="w-8 h-8" />
-        </Button>
+        {/* Right Arrow Button - Only Visible if NOT Readonly */}
+        {!isReadonly && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSwipe('right');
+            }}
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-14 h-14 bg-white/90 hover:bg-white shadow-lg backdrop-blur-sm border-2 border-green-200 hover:border-green-300 text-green-600 hover:text-green-700 rounded-full translate-x-[calc(100%+12px)] hide-on-mobile"
+          >
+            <ChevronRight className="w-8 h-8" />
+          </Button>
+        )}
 
         <AnimatePresence mode="wait">
           <motion.div
@@ -243,7 +249,10 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
                   </div>
                   <div className="flex items-start gap-2 text-sm text-muted-foreground mb-2">
                     <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    <span>{restaurant.address.split(',')[0]}, {restaurant.address.split(',')[1]}</span>
+                    <span>
+                      {restaurant.neighborhood ? restaurant.neighborhood + " • " : ""}
+                      {restaurant.address.split(',')[0]}
+                    </span>
                   </div>
                 </div>
 
@@ -286,44 +295,69 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
                   )}
                 </div>
 
-                {/* Action Buttons */}
-                <div className="grid grid-cols-3 gap-3 pt-2">
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSwipe('left');
-                    }}
-                    className="bg-red-50 hover:bg-red-100 border-red-200 text-red-600"
-                  >
-                    <X className="w-6 h-6" />
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowInfo(true);
-                    }}
-                    className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-600"
-                  >
-                    <Info className="w-6 h-6" />
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSwipe('right');
-                    }}
-                    className="bg-green-50 hover:bg-green-100 border-green-200 text-green-600"
-                  >
-                    <Heart className="w-6 h-6" />
-                  </Button>
+                {/* Service Options (Takeout/Delivery/DineIn/Reservations) */}
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground pt-1">
+                  {restaurant.hasDineIn && <span className="bg-gray-100 px-2 py-1 rounded">Dine-in</span>}
+                  {restaurant.hasTakeout && <span className="bg-gray-100 px-2 py-1 rounded">Takeout</span>}
+                  {restaurant.hasDelivery && <span className="bg-gray-100 px-2 py-1 rounded">Delivery</span>}
+                  {restaurant.isReservable && <span className="bg-gray-100 px-2 py-1 rounded">Reservations</span>}
+                  {restaurant.seatingCapacity && <span className="bg-gray-100 px-2 py-1 rounded">Seats ~{restaurant.seatingCapacity}</span>}
                 </div>
+
+                {/* Action Buttons */}
+                {!isReadonly ? (
+                  <div className="grid grid-cols-3 gap-3 pt-2">
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSwipe('left');
+                      }}
+                      className="bg-red-50 hover:bg-red-100 border-red-200 text-red-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowInfo(true);
+                      }}
+                      className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-600"
+                    >
+                      <Info className="w-6 h-6" />
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSwipe('right');
+                      }}
+                      className="bg-green-50 hover:bg-green-100 border-green-200 text-green-600"
+                    >
+                      <Heart className="w-6 h-6" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="pt-2">
+                    <Button
+                      variant="outline"
+                      className="w-full bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-600 flex items-center justify-center gap-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowInfo(true);
+                      }}
+                    >
+                      <Info className="w-4 h-4" />
+                      View Full Details
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </motion.div>
@@ -523,19 +557,34 @@ export function RestaurantCard({ restaurant, onSwipe }: RestaurantCardProps) {
               </div>
             )}
 
-            {/* Menu Link */}
-            {restaurant.menuLink && (
-              <div>
+            {/* Action Links */}
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  if (restaurant.googleMapsUrl) {
+                    window.open(restaurant.googleMapsUrl, '_blank');
+                  } else {
+                    const address = encodeURIComponent(restaurant.address);
+                    window.open(`https://maps.google.com/?q=${address}`, '_blank');
+                  }
+                }}
+              >
+                <MapPin className="w-4 h-4 mr-2" />
+                Directions
+              </Button>
+              {restaurant.menuLink && (
                 <Button
                   variant="outline"
-                  className="w-full"
+                  className="flex-1"
                   onClick={() => window.open(restaurant.menuLink, '_blank')}
                 >
                   <ExternalLink className="w-4 h-4 mr-2" />
-                  View Menu
+                  Menu
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

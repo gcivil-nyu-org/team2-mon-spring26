@@ -42,9 +42,9 @@ describe('RegisterPage', () => {
     });
   });
 
-  it('renders account step with name, email, password fields', () => {
+  it('renders account step with name, email, password fields', async () => {
     render(<RegisterPage />, { initialRoute: '/register' });
-    expect(screen.getByRole('heading', { name: /create account/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /create account/i })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /full name/i })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /nyu email/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
@@ -56,14 +56,14 @@ describe('RegisterPage', () => {
   it('shows validation error when name is empty', async () => {
     const user = userEvent.setup();
     render(<RegisterPage />, { initialRoute: '/register' });
-    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await user.click(await screen.findByRole('button', { name: /continue/i }));
     expect(await screen.findByText(/name is required/i)).toBeInTheDocument();
   });
 
   it('shows validation error for invalid email', async () => {
     const user = userEvent.setup();
     render(<RegisterPage />, { initialRoute: '/register' });
-    await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
+    await user.type(await screen.findByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'not-an-email');
     await user.type(screen.getByLabelText(/^password$/i), 'ValidPass1!');
     await user.type(screen.getByLabelText(/confirm password/i), 'ValidPass1!');
@@ -74,18 +74,18 @@ describe('RegisterPage', () => {
   it('shows validation error when password is too short', async () => {
     const user = userEvent.setup();
     render(<RegisterPage />, { initialRoute: '/register' });
-    await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
+    await user.type(await screen.findByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'jane@nyu.edu');
     await user.type(screen.getByLabelText(/^password$/i), '12345');
     await user.type(screen.getByLabelText(/confirm password/i), '12345');
     await user.click(screen.getByRole('button', { name: /continue/i }));
-    expect(await screen.findByText(/at least 6 characters/i)).toBeInTheDocument();
+    expect(await screen.findByText(/at least 8 characters/i)).toBeInTheDocument();
   });
 
   it('shows validation error when passwords do not match', async () => {
     const user = userEvent.setup();
     render(<RegisterPage />, { initialRoute: '/register' });
-    await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
+    await user.type(await screen.findByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'jane@nyu.edu');
     await user.type(screen.getByLabelText(/^password$/i), 'ValidPass1!');
     await user.type(screen.getByLabelText(/confirm password/i), 'DifferentPass1!');
@@ -96,7 +96,7 @@ describe('RegisterPage', () => {
   it('moves to preferences step when account form is valid', async () => {
     const user = userEvent.setup();
     render(<RegisterPage />, { initialRoute: '/register' });
-    await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
+    await user.type(await screen.findByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'jane@nyu.edu');
     await user.type(screen.getByLabelText(/^password$/i), 'ValidPass1!');
     await user.type(screen.getByLabelText(/confirm password/i), 'ValidPass1!');
@@ -130,7 +130,7 @@ describe('RegisterPage', () => {
 
     const user = userEvent.setup();
     render(<RegisterPage />, { initialRoute: '/register' });
-    await user.type(screen.getByRole('textbox', { name: /full name/i }), 'Jane Doe');
+    await user.type(await screen.findByRole('textbox', { name: /full name/i }), 'Jane Doe');
     await user.type(screen.getByRole('textbox', { name: /nyu email/i }), 'jane@nyu.edu');
     await user.type(screen.getByLabelText(/^password$/i), 'ValidPass1!');
     await user.type(screen.getByLabelText(/confirm password/i), 'ValidPass1!');

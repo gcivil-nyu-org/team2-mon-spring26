@@ -9,4 +9,9 @@ urlpatterns = [
         views.api_chat_message_detail,
         name="chat-message-detail",
     ),
+    path(
+        "<str:chat_id>/members/<str:user_id>/mute/",
+        views.api_chat_member_mute,
+        name="chat-member-mute",
+    ),
 ]

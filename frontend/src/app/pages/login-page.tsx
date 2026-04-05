@@ -87,7 +87,7 @@ export function LoginPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-4" noValidate>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -168,7 +168,7 @@ export function LoginPage() {
                   Enter your email address and we'll send you a link to reset your password.
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleForgotPassword} className="space-y-4">
+              <form onSubmit={handleForgotPassword} className="space-y-4" noValidate>
                 <div className="space-y-2">
                   <Label htmlFor="resetEmail">Email Address</Label>
                   <div className="relative">

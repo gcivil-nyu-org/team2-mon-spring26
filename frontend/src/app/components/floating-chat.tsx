@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { MessageCircle, X, Send, Plus, Users, Trash2 } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { MessageCircle, X, Send, Plus, Users, Trash2, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
@@ -28,6 +28,7 @@ interface Conversation {
 export function FloatingChat() {
   const { groups, dmConversations, chatMessages, addChatMessage, deleteChatMessage, currentUser, createDMConversation, getAllUsers } = useApp();
   const [isOpen, setIsOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string>('');
   const [newMessage, setNewMessage] = useState('');
   const [showNewDMDialog, setShowNewDMDialog] = useState(false);
@@ -103,7 +104,7 @@ export function FloatingChat() {
     }
   };
 
-  const handleStartDM = async (participantId: string) => {
+  const handleStartDM = useCallback(async (participantId: string) => {
     // Check if DM already exists
     const existingDM = dmConversations.find(dm => 
       dm.participants.includes(participantId) && dm.participants.includes(currentUser!.id)
@@ -120,7 +121,18 @@ export function FloatingChat() {
       }
     }
     setShowNewDMDialog(false);
-  };
+  }, [dmConversations, currentUser, createDMConversation]);
+
+  useEffect(() => {
+    const handleOpenDM = (e: CustomEvent<string>) => {
+      setIsOpen(true);
+      handleStartDM(e.detail);
+    };
+    window.addEventListener('open-chat-dm', handleOpenDM as EventListener);
+    return () => {
+      window.removeEventListener('open-chat-dm', handleOpenDM as EventListener);
+    };
+  }, [handleStartDM]);
 
   // Get all users from groups (potential DM contacts)
   const potentialDMContacts = getAllUsers().filter(user => {
@@ -153,7 +165,7 @@ export function FloatingChat() {
 
       {/* Chat Window */}
       {isOpen && (
-        <Card className="fixed bottom-6 right-6 w-[680px] h-[580px] shadow-2xl flex flex-row z-50 overflow-hidden">
+        <Card className={`fixed bottom-6 right-6 ${isExpanded ? 'w-[calc(100vw-3rem)] h-[calc(100vh-3rem)]' : 'w-[680px] h-[580px]'} shadow-2xl flex flex-row z-50 overflow-hidden transition-all duration-300 ease-in-out`}>
           {/* Conversations List - Left Side */}
           <div className="w-[240px] border-r flex flex-col bg-muted/30">
             {/* Header */}
@@ -267,14 +279,27 @@ export function FloatingChat() {
                 </div>
                 <h3 className="font-semibold truncate">{selectedConversation?.name}</h3>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 flex-shrink-0"
-                onClick={() => setIsOpen(false)}
-              >
-                <X className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                >
+                  {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0"
+                  onClick={() => {
+                    setIsOpen(false);
+                    setIsExpanded(false);
+                  }}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
 
             {/* Messages */}
@@ -300,40 +325,44 @@ export function FloatingChat() {
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} group/msg relative`}
+                        className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} group/msg relative w-full`}
                       >
                         {!isCurrentUser && (
                           <span className="text-xs text-muted-foreground mb-1 px-1">
                             {msg.userName}
                           </span>
                         )}
-                        <div className="flex items-center gap-2">
-                          {isLeader && !isCurrentUser && msg.message !== '[This message has been deleted]' && selectedConversationId && (
-                            <button 
-                              onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
-                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
-                              title="Delete message"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                          <div
-                            className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                              isCurrentUser
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-muted text-foreground'
-                            } ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}
-                          >
-                            <p className="text-sm break-words">{msg.message}</p>
-                          </div>
-                          {isLeader && isCurrentUser && msg.message !== '[This message has been deleted]' && selectedConversationId && (
-                            <button 
-                              onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
-                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
-                              title="Delete message"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                        <div className="flex items-center gap-2 w-full justify-end max-w-full">
+                          {!isCurrentUser ? (
+                            <div className="flex items-center gap-2 w-full justify-start">
+                              <div className={`max-w-[75%] rounded-2xl px-4 py-2 bg-muted text-foreground ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
+                                <p className="text-sm break-words">{msg.message}</p>
+                              </div>
+                              {isLeader && msg.message !== '[This message has been deleted]' && selectedConversationId && (
+                                <button 
+                                  onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
+                                  className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                                  title="Delete message"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 w-full justify-end">
+                              {isLeader && msg.message !== '[This message has been deleted]' && selectedConversationId && (
+                                <button 
+                                  onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
+                                  className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                                  title="Delete message"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              <div className={`max-w-[75%] rounded-2xl px-4 py-2 bg-purple-600 text-white ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
+                                <p className="text-sm break-words">{msg.message}</p>
+                              </div>
+                            </div>
                           )}
                         </div>
                         <span className="text-xs text-muted-foreground mt-1 px-1">
