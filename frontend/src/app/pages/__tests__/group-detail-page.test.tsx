@@ -78,7 +78,7 @@ describe('GroupDetailPage Synchronization', () => {
     // Give the layout time to mount and useEffect to fire natively
     await waitFor(() => {
       // Expect that `fetchSwipeEvents('group1')` was executed at least once safely
-      expect(mockFetchSwipeEvents).toHaveBeenCalledWith('group1');
+      expect(mockFetchSwipeEvents).toHaveBeenCalledWith('group1', expect.any(AbortSignal));
       expect(mockFetchSwipeEvents).toHaveBeenCalledTimes(1);
     });
   });
