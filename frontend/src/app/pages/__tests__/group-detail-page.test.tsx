@@ -40,14 +40,14 @@ describe('GroupDetailPage Synchronization', () => {
       groups: [{ 
         id: "group1", 
         name: "Test Group", 
-        members: [{ id: "1", role: "leader", userName: "Alice" }], 
+        members: [{ userId: "1", userName: "Alice", isLeader: true, hasFinishedSwiping: false }], 
         created_by: "1", 
         created_at: "" 
       }],
       currentGroup: { 
         id: "group1", 
         name: "Test Group", 
-        members: [{ id: "1", role: "leader", userName: "Alice" }], 
+        members: [{ userId: "1", userName: "Alice", isLeader: true, hasFinishedSwiping: false }], 
         created_by: "1", 
         created_at: "" 
       },

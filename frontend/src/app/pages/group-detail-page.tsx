@@ -58,6 +58,7 @@ export function GroupDetailPage() {
     getAllUsers,
     fetchAvailableUsers,
     fetchSwipeEvents,
+    regenerateJoinCode,
     leaveGroup,
     deleteGroup,
     removeMember,
@@ -73,6 +74,7 @@ export function GroupDetailPage() {
   const [showConstraintsDialog, setShowConstraintsDialog] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<Set<string>>(new Set());
   const [inviteSuccessMsg, setInviteSuccessMsg] = useState<string | null>(null);
+  const [regeneratingCode, setRegeneratingCode] = useState(false);
   
   const [dietary, setDietary] = useState<string[]>([]);
   const [cuisines, setCuisines] = useState<string[]>([]);
@@ -156,6 +158,18 @@ export function GroupDetailPage() {
     navigate(`/group/${group.id}/plan`);
   };
 
+  const handleRegenerateCode = async () => {
+    if (!group) return;
+    setRegeneratingCode(true);
+    try {
+      await regenerateJoinCode(group.id);
+    } catch (e: unknown) {
+      alert("Failed to regenerate code: " + (e instanceof Error ? e.message : "Unknown error"));
+    } finally {
+      setRegeneratingCode(false);
+    }
+  };
+
   const handleSaveConstraints = async () => {
     if (!group) return;
     setSavingConstraints(true);
@@ -200,8 +214,13 @@ export function GroupDetailPage() {
                   <Users className="w-5 h-5" />
                   Members
                 </CardTitle>
-                <CardDescription>
-                  People in this group
+                <CardDescription className="flex items-center gap-2 mt-1">
+                  <span>People in this group</span>
+                  {group.joinCode && (
+                    <Badge variant="outline" className="font-mono bg-purple-50 text-purple-700 hover:bg-purple-100 uppercase">
+                      Code: {group.joinCode}
+                    </Badge>
+                  )}
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -213,14 +232,16 @@ export function GroupDetailPage() {
                   <MessageCircle className="w-4 h-4" />
                   <span className="hidden sm:inline">Group Chat</span>
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowInviteDialog(true)}
-                  className="flex items-center gap-2"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Invite</span>
-                </Button>
+                {isLeader && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowInviteDialog(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span className="hidden sm:inline">Invite</span>
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-100 flex items-center gap-2"
@@ -265,26 +286,56 @@ export function GroupDetailPage() {
               <DialogHeader>
                 <DialogTitle>Invite Member</DialogTitle>
                 <DialogDescription>
-                  Search for users by email to invite to the group
+                  Share the join code or search for users by email.
                 </DialogDescription>
               </DialogHeader>
               
-              <div className="space-y-4">
-                {inviteSuccessMsg && (
-                  <div className="p-3 bg-green-100 text-green-800 text-sm rounded-lg flex items-center justify-between transition-opacity duration-500">
-                    {inviteSuccessMsg}
-                  </div>
-                )}
-                {/* Search Input */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by email or name..."
-                    value={searchEmail}
-                    onChange={(e) => setSearchEmail(e.target.value)}
-                    className="pl-9"
-                  />
+              <div className="space-y-6">
+                {/* Join Code Section */}
+                <div className="space-y-3">
+                    <h4 className="text-sm font-medium">Group Join Code</h4>
+                    <div className="flex gap-2">
+                        <div className="flex-1 bg-muted rounded-md flex items-center justify-center h-12 border">
+                            <span className="font-mono text-xl tracking-widest uppercase font-semibold text-purple-700">
+                                {group.joinCode || "------"}
+                            </span>
+                        </div>
+                        {isLeader && (
+                            <Button 
+                                variant="outline" 
+                                className="h-12 px-4 shadow-sm" 
+                                onClick={handleRegenerateCode}
+                                disabled={regeneratingCode}
+                            >
+                                {regeneratingCode ? "Generating..." : "Regenerate"}
+                            </Button>
+                        )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Anyone with this code can instantly join the group.
+                    </p>
                 </div>
+
+                <div className="border-t my-4" />
+
+                {/* Invite Member Section */}
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium">Find Members</h4>
+                  {inviteSuccessMsg && (
+                    <div className="p-3 bg-green-100 text-green-800 text-sm rounded-lg flex items-center justify-between transition-opacity duration-500">
+                      {inviteSuccessMsg}
+                    </div>
+                  )}
+                  {/* Search Input */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by email or name..."
+                      value={searchEmail}
+                      onChange={(e) => setSearchEmail(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
 
                 {/* User List */}
                 <div className="max-h-80 overflow-y-auto space-y-2">
@@ -313,18 +364,23 @@ export function GroupDetailPage() {
                           variant={pendingInvites.has(user.email) || user.is_invited ? "secondary" : "default"}
                           onClick={async () => {
                             if (group) {
+                              setPendingInvites(prev => new Set(prev).add(user.email));
                               try {
                                 await inviteMember(group.id, user.email);
-                                setPendingInvites(prev => new Set(prev).add(user.email));
                                 setInviteSuccessMsg(`Invite successfully sent to ${user.name}!`);
                                 setTimeout(() => setInviteSuccessMsg(null), 3000);
                               } catch (err: unknown) {
-                                // If they send an invite but it was already pending from a previous session, recover gracefully:
+                                // If already invited, keep pending state and show message
                                 if (err instanceof Error && err.message === 'User has already been invited') {
-                                  setPendingInvites(prev => new Set(prev).add(user.email));
                                   setInviteSuccessMsg(`Invite was already sent to ${user.name}!`);
                                   setTimeout(() => setInviteSuccessMsg(null), 3000);
                                 } else {
+                                  // Roll back optimistic state on unexpected failure
+                                  setPendingInvites(prev => {
+                                    const next = new Set(prev);
+                                    next.delete(user.email);
+                                    return next;
+                                  });
                                   console.error("Failed to send invite", err);
                                 }
                               }
@@ -339,6 +395,7 @@ export function GroupDetailPage() {
                   )}
                 </div>
               </div>
+             </div>
             </DialogContent>
           </Dialog>
           <CardContent>

@@ -40,11 +40,11 @@ export function SwipePage() {
     if (event?.status === "completed") {
       navigate(`/match/${event.id}`);
     }
-  }, [event, navigate]);
+  }, [event?.id, event?.status, navigate]);
 
   // Fetch venues from backend
   useEffect(() => {
-    if (!event || !group) return;
+    if (!event?.id || !group?.id) return;
 
     let cancelled = false;
     const loadVenues = async () => {
@@ -66,7 +66,7 @@ export function SwipePage() {
     return () => {
       cancelled = true;
     };
-  }, [event, group, fetchSwipeVenues]);
+  }, [event?.id, group?.id, fetchSwipeVenues]);
   if (!event || !group || !currentUser) {
     return (
       <>

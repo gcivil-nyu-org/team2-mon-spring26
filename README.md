@@ -175,8 +175,8 @@ Use two terminals: one for backend and one for frontend.
 cd backend
 source .venv/bin/activate
 pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver 8000
+python3 manage.py migrate
+python3 manage.py runserver 8000
 ```
 
 Backend URL: `http://127.0.0.1:8000`
