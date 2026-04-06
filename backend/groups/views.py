@@ -1089,10 +1089,7 @@ def api_swipe_event_venues(request, group_id, event_id):
         # prefetch_related_objects actually re-fetches (Django skips re-fetching
         # if the key already exists in _prefetched_objects_cache).
         for _v in venues_list:
-            try:
-                del _v._prefetched_objects_cache["photos"]
-            except (AttributeError, KeyError):
-                pass
+            getattr(_v, "_prefetched_objects_cache", {}).pop("photos", None)
         prefetch_related_objects(venues_list, "photos")
 
         venues_data = [_venue_to_swipe_json(v) for v in venues_list]

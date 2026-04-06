@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 import json
@@ -872,6 +874,49 @@ class SwipeEventAPITests(TestCase):
         data = response.json()
         venue_names = [v["name"] for v in data["venues"]]
         self.assertNotIn("Ghost Venue", venue_names)
+
+    @patch("groups.views.bulk_prefetch_photos")
+    def test_venues_photos_appear_on_first_load(self, mock_bulk):
+        """Photos created by bulk_prefetch_photos must be visible on the first response,
+        not only after a second request (regression for stale prefetch cache bug)."""
+
+        venue = Venue.objects.create(
+            name="Photo Test Venue",
+            sanitation_grade="A",
+            is_active=True,
+            google_place_id="test_place_photo_load",
+        )
+
+        def _create_photo(venues_list, **kwargs):
+            for v in venues_list:
+                if v.id == venue.id:
+                    VenuePhoto.objects.get_or_create(
+                        venue=v,
+                        source="google_places",
+                        is_primary=True,
+                        defaults={
+                            "image_url": "https://lh3.googleusercontent.com/test"
+                        },
+                    )
+
+        mock_bulk.side_effect = _create_photo
+
+        event = SwipeEvent.objects.create(
+            group=self.group,
+            name="Photo Load Test",
+            created_by=self.leader,
+        )
+
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        data = response.json()
+        match = next(
+            (v for v in data["venues"] if v["name"] == "Photo Test Venue"), None
+        )
+        self.assertIsNotNone(match)
+        self.assertIn("https://lh3.googleusercontent.com/test", match["images"])
 
 
 class GroupManagementAPITests(TestCase):

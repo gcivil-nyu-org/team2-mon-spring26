@@ -63,6 +63,15 @@ class VenuePhotoModelTest(TestCase):
         self.photo.save()
         self.assertEqual(str(self.photo), "Test Restaurant — photo")
 
+    def test_image_url_supports_long_urls(self):
+        """image_url must accept URLs longer than 200 chars (e.g. Google CDN URLs)."""
+        long_url = "https://lh3.googleusercontent.com/places/photo/" + "a" * 300
+        photo = VenuePhoto.objects.create(
+            venue=self.venue, image_url=long_url, is_primary=False
+        )
+        photo.refresh_from_db()
+        self.assertEqual(photo.image_url, long_url)
+
 
 class VenueTidbitModelTest(TestCase):
     def setUp(self):
