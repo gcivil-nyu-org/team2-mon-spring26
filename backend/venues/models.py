@@ -175,7 +175,7 @@ class VenuePhoto(models.Model):
     """Photo references for venue profiles (Google Places URL or S3 URL)."""
 
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="photos")
-    image_url = models.URLField()
+    image_url = models.URLField(max_length=2048)
     source = models.CharField(max_length=50, blank=True)
     is_primary = models.BooleanField(default=False)
     caption = models.CharField(max_length=255, blank=True)
