@@ -94,10 +94,7 @@ def bulk_prefetch_photos(venues, max_workers=5):
     Fetches missing photos in parallel so the serialization loop stays side-effect free.
     Expects venues to have already had their 'photos' relation prefetched.
     """
-    needs_fetch = [
-        v for v in venues
-        if v.google_place_id and not list(v.photos.all())
-    ]
+    needs_fetch = [v for v in venues if v.google_place_id and not list(v.photos.all())]
     if not needs_fetch:
         return
     with ThreadPoolExecutor(max_workers=min(len(needs_fetch), max_workers)) as executor:

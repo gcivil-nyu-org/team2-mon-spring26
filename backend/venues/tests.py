@@ -128,7 +128,9 @@ class GooglePlacesPhotoTest(TestCase):
         resp.raise_for_status = MagicMock()
         return resp
 
-    def _make_media_response(self, location="https://lh3.googleusercontent.com/places/photo"):
+    def _make_media_response(
+        self, location="https://lh3.googleusercontent.com/places/photo"
+    ):
         resp = MagicMock()
         resp.status_code = 302
         resp.headers = {"Location": location}
@@ -143,6 +145,7 @@ class GooglePlacesPhotoTest(TestCase):
         ]
 
         from venues.google_places import fetch_and_cache_primary_photo
+
         result = fetch_and_cache_primary_photo(self.venue)
 
         self.assertEqual(result, cdn_url)
@@ -162,6 +165,7 @@ class GooglePlacesPhotoTest(TestCase):
         )
 
         from venues.google_places import fetch_and_cache_primary_photo
+
         result = fetch_and_cache_primary_photo(self.venue)
 
         self.assertEqual(result, cdn_url)
@@ -172,6 +176,7 @@ class GooglePlacesPhotoTest(TestCase):
         mock_get.side_effect = Exception("network error")
 
         from venues.google_places import fetch_and_cache_primary_photo
+
         result = fetch_and_cache_primary_photo(self.venue)
 
         self.assertIsNone(result)
@@ -187,6 +192,7 @@ class GooglePlacesPhotoTest(TestCase):
         mock_get.side_effect = [detail_resp, media_resp]
 
         from venues.google_places import fetch_and_cache_primary_photo
+
         result = fetch_and_cache_primary_photo(self.venue)
 
         self.assertIsNone(result)
@@ -196,6 +202,7 @@ class GooglePlacesPhotoTest(TestCase):
         venue = Venue.objects.create(name="No Place ID Venue")
 
         from venues.google_places import fetch_and_cache_primary_photo
+
         result = fetch_and_cache_primary_photo(venue)
 
         self.assertIsNone(result)

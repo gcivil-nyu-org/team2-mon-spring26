@@ -1061,10 +1061,12 @@ def api_swipe_event_venues(request, group_id, event_id):
         venues_qs = venues_qs.exclude(id__in=swiped_venue_ids)
 
         # Only show venues that have a photo already or a Google Place ID to fetch one from
-        has_place_id = (
-            models.Q(google_place_id__isnull=False) & ~models.Q(google_place_id="")
+        has_place_id = models.Q(google_place_id__isnull=False) & ~models.Q(
+            google_place_id=""
         )
-        has_photos = models.Exists(VenuePhoto.objects.filter(venue=models.OuterRef("pk")))
+        has_photos = models.Exists(
+            VenuePhoto.objects.filter(venue=models.OuterRef("pk"))
+        )
         venues_qs = venues_qs.filter(has_place_id | has_photos)
 
         # Order by rating (best first), limit to 20
@@ -1079,6 +1081,7 @@ def api_swipe_event_venues(request, group_id, event_id):
         # Fetch missing Google Places photos in parallel before serializing,
         # then refresh the photos prefetch cache so _venue_to_swipe_json stays side-effect free.
         from venues.google_places import bulk_prefetch_photos
+
         venues_list = list(venues_qs)
         bulk_prefetch_photos(venues_list)
         prefetch_related_objects(venues_list, "photos")
