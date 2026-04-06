@@ -2,17 +2,20 @@ import { useNavigate } from 'react-router';
 import { useApp } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { Users, Settings } from 'lucide-react';
+import { Users, Settings, Hash } from 'lucide-react';
+import { JoinGroupModal } from '@/app/components/join-group-modal';
+import { useState } from 'react';
 
 export function HomePage() {
   const { groups } = useApp();
   const navigate = useNavigate();
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
 
   return (
     <>
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-purple-500 to-pink-500 text-white border-0"
             onClick={() => navigate('/create-group')}
@@ -39,6 +42,21 @@ export function HomePage() {
               <CardTitle className="mb-2">Set Preferences</CardTitle>
               <CardDescription className="text-orange-100">
                 Update your dietary needs and cuisines
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow bg-gradient-to-br from-blue-500 to-indigo-500 text-white border-0"
+            onClick={() => setIsJoinModalOpen(true)}
+          >
+            <CardHeader className="pb-6">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
+                <Hash className="w-6 h-6" />
+              </div>
+              <CardTitle className="mb-2">Join Group</CardTitle>
+              <CardDescription className="text-blue-100">
+                Enter code or discover public groups
               </CardDescription>
             </CardHeader>
           </Card>
@@ -102,6 +120,11 @@ export function HomePage() {
           )}
         </div>
       </div>
+      
+      <JoinGroupModal 
+        isOpen={isJoinModalOpen} 
+        onClose={() => setIsJoinModalOpen(false)} 
+      />
     </>
   );
 }

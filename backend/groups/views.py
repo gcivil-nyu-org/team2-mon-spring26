@@ -100,6 +100,7 @@ def _group_to_json(group):
         "privacy": group.privacy,
         "created_by": group.created_by.id if group.created_by else None,
         "created_at": group.created_at.isoformat(),
+        "join_code": group.join_code,
         "members": [
             {
                 "id": m.user.id,
@@ -370,9 +371,13 @@ def api_invitations_list(request):
 
     from .models import SwipeSessionNotification, SwipeEvent
 
-    swipe_notifications = SwipeSessionNotification.objects.filter(
-        user=request.user, event__status=SwipeEvent.Status.ACTIVE
-    ).select_related("event", "event__group", "event__created_by")
+    swipe_notifications = (
+        SwipeSessionNotification.objects.filter(
+            user=request.user, event__status=SwipeEvent.Status.ACTIVE
+        )
+        .exclude(event__created_by=request.user)
+        .select_related("event", "event__group", "event__created_by")
+    )
 
     swipe_data = []
     for sn in swipe_notifications:
@@ -936,11 +941,12 @@ def api_swipe_events(request, group_id):
             members = GroupMembership.objects.filter(group=group)
             notifications = []
             for member in members:
-                # Creator gets default read notification
-                is_read = member.user.id == request.user.id
+                # Do not notify the creator of the event
+                if member.user.id == request.user.id:
+                    continue
                 notifications.append(
                     SwipeSessionNotification(
-                        event=event, user=member.user, is_read=is_read
+                        event=event, user=member.user, is_read=False
                     )
                 )
             SwipeSessionNotification.objects.bulk_create(notifications)
@@ -1237,3 +1243,105 @@ def api_swipe_event_results(request, group_id, event_id):
     except Exception as e:
         logger.error(f"Match results error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "An unexpected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_public_groups_list(request):
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        public_groups = (
+            Group.objects.filter(privacy=Group.PrivacyType.PUBLIC)
+            .exclude(memberships__user=request.user)
+            .order_by("-created_at")[:50]
+        )
+        return JsonResponse(
+            {"success": True, "groups": [_group_to_json(g) for g in public_groups]}
+        )
+    except Exception as e:
+        logger.error(f"Public group fetch error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An expected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_join_group_by_code(request, join_code):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.filter(join_code=join_code).first()
+        if not group:
+            return JsonResponse({"error": "Invalid join code"}, status=404)
+
+        if GroupMembership.objects.filter(group=group, user=request.user).exists():
+            return JsonResponse(
+                {"error": "You are already a member of this group"}, status=400
+            )
+
+        if group.privacy != Group.PrivacyType.PUBLIC:
+            return JsonResponse(
+                {"error": "This group is private and cannot be joined via code"},
+                status=403,
+            )
+
+        with transaction.atomic():
+            GroupMembership.objects.create(
+                group=group, user=request.user, role=GroupMembership.Role.MEMBER
+            )
+
+            if hasattr(group, "chat"):
+                from chat.models import ChatMember, Message
+
+                ChatMember.objects.update_or_create(
+                    chat=group.chat,
+                    user=request.user,
+                    defaults={"role": ChatMember.Role.MEMBER, "left_at": None},
+                )
+                username_display = (
+                    request.user.first_name or request.user.email.split("@")[0]
+                )
+                Message.objects.create(
+                    chat=group.chat,
+                    message_type=Message.MessageType.SYSTEM,
+                    body=f"{username_display} joined the group via directly entering code {join_code}",
+                )
+
+        return JsonResponse({"success": True, "group": _group_to_json(group)})
+    except Exception as e:
+        logger.error(f"Join group error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An expected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_regenerate_join_code(request, group_id):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        # Verify the user is the leader
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user, role=GroupMembership.Role.LEADER
+        ).first()
+        if not membership:
+            return JsonResponse(
+                {"error": "Only group leaders can regenerate the join code"}, status=403
+            )
+
+        # Reset the join code and save to auto-generate a new one
+        group.join_code = None
+        group.save()
+
+        return JsonResponse({"success": True, "join_code": group.join_code})
+    except Group.DoesNotExist:
+        return JsonResponse({"error": "Group not found"}, status=404)
+    except Exception as e:
+        logger.error(f"Regenerate code error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An expected error occurred"}, status=500)

@@ -42,6 +42,21 @@ class Group(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    join_code = models.CharField(max_length=6, unique=True, null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.join_code:
+            from django.utils.crypto import get_random_string
+
+            self.join_code = get_random_string(
+                6, allowed_chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+            )
+            # Guarantee uniqueness
+            while Group.objects.filter(join_code=self.join_code).exists():
+                self.join_code = get_random_string(
+                    6, allowed_chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                )
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
