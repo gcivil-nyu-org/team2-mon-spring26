@@ -3,7 +3,7 @@ import logging
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
-from django.db import transaction, models
+from django.db import transaction
 from django.utils import timezone
 
 from .models import Chat, ChatMember, Message
@@ -207,14 +207,14 @@ def api_chat_messages(request, chat_id):
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
-        # First, try to resolve chat_id as a direct Chat primary key
         chat = None
-        try:
-            chat = Chat.objects.get(id=chat_id)
-        except Chat.DoesNotExist:
-            chat = None
-
-        if not chat:
+        if str(chat_id).startswith("dm-"):
+            real_chat_id = str(chat_id)[3:]
+            try:
+                chat = Chat.objects.get(id=real_chat_id, type=Chat.ChatType.DIRECT)
+            except Chat.DoesNotExist:
+                return JsonResponse({"error": "Chat not found"}, status=404)
+        else:
             # Treat chat_id as a potential group ID and resolve/create the group chat
             from groups.models import Group, GroupMembership
 
@@ -329,9 +329,14 @@ def api_chat_message_detail(request, chat_id, message_id):
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
-        chat = Chat.objects.filter(
-            models.Q(id=chat_id) | models.Q(group__id=chat_id)
-        ).first()
+        chat = None
+        if str(chat_id).startswith("dm-"):
+            real_chat_id = str(chat_id)[3:]
+            chat = Chat.objects.filter(
+                id=real_chat_id, type=Chat.ChatType.DIRECT
+            ).first()
+        else:
+            chat = Chat.objects.filter(group__id=chat_id).first()
         if not chat:
             return JsonResponse({"error": "Chat not found"}, status=404)
 
@@ -381,9 +386,14 @@ def api_chat_member_mute(request, chat_id, user_id):
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
-        chat = Chat.objects.filter(
-            models.Q(id=chat_id) | models.Q(group__id=chat_id)
-        ).first()
+        chat = None
+        if str(chat_id).startswith("dm-"):
+            real_chat_id = str(chat_id)[3:]
+            chat = Chat.objects.filter(
+                id=real_chat_id, type=Chat.ChatType.DIRECT
+            ).first()
+        else:
+            chat = Chat.objects.filter(group__id=chat_id).first()
         if not chat:
             return JsonResponse({"error": "Chat not found"}, status=404)
 

@@ -79,6 +79,7 @@ export interface Group {
   members: GroupMember[];
   createdBy: string;
   createdAt: string;
+  joinCode?: string;
   constraints?: GroupConstraints;
 }
 
@@ -159,6 +160,7 @@ interface BackendGroup {
   members: BackendMember[];
   created_by: number | string;
   created_at: string;
+  join_code?: string;
   constraints?: GroupConstraints;
 }
 
@@ -193,7 +195,9 @@ interface AppContextType {
     defaultLocation?: string,
     privacy?: string
   ) => Promise<Group>;
-  joinGroup: (groupId: string) => void;
+  joinGroup: (code: string) => Promise<void>;
+  fetchPublicGroups: () => Promise<Group[]>;
+  regenerateJoinCode: (groupId: string) => Promise<string>;
   leaveGroup: (groupId: string) => Promise<void>;
   deleteGroup: (groupId: string) => Promise<void>;
   updateGroupConstraints: (groupId: string, constraints: GroupConstraints) => Promise<void>;
@@ -594,6 +598,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })),
           createdBy: String(g.created_by),
           createdAt: g.created_at,
+          joinCode: g.join_code,
           constraints: g.constraints,
         }));
         setGroups(mappedGroups);
@@ -1002,6 +1007,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })),
       createdBy: String(newGroupBackend.created_by),
       createdAt: newGroupBackend.created_at,
+      joinCode: newGroupBackend.join_code,
       constraints: newGroupBackend.constraints,
     };
 
@@ -1023,41 +1029,84 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return newGroup;
   };
 
-  const joinGroup = (groupId: string) => {
-    if (!currentUser) return;
-
-    setGroups(
-      groups.map((group) => {
-        if (group.id === groupId) {
-          const isMember = group.members.some((m) => m.userId === currentUser.id);
-          if (!isMember) {
-            return {
-              ...group,
-              members: [
-                ...group.members,
-                {
-                  userId: currentUser.id,
-                  userName: currentUser.name,
-                  hasFinishedSwiping: false,
-                  isLeader: false,
-                },
-              ],
-            };
-          }
-        }
-        return group;
-      })
-    );
-
-    // Add system message
-    const group = groups.find((g) => g.id === groupId);
-    if (group) {
-      addChatMessage(groupId, {
-        id: `msg-${Date.now()}`,
-        type: 'system',
-        message: `${currentUser.name} joined the group`,
-        timestamp: new Date().toISOString(),
+  const fetchPublicGroups = async (): Promise<Group[]> => {
+    try {
+      const response = await fetch(apiUrl('/api/groups/public/'), {
+        credentials: 'include',
       });
+      const data = await response.json();
+      if (response.ok) {
+        return data.groups.map((g: BackendGroup) => ({
+          id: String(g.id),
+          name: g.name,
+          members: g.members.map((m: BackendMember) => ({
+            userId: String(m.id),
+            userName: m.name,
+            hasFinishedSwiping: false,
+            isLeader: m.role === 'leader',
+          })),
+          createdBy: String(g.created_by),
+          createdAt: g.created_at,
+          joinCode: g.join_code,
+          constraints: g.constraints,
+        }));
+      }
+      return [];
+    } catch (error) {
+      console.error('Fetch public groups error:', error);
+      return [];
+    }
+  };
+
+  const joinGroup = async (code: string): Promise<void> => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/join/${code}/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to join group. Make sure code is correct.');
+      }
+      
+      // Update local state by re-fetching
+      await fetchUserGroups();
+      await fetchUserChats();
+    } catch (error) {
+      console.error('Join group error:', error);
+      throw error;
+    }
+  };
+
+  const regenerateJoinCode = async (groupId: string): Promise<string> => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/${groupId}/regenerate-code/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to regenerate code');
+      }
+      
+      // Update local state directly
+      setGroups(
+        groups.map(g => (g.id === groupId ? { ...g, joinCode: data.join_code } : g))
+      );
+      return data.join_code;
+    } catch (error) {
+      console.error('Regenerate code error:', error);
+      throw error;
     }
   };
 
@@ -1252,7 +1301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const fetchAvailableUsers = async (query: string = '', groupId?: string) => {
+  const fetchAvailableUsers = useCallback(async (query: string = '', groupId?: string) => {
     if (!currentUser) return;
     try {
       let url = `/api/groups/users/?q=${encodeURIComponent(query)}`;
@@ -1279,7 +1328,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to fetch users:', error);
     }
-  };
+  }, [currentUser]);
 
   const getAllUsers = () => {
     return availableUsers;
@@ -1424,8 +1473,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addChatMessage = async (conversationId: string, message: ChatMessage) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const rawId = conversationId.startsWith('dm-') ? conversationId.slice(3) : conversationId;
-      const response = await fetch(apiUrl(`/api/chat/${rawId}/messages/`), {
+      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/`), {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -1477,8 +1525,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteChatMessage = async (conversationId: string, messageId: string) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const rawId = conversationId.startsWith('dm-') ? conversationId.slice(3) : conversationId;
-      const response = await fetch(apiUrl(`/api/chat/${rawId}/messages/${messageId}/`), {
+      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/${messageId}/`), {
         method: 'DELETE',
         credentials: 'include',
         headers: {
@@ -1594,6 +1641,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         groups,
         createGroup,
         joinGroup,
+        fetchPublicGroups,
+        regenerateJoinCode,
         leaveGroup,
         deleteGroup,
         updateGroupConstraints,
