@@ -1066,6 +1066,11 @@ def api_swipe_event_venues(request, group_id, event_id):
         ).values_list("venue_id", flat=True)
         venues_qs = venues_qs.exclude(id__in=swiped_venue_ids)
 
+        # Only show venues that have a Google Place ID (guarantees a photo can be fetched)
+        venues_qs = venues_qs.filter(
+            google_place_id__isnull=False
+        ).exclude(google_place_id="")
+
         # Order by rating (best first), limit to 20
         venues_qs = (
             venues_qs.select_related("cuisine_type")
