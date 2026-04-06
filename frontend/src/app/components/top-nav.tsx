@@ -32,15 +32,7 @@ export function TopNav() {
   } else if (path === '/create-group') {
     isDynamic = true;
     contextTitle = 'Create New Group';
-  } else if (path.startsWith('/group/')) {
-    isDynamic = true;
-    const groupId = path.split('/')[2];
-    const group = groups.find(g => g.id === groupId);
-    if (group) {
-      contextTitle = group.name;
-      contextSubtitle = `${group.members.length} member${group.members.length !== 1 ? 's' : ''}`;
-    }
-  } else if (path.startsWith('/plan/')) {
+  } else if (/^\/group\/[^/]+\/plan$/.test(path)) {
     isDynamic = true;
     const groupId = path.split('/')[2];
     const group = groups.find(g => g.id === groupId);
@@ -48,6 +40,14 @@ export function TopNav() {
       backLink = `/group/${group.id}`;
       contextTitle = 'Plan Reservation';
       contextSubtitle = `For ${group.name}`;
+    }
+  } else if (path.startsWith('/group/')) {
+    isDynamic = true;
+    const groupId = path.split('/')[2];
+    const group = groups.find(g => g.id === groupId);
+    if (group) {
+      contextTitle = group.name;
+      contextSubtitle = `${group.members.length} member${group.members.length !== 1 ? 's' : ''}`;
     }
   } else if (path.startsWith('/swipe/') || path.startsWith('/match/')) {
     isDynamic = true;

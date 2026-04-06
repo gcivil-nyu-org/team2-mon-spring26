@@ -236,6 +236,32 @@ class Review(models.Model):
         return f"{self.user.email} — {self.venue.name} ({self.rating}★)"
 
 
+class VenueClaim(models.Model):
+    """Tracks a venue manager's claim to own/manage a venue. Admin approves claims."""
+
+    class Status(models.TextChoices):
+        PENDING  = 'pending',  'Pending'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+
+    venue   = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='claims')
+    manager = models.ForeignKey(
+        VenueManagerProfile, on_delete=models.CASCADE, related_name='claims'
+    )
+    status     = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    note       = models.TextField(blank=True)   # manager's justification
+    admin_note = models.TextField(blank=True)   # reviewer notes
+    created_at  = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ('venue', 'manager')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.manager} → {self.venue.name} ({self.status})"
+
+
 class ReviewComment(models.Model):
     """Comments on reviews — primarily for venue manager responses."""
 

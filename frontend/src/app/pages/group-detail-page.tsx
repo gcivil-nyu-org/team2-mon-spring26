@@ -213,14 +213,16 @@ export function GroupDetailPage() {
                   <MessageCircle className="w-4 h-4" />
                   <span className="hidden sm:inline">Group Chat</span>
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowInviteDialog(true)}
-                  className="flex items-center gap-2"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Invite</span>
-                </Button>
+                {isLeader && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowInviteDialog(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span className="hidden sm:inline">Invite</span>
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-100 flex items-center gap-2"
@@ -313,18 +315,23 @@ export function GroupDetailPage() {
                           variant={pendingInvites.has(user.email) || user.is_invited ? "secondary" : "default"}
                           onClick={async () => {
                             if (group) {
+                              setPendingInvites(prev => new Set(prev).add(user.email));
                               try {
                                 await inviteMember(group.id, user.email);
-                                setPendingInvites(prev => new Set(prev).add(user.email));
                                 setInviteSuccessMsg(`Invite successfully sent to ${user.name}!`);
                                 setTimeout(() => setInviteSuccessMsg(null), 3000);
                               } catch (err: unknown) {
-                                // If they send an invite but it was already pending from a previous session, recover gracefully:
+                                // If already invited, keep pending state and show message
                                 if (err instanceof Error && err.message === 'User has already been invited') {
-                                  setPendingInvites(prev => new Set(prev).add(user.email));
                                   setInviteSuccessMsg(`Invite was already sent to ${user.name}!`);
                                   setTimeout(() => setInviteSuccessMsg(null), 3000);
                                 } else {
+                                  // Roll back optimistic state on unexpected failure
+                                  setPendingInvites(prev => {
+                                    const next = new Set(prev);
+                                    next.delete(user.email);
+                                    return next;
+                                  });
                                   console.error("Failed to send invite", err);
                                 }
                               }
