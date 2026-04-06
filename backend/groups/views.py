@@ -46,7 +46,9 @@ def api_list_users(request):
                 )
             except Exception:
                 logger.warning(
-                    "Failed to fetch pending invitations for group %s", group_id, exc_info=True
+                    "Failed to fetch pending invitations for group %s",
+                    group_id,
+                    exc_info=True,
                 )
 
         if query:
@@ -469,7 +471,9 @@ def api_invitation_action(request, invitation_id, action):
                                 "left_at": None,
                             },
                         )
-                        username_display = request.user.first_name or request.user.username
+                        username_display = (
+                            request.user.first_name or request.user.username
+                        )
                         Message.objects.create(
                             chat=invitation.group.chat,
                             message_type=Message.MessageType.SYSTEM,
@@ -1035,6 +1039,7 @@ def api_swipe_event_venues(request, group_id, event_id):
         # Apply price range from group constraints
         if hasattr(group, "constraints") and group.constraints.price_range:
             from venues.models import PRICE_RANGE_CHOICES
+
             valid_prices = [c[0] for c in PRICE_RANGE_CHOICES]
             max_len = len(group.constraints.price_range)
             allowed_prices = [p for p in valid_prices if len(p) <= max_len]

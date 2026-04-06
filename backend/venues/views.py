@@ -17,12 +17,16 @@ def _require_venue_manager(request):
     if not request.user.is_authenticated:
         return None, JsonResponse({"error": "Authentication required"}, status=401)
     if request.user.role != "venue_manager":
-        return None, JsonResponse({"error": "Venue manager access required"}, status=403)
+        return None, JsonResponse(
+            {"error": "Venue manager access required"}, status=403
+        )
     try:
         profile = request.user.venue_manager_profile
         return profile, None
     except VenueManagerProfile.DoesNotExist:
-        return None, JsonResponse({"error": "Venue manager profile not found"}, status=404)
+        return None, JsonResponse(
+            {"error": "Venue manager profile not found"}, status=404
+        )
 
 
 def _venue_to_json(venue):
@@ -31,7 +35,11 @@ def _venue_to_json(venue):
     active_discounts = [
         _discount_to_json(d) for d in venue.discounts.filter(is_active=True)
     ]
-    claim = venue.claims.filter(manager=venue.managed_by).first() if venue.managed_by else None
+    claim = (
+        venue.claims.filter(manager=venue.managed_by).first()
+        if venue.managed_by
+        else None
+    )
 
     return {
         "id": venue.id,
@@ -81,7 +89,9 @@ def _discount_to_json(discount):
         "requiresNyuId": discount.requires_nyu_id,
         "isActive": discount.is_active,
         "validFrom": discount.valid_from.isoformat() if discount.valid_from else None,
-        "validUntil": discount.valid_until.isoformat() if discount.valid_until else None,
+        "validUntil": (
+            discount.valid_until.isoformat() if discount.valid_until else None
+        ),
         "createdAt": discount.created_at.isoformat(),
         "updatedAt": discount.updated_at.isoformat(),
     }
@@ -104,8 +114,7 @@ def api_venue_search(request):
     borough = request.GET.get("borough", "").strip()
 
     venues_qs = (
-        Venue.objects
-        .filter(is_active=True)
+        Venue.objects.filter(is_active=True)
         .select_related("cuisine_type", "managed_by", "managed_by__user")
         .prefetch_related("dietary_tags", "inspections", "discounts")
     )
@@ -121,41 +130,45 @@ def api_venue_search(request):
     for v in venues_qs:
         latest = v.inspections.first()  # ordered by -inspection_date
         active_discounts = [d for d in v.discounts.all() if d.is_active]
-        results.append({
-            "id": v.id,
-            "name": v.name,
-            "streetAddress": v.street_address,
-            "borough": v.borough,
-            "neighborhood": v.neighborhood,
-            "zipcode": v.zipcode,
-            "phone": v.phone,
-            "website": v.website,
-            "cuisineType": v.cuisine_type.name if v.cuisine_type else "",
-            "priceRange": v.price_range,
-            "sanitationGrade": v.sanitation_grade,
-            "seatingCapacity": v.seating_capacity,
-            "hasGroupSeating": v.has_group_seating,
-            "hasTakeout": v.has_takeout,
-            "hasDelivery": v.has_delivery,
-            "hasDineIn": v.has_dine_in,
-            "isReservable": v.is_reservable,
-            "googleRating": float(v.google_rating) if v.google_rating else None,
-            "googleReviewCount": v.google_review_count,
-            "googleMapsUrl": v.google_maps_url,
-            "dietaryTags": list(v.dietary_tags.values_list("name", flat=True)),
-            "lastInspectionDate": (
-                latest.inspection_date.isoformat()
-                if latest and latest.inspection_date else None
-            ),
-            "lastInspectionGrade": latest.grade if latest else "",
-            "lastInspectionScore": latest.score if latest else None,
-            "hasStudentDiscount": len(active_discounts) > 0,
-            "isClaimed": v.managed_by is not None,
-            "claimedBy": (
-                (v.managed_by.business_name or v.managed_by.user.email)
-                if v.managed_by else None
-            ),
-        })
+        results.append(
+            {
+                "id": v.id,
+                "name": v.name,
+                "streetAddress": v.street_address,
+                "borough": v.borough,
+                "neighborhood": v.neighborhood,
+                "zipcode": v.zipcode,
+                "phone": v.phone,
+                "website": v.website,
+                "cuisineType": v.cuisine_type.name if v.cuisine_type else "",
+                "priceRange": v.price_range,
+                "sanitationGrade": v.sanitation_grade,
+                "seatingCapacity": v.seating_capacity,
+                "hasGroupSeating": v.has_group_seating,
+                "hasTakeout": v.has_takeout,
+                "hasDelivery": v.has_delivery,
+                "hasDineIn": v.has_dine_in,
+                "isReservable": v.is_reservable,
+                "googleRating": float(v.google_rating) if v.google_rating else None,
+                "googleReviewCount": v.google_review_count,
+                "googleMapsUrl": v.google_maps_url,
+                "dietaryTags": list(v.dietary_tags.values_list("name", flat=True)),
+                "lastInspectionDate": (
+                    latest.inspection_date.isoformat()
+                    if latest and latest.inspection_date
+                    else None
+                ),
+                "lastInspectionGrade": latest.grade if latest else "",
+                "lastInspectionScore": latest.score if latest else None,
+                "hasStudentDiscount": len(active_discounts) > 0,
+                "isClaimed": v.managed_by is not None,
+                "claimedBy": (
+                    v.managed_by.business_name or v.managed_by.user.email
+                    if v.managed_by
+                    else None
+                ),
+            }
+        )
 
     return JsonResponse({"results": results})
 
@@ -181,10 +194,14 @@ def api_venue_claim(request, venue_id):
         return JsonResponse({"error": "Venue not found"}, status=404)
 
     if venue.managed_by is not None and venue.managed_by != manager:
-        return JsonResponse({"error": "This venue is already claimed by another manager"}, status=409)
+        return JsonResponse(
+            {"error": "This venue is already claimed by another manager"}, status=409
+        )
 
     if venue.managed_by == manager:
-        return JsonResponse({"error": "You have already claimed this venue"}, status=409)
+        return JsonResponse(
+            {"error": "You have already claimed this venue"}, status=409
+        )
 
     try:
         data = json.loads(request.body) if request.body else {}
@@ -220,8 +237,7 @@ def api_my_venues(request):
         return err
 
     venues = (
-        Venue.objects
-        .filter(managed_by=manager, is_active=True)
+        Venue.objects.filter(managed_by=manager, is_active=True)
         .select_related("cuisine_type", "managed_by")
         .prefetch_related("inspections", "discounts", "dietary_tags", "claims")
         .order_by("name")
@@ -245,8 +261,7 @@ def api_venue_detail(request, venue_id):
 
     try:
         venue = (
-            Venue.objects
-            .select_related("cuisine_type", "managed_by")
+            Venue.objects.select_related("cuisine_type", "managed_by")
             .prefetch_related("inspections", "discounts", "dietary_tags", "claims")
             .get(pk=venue_id, managed_by=manager, is_active=True)
         )
@@ -295,7 +310,9 @@ def api_venue_discounts(request, venue_id):
             discount.refresh_from_db()
         except Exception as e:
             logger.error("Failed to create discount: %s", str(e), exc_info=True)
-            return JsonResponse({"error": f"Failed to create discount: {str(e)}"}, status=400)
+            return JsonResponse(
+                {"error": f"Failed to create discount: {str(e)}"}, status=400
+            )
 
         return JsonResponse({"discount": _discount_to_json(discount)}, status=201)
 
@@ -358,7 +375,9 @@ def api_venue_discount_detail(request, venue_id, discount_id):
                 discount.refresh_from_db()
             except Exception as e:
                 logger.error("Failed to update discount: %s", str(e), exc_info=True)
-                return JsonResponse({"error": f"Failed to update discount: {str(e)}"}, status=400)
+                return JsonResponse(
+                    {"error": f"Failed to update discount: {str(e)}"}, status=400
+                )
 
         return JsonResponse({"discount": _discount_to_json(discount)})
 

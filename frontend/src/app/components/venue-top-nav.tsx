@@ -18,7 +18,7 @@ export function VenueTopNav() {
   let isDynamic = false;
   let contextTitle = '';
   let contextSubtitle = '';
-  let backLink = '/venue/dashboard';
+  const backLink = '/venue/dashboard';
 
   if (path === '/venue/claim') {
     isDynamic = true;

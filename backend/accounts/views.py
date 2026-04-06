@@ -167,17 +167,25 @@ def api_venue_register(request):
         business_phone = (data.get("businessPhone") or "").strip()
 
         if not email or not password:
-            return JsonResponse({"success": False, "error": "Email and password are required"}, status=400)
+            return JsonResponse(
+                {"success": False, "error": "Email and password are required"},
+                status=400,
+            )
 
         if User.objects.filter(email__iexact=email).exists():
-            return JsonResponse({"success": False, "error": "Email already registered"}, status=400)
+            return JsonResponse(
+                {"success": False, "error": "Email already registered"}, status=400
+            )
 
         try:
             validate_password(password)
         except ValidationError as e:
-            return JsonResponse({"success": False, "error": " ".join(e.messages)}, status=400)
+            return JsonResponse(
+                {"success": False, "error": " ".join(e.messages)}, status=400
+            )
 
         from django.db import transaction as db_transaction
+
         with db_transaction.atomic():
             user = User.objects.create_user(
                 email=email,
@@ -198,7 +206,9 @@ def api_venue_register(request):
 
     except Exception as e:
         logger.error("Venue registration error: %s", str(e), exc_info=True)
-        return JsonResponse({"success": False, "error": "An unexpected error occurred"}, status=500)
+        return JsonResponse(
+            {"success": False, "error": "An unexpected error occurred"}, status=500
+        )
 
 
 class SignUpView(View):
