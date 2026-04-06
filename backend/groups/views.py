@@ -5,14 +5,14 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
 from django.db import transaction, models
-from django.db.models import Count
+from django.db.models import Count, prefetch_related_objects
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
 
 from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
 from accounts.models import UserPreference
-from venues.models import Venue
+from venues.models import Venue, VenuePhoto
 from chat.models import Chat, ChatMember as ChatRoomMember, Message
 
 logger = logging.getLogger(__name__)
@@ -1060,6 +1060,15 @@ def api_swipe_event_venues(request, group_id, event_id):
         ).values_list("venue_id", flat=True)
         venues_qs = venues_qs.exclude(id__in=swiped_venue_ids)
 
+        # Only show venues that have a photo already or a Google Place ID to fetch one from
+        has_place_id = models.Q(google_place_id__isnull=False) & ~models.Q(
+            google_place_id=""
+        )
+        has_photos = models.Exists(
+            VenuePhoto.objects.filter(venue=models.OuterRef("pk"))
+        )
+        venues_qs = venues_qs.filter(has_place_id | has_photos)
+
         # Order by rating (best first), limit to 20
         venues_qs = (
             venues_qs.select_related("cuisine_type")
@@ -1069,7 +1078,16 @@ def api_swipe_event_venues(request, group_id, event_id):
             .order_by(models.F("google_rating").desc(nulls_last=True))[:20]
         )
 
-        venues_data = [_venue_to_swipe_json(v) for v in venues_qs]
+        # Fetch missing Google Places photos in parallel (bulk_prefetch_photos) before
+        # serializing, then refresh the prefetch cache so _venue_to_swipe_json only reads
+        # already-loaded data and never performs API calls or DB writes itself.
+        from venues.google_places import bulk_prefetch_photos
+
+        venues_list = list(venues_qs)
+        bulk_prefetch_photos(venues_list)
+        prefetch_related_objects(venues_list, "photos")
+
+        venues_data = [_venue_to_swipe_json(v) for v in venues_list]
         return JsonResponse({"success": True, "venues": venues_data})
 
     except Group.DoesNotExist:

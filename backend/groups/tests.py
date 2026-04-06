@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 import json
 
 from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
-from venues.models import Venue
+from venues.models import Venue, VenuePhoto
 from accounts.models import UserPreference
 
 User = get_user_model()
@@ -228,15 +228,43 @@ class SwipeEventAPITests(TestCase):
             user=self.member2, group=self.group, role=GroupMembership.Role.MEMBER
         )
 
-        # Create venues
+        # Create venues with google_place_id and a pre-cached photo so they pass
+        # the "has place ID or photo" filter and bulk_prefetch_photos skips API calls.
         self.venue1 = Venue.objects.create(
-            name="Pizza Place", sanitation_grade="A", is_active=True
+            name="Pizza Place",
+            sanitation_grade="A",
+            is_active=True,
+            google_place_id="test_place_id_1",
+        )
+        VenuePhoto.objects.create(
+            venue=self.venue1,
+            image_url="https://example.com/pizza.jpg",
+            source="google_places",
+            is_primary=True,
         )
         self.venue2 = Venue.objects.create(
-            name="Sushi Spot", sanitation_grade="A", is_active=True
+            name="Sushi Spot",
+            sanitation_grade="A",
+            is_active=True,
+            google_place_id="test_place_id_2",
+        )
+        VenuePhoto.objects.create(
+            venue=self.venue2,
+            image_url="https://example.com/sushi.jpg",
+            source="google_places",
+            is_primary=True,
         )
         self.venue3 = Venue.objects.create(
-            name="Burger Joint", sanitation_grade="B", is_active=True
+            name="Burger Joint",
+            sanitation_grade="B",
+            is_active=True,
+            google_place_id="test_place_id_3",
+        )
+        VenuePhoto.objects.create(
+            venue=self.venue3,
+            image_url="https://example.com/burger.jpg",
+            source="google_places",
+            is_primary=True,
         )
 
     def test_create_event_as_leader(self):
@@ -821,6 +849,29 @@ class SwipeEventAPITests(TestCase):
         venue_names = [v["name"] for v in data["venues"]]
         self.assertIn("Pizza Place", venue_names)
         self.assertNotIn("Sushi Spot", venue_names)
+
+    def test_venues_without_place_id_and_photos_are_excluded(self):
+        """Venues with no google_place_id and no photos must not appear in swipe results."""
+        Venue.objects.create(
+            name="Ghost Venue",
+            sanitation_grade="A",
+            is_active=True,
+            # no google_place_id, no VenuePhoto
+        )
+
+        event = SwipeEvent.objects.create(
+            group=self.group,
+            name="Exclusion Test",
+            created_by=self.leader,
+        )
+
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        data = response.json()
+        venue_names = [v["name"] for v in data["venues"]]
+        self.assertNotIn("Ghost Venue", venue_names)
 
 
 class GroupManagementAPITests(TestCase):

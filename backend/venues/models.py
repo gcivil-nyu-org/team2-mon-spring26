@@ -188,6 +188,17 @@ class VenuePhoto(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        constraints = [
+            # Enforces at DB level that each venue has at most one primary photo per source,
+            # making get_or_create in fetch_and_cache_primary_photo race-safe.
+            models.UniqueConstraint(
+                fields=["venue", "source"],
+                condition=models.Q(is_primary=True),
+                name="unique_primary_photo_per_source",
+            )
+        ]
+
     def __str__(self):
         return f"{self.venue.name} — {'primary' if self.is_primary else 'photo'}"
 
