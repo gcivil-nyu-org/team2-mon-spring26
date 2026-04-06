@@ -371,9 +371,13 @@ def api_invitations_list(request):
 
     from .models import SwipeSessionNotification, SwipeEvent
 
-    swipe_notifications = SwipeSessionNotification.objects.filter(
-        user=request.user, event__status=SwipeEvent.Status.ACTIVE
-    ).select_related("event", "event__group", "event__created_by")
+    swipe_notifications = (
+        SwipeSessionNotification.objects.filter(
+            user=request.user, event__status=SwipeEvent.Status.ACTIVE
+        )
+        .exclude(event__created_by=request.user)
+        .select_related("event", "event__group", "event__created_by")
+    )
 
     swipe_data = []
     for sn in swipe_notifications:
@@ -937,11 +941,12 @@ def api_swipe_events(request, group_id):
             members = GroupMembership.objects.filter(group=group)
             notifications = []
             for member in members:
-                # Creator gets default read notification
-                is_read = member.user.id == request.user.id
+                # Do not notify the creator of the event
+                if member.user.id == request.user.id:
+                    continue
                 notifications.append(
                     SwipeSessionNotification(
-                        event=event, user=member.user, is_read=is_read
+                        event=event, user=member.user, is_read=False
                     )
                 )
             SwipeSessionNotification.objects.bulk_create(notifications)
