@@ -115,11 +115,7 @@ describe('SwipePage Fixed Behaviors', () => {
 
     // Wait for the venue card to visually arrive
     const discardBtn = await waitFor(() => {
-      // Find the "X" button container
-      const btn = document.querySelector('.bg-red-50.text-red-600');
-      // If we don't find it, we might be finding the Pass button
-      if (!btn) throw new Error("Button not found. DOM: " + document.body.innerHTML);
-      return btn;
+      return screen.getByTestId('swipe-discard-btn');
     }, { timeout: 3000 });
     
     // Fire the left swipe which hits our mock Error

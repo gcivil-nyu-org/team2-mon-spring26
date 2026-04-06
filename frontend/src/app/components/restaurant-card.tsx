@@ -118,7 +118,7 @@ export function RestaurantCard({ restaurant, onSwipe, isReadonly = false }: Rest
               e.stopPropagation();
               handleSwipe('left');
             }}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-14 h-14 bg-white/90 hover:bg-white shadow-lg backdrop-blur-sm border-2 border-red-200 hover:border-red-300 text-red-600 hover:text-red-700 rounded-full -translate-x-[calc(100%+12px)] hide-on-mobile"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-14 h-14 bg-white/90 hover:bg-white shadow-lg backdrop-blur-sm border-2 border-red-200 hover:border-red-300 text-red-600 hover:text-red-700 rounded-full -translate-x-[calc(100%+12px)] hidden md:flex"
           >
             <ChevronLeft className="w-8 h-8" />
           </Button>
@@ -133,7 +133,7 @@ export function RestaurantCard({ restaurant, onSwipe, isReadonly = false }: Rest
               e.stopPropagation();
               handleSwipe('right');
             }}
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-14 h-14 bg-white/90 hover:bg-white shadow-lg backdrop-blur-sm border-2 border-green-200 hover:border-green-300 text-green-600 hover:text-green-700 rounded-full translate-x-[calc(100%+12px)] hide-on-mobile"
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-14 h-14 bg-white/90 hover:bg-white shadow-lg backdrop-blur-sm border-2 border-green-200 hover:border-green-300 text-green-600 hover:text-green-700 rounded-full translate-x-[calc(100%+12px)] hidden md:flex"
           >
             <ChevronRight className="w-8 h-8" />
           </Button>
@@ -310,6 +310,7 @@ export function RestaurantCard({ restaurant, onSwipe, isReadonly = false }: Rest
                     <Button
                       variant="outline"
                       size="lg"
+                      data-testid="swipe-discard-btn"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleSwipe('left');
