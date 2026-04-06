@@ -4,7 +4,6 @@ import logging
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
-from django.utils import timezone
 
 from .models import Venue, StudentDiscount, VenueClaim
 from accounts.models import VenueManagerProfile

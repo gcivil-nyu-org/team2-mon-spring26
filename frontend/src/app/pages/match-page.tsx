@@ -52,7 +52,7 @@ export function MatchPage() {
     };
     loadResults();
     return () => { cancelled = true; clearTimeout(confettiTimer); };
-  }, [event?.id, group?.id, fetchMatchResults]);
+  }, [event?.id, group?.id, fetchMatchResults]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!event || !group) {
     return (
