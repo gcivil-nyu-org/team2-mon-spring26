@@ -35,15 +35,18 @@ export function VenueTopNav() {
       <div className="max-w-4xl mx-auto px-4 h-full flex items-center justify-between">
         {/* Left: logo or back arrow */}
         {!isDynamic ? (
-          <div
-            className="flex items-center gap-3 cursor-pointer"
+          <Button
+            type="button"
+            variant="ghost"
+            className="flex items-center gap-3 h-auto p-0 hover:bg-transparent"
             onClick={() => navigate('/venue/dashboard')}
+            aria-label="Go to venue dashboard"
           >
             <div className="w-10 h-10 bg-gradient-to-br from-orange-600 to-amber-600 rounded-xl flex items-center justify-center">
               <Store className="w-5 h-5 text-white" />
             </div>
             <h1 className="text-2xl font-semibold">Venue Manager</h1>
-          </div>
+          </Button>
         ) : (
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={() => navigate(backLink)}>
