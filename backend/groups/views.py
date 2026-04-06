@@ -819,7 +819,13 @@ def _venue_to_swipe_json(venue):
     """
     # Use prefetched cache via .all() instead of queryset ops that bypass it
     all_photos = sorted(venue.photos.all(), key=lambda p: not p.is_primary)
-    photos = [p.image_url for p in all_photos[:3]]
+
+    if not all_photos and venue.google_place_id:
+        from venues.google_places import fetch_and_cache_primary_photo
+        fetched = fetch_and_cache_primary_photo(venue)
+        photos = [fetched] if fetched else []
+    else:
+        photos = [p.image_url for p in all_photos[:3]]
     dietary_tags = [t.name for t in venue.dietary_tags.all()]
     food_type_tags = [t.name for t in venue.food_type_tags.all()]
 
