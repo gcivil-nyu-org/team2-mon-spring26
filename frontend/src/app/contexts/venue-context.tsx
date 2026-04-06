@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
 export interface Restaurant {
   id: string;
@@ -7,191 +7,363 @@ export interface Restaurant {
   borough: string;
   neighborhood: string;
   cuisine: string;
-  priceRange: '$' | '$$' | '$$$' | '$$$$';
-  sanitationGrade: 'A' | 'B' | 'C' | 'Pending';
-  lastInspection: string;
-  studentDiscount: boolean;
-  discountDetails?: string;
-  isVerified: boolean;
+  priceRange: '$' | '$$' | '$$$' | '$$$$' | '';
+  sanitationGrade: 'A' | 'B' | 'C' | 'Pending' | '';
   seatingCapacity: number;
   groupSeating: boolean;
   dietaryOptions: string[];
   phoneNumber: string;
   email: string;
   managerId: string;
+  isVerified: boolean;
+  studentDiscount: boolean;
+  discountDetails?: string;
+  lastInspection: string;
+}
+
+export interface VenueSearchResult {
+  id: number;
+  name: string;
+  street_address: string;
+  borough: string;
+  neighborhood: string;
+  price_range: string;
+  sanitation_grade: string;
+  seating_capacity: number | null;
+  has_group_seating: boolean;
+  phone: string;
+  email: string;
+  is_verified: boolean;
+  cuisine_type: string;
+  dietary_tags: string[];
+  google_rating: string | null;
+  mealswipe_rating: string;
+  has_student_discount: boolean;
+  discount_details: string;
 }
 
 export interface VenueManager {
   id: string;
   name: string;
   email: string;
-  password: string;
   businessName: string;
+  role: string;
+  isVerified: boolean;
 }
 
 interface VenueContextType {
   restaurants: Restaurant[];
   currentManager: VenueManager | null;
-  addRestaurant: (restaurant: Omit<Restaurant, 'id' | 'isVerified' | 'managerId'>) => Restaurant;
-  updateRestaurant: (id: string, updates: Partial<Restaurant>) => void;
-  deleteRestaurant: (id: string) => void;
-  loginVenueManager: (email: string, password: string) => boolean;
-  registerVenueManager: (name: string, email: string, businessName: string, password: string) => boolean;
+  venueError: string;
+  venueLoading: boolean;
+  loginVenueManager: (email: string, password: string) => Promise<boolean>;
+  registerVenueManager: (
+    name: string,
+    email: string,
+    businessName: string,
+    password: string
+  ) => Promise<boolean>;
   logoutVenueManager: () => void;
+  searchVenues: (query: string) => Promise<VenueSearchResult[]>;
+  claimVenue: (
+    venueId: number,
+    hasStudentDiscount: boolean,
+    discountDetails: string
+  ) => Promise<boolean>;
+  unclaimVenue: (venueId: string) => Promise<boolean>;
+  updateDiscount: (
+    venueId: string,
+    hasStudentDiscount: boolean,
+    discountDetails: string
+  ) => Promise<boolean>;
+  fetchManagerVenues: () => Promise<void>;
 }
 
 const VenueContext = createContext<VenueContextType | undefined>(undefined);
 
-// Mock venue managers
-const mockVenueManagers: VenueManager[] = [
-  {
-    id: 'manager-1',
-    name: 'Michael Chen',
-    email: 'manager@purplebistro.com',
-    password: 'password',
-    businessName: 'Purple Bistro Restaurant Group',
-  },
-];
+// CSRF token helper
+function getCookie(name: string) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === name + '=') {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
 
-// Mock data for venue manager
-const mockRestaurants: Restaurant[] = [
-  {
-    id: 'rest-1',
-    name: 'The Purple Bistro',
-    address: '123 MacDougal St, New York, NY 10012',
-    borough: 'Manhattan',
-    neighborhood: 'Greenwich Village',
-    cuisine: 'French',
-    priceRange: '$$',
-    sanitationGrade: 'A',
-    lastInspection: '2025-01-15',
-    studentDiscount: true,
-    discountDetails: '15% off with NYU ID',
-    isVerified: true,
-    seatingCapacity: 60,
-    groupSeating: true,
-    dietaryOptions: ['Vegetarian', 'Vegan Options', 'Gluten-Free'],
-    phoneNumber: '(212) 555-0123',
-    email: 'contact@purplebistro.com',
-    managerId: 'manager-1',
-  },
-  {
-    id: 'rest-2',
-    name: 'Noodle Paradise',
-    address: '456 Bleecker St, New York, NY 10012',
-    borough: 'Manhattan',
-    neighborhood: 'Greenwich Village',
-    cuisine: 'Asian Fusion',
-    priceRange: '$',
-    sanitationGrade: 'A',
-    lastInspection: '2025-01-20',
-    studentDiscount: true,
-    discountDetails: '10% off all orders',
-    isVerified: true,
-    seatingCapacity: 40,
-    groupSeating: true,
-    dietaryOptions: ['Vegetarian', 'Vegan', 'Halal'],
-    phoneNumber: '(212) 555-0456',
-    email: 'hello@noodleparadise.com',
-    managerId: 'manager-1',
-  },
-  {
-    id: 'rest-3',
-    name: 'Washington Square Grill',
-    address: '789 Washington Sq S, New York, NY 10012',
-    borough: 'Manhattan',
-    neighborhood: 'Greenwich Village',
-    cuisine: 'American',
-    priceRange: '$$$',
-    sanitationGrade: 'A',
-    lastInspection: '2024-12-10',
-    studentDiscount: false,
-    isVerified: true,
-    seatingCapacity: 80,
-    groupSeating: true,
-    dietaryOptions: ['Vegetarian', 'Gluten-Free'],
-    phoneNumber: '(212) 555-0789',
-    email: 'info@wsqgrill.com',
-    managerId: 'manager-1',
-  },
-];
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+
+function apiUrl(path: string) {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+}
+
+function mapApiVenueToRestaurant(v: VenueSearchResult): Restaurant {
+  return {
+    id: String(v.id),
+    name: v.name,
+    address: v.street_address,
+    borough: v.borough,
+    neighborhood: v.neighborhood,
+    cuisine: v.cuisine_type,
+    priceRange: (v.price_range as Restaurant['priceRange']) || '',
+    sanitationGrade: (v.sanitation_grade as Restaurant['sanitationGrade']) || '',
+    seatingCapacity: v.seating_capacity || 0,
+    groupSeating: v.has_group_seating,
+    dietaryOptions: v.dietary_tags,
+    phoneNumber: v.phone,
+    email: v.email,
+    isVerified: v.is_verified,
+    managerId: '',
+    studentDiscount: v.has_student_discount || false,
+    discountDetails: v.discount_details || '',
+    lastInspection: '',
+  };
+}
 
 export function VenueProvider({ children }: { children: ReactNode }) {
-  const [restaurants, setRestaurants] = useState<Restaurant[]>(mockRestaurants);
-  const [venueManagers, setVenueManagers] = useState<VenueManager[]>(mockVenueManagers);
-  const [currentManager, setCurrentManager] = useState<VenueManager | null>(null);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [currentManager, setCurrentManager] = useState<VenueManager | null>(() => {
+    const stored = localStorage.getItem('venueUser');
+    return stored ? JSON.parse(stored) : null;
+  });
+  const [venueError, setVenueError] = useState('');
+  const [venueLoading, setVenueLoading] = useState(false);
 
-  const loginVenueManager = (email: string, password: string): boolean => {
-    const manager = venueManagers.find(m => m.email === email && m.password === password);
-    if (manager) {
-      setCurrentManager(manager);
-      return true;
+  useEffect(() => {
+    if (currentManager) {
+      fetchManagerVenues();
     }
-    return false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loginVenueManager = async (email: string, password: string): Promise<boolean> => {
+    setVenueError('');
+    setVenueLoading(true);
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl('/api/auth/venue/login/'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setVenueError(data.error || 'Invalid email or password');
+        return false;
+      }
+      const manager: VenueManager = {
+        id: String(data.user.id),
+        name: data.user.name,
+        email: data.user.email,
+        businessName: data.user.businessName,
+        role: data.user.role,
+        isVerified: data.user.isVerified,
+      };
+      setCurrentManager(manager);
+      localStorage.setItem('venueUser', JSON.stringify(manager));
+      await fetchManagerVenues();
+      return true;
+    } catch (err) {
+      console.error('Venue login error:', err);
+      setVenueError('Unable to connect to server. Please try again.');
+      return false;
+    } finally {
+      setVenueLoading(false);
+    }
   };
 
-  const registerVenueManager = (name: string, email: string, businessName: string, password: string): boolean => {
-    // Check if email already exists
-    if (venueManagers.some(m => m.email === email)) {
+  const registerVenueManager = async (
+    name: string,
+    email: string,
+    businessName: string,
+    password: string
+  ): Promise<boolean> => {
+    setVenueError('');
+    setVenueLoading(true);
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl('/api/auth/venue/register/'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ name, email, businessName, password }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setVenueError(data.error || 'Registration failed');
+        return false;
+      }
+      const manager: VenueManager = {
+        id: String(data.user.id),
+        name: data.user.name,
+        email: data.user.email,
+        businessName: data.user.businessName,
+        role: data.user.role,
+        isVerified: data.user.isVerified,
+      };
+      setCurrentManager(manager);
+      localStorage.setItem('venueUser', JSON.stringify(manager));
+      return true;
+    } catch (err) {
+      console.error('Venue register error:', err);
+      setVenueError('Unable to connect to server. Please try again.');
       return false;
+    } finally {
+      setVenueLoading(false);
     }
-
-    const newManager: VenueManager = {
-      id: `manager-${Date.now()}`,
-      name,
-      email,
-      password,
-      businessName,
-    };
-
-    setVenueManagers([...venueManagers, newManager]);
-    setCurrentManager(newManager);
-    return true;
   };
 
   const logoutVenueManager = () => {
     setCurrentManager(null);
+    setRestaurants([]);
+    localStorage.removeItem('venueUser');
   };
 
-  const addRestaurant = (restaurantData: Omit<Restaurant, 'id' | 'isVerified' | 'managerId'>): Restaurant => {
-    if (!currentManager) {
-      throw new Error('No venue manager logged in');
+  const fetchManagerVenues = async (): Promise<void> => {
+    try {
+      const response = await fetch(apiUrl('/api/venues/my-venues/'), {
+        credentials: 'include',
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data.success && data.venues) {
+        setRestaurants(data.venues.map(mapApiVenueToRestaurant));
+      }
+    } catch (err) {
+      console.error('Failed to fetch manager venues:', err);
     }
-
-    const newRestaurant: Restaurant = {
-      ...restaurantData,
-      id: `rest-${Date.now()}`,
-      isVerified: true, // Auto-verify for demo purposes
-      managerId: currentManager.id,
-    };
-    setRestaurants([...restaurants, newRestaurant]);
-    return newRestaurant;
   };
 
-  const updateRestaurant = (id: string, updates: Partial<Restaurant>) => {
-    setRestaurants(restaurants.map(r => r.id === id ? { ...r, ...updates } : r));
+  const searchVenues = async (query: string): Promise<VenueSearchResult[]> => {
+    if (query.length < 2) return [];
+    try {
+      const response = await fetch(
+        apiUrl(`/api/venues/search/?q=${encodeURIComponent(query)}`),
+        { credentials: 'include' }
+      );
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.venues || [];
+    } catch (err) {
+      console.error('Venue search error:', err);
+      return [];
+    }
   };
 
-  const deleteRestaurant = (id: string) => {
-    setRestaurants(restaurants.filter(r => r.id !== id));
+  const claimVenue = async (
+    venueId: number,
+    hasStudentDiscount: boolean,
+    discountDetails: string
+  ): Promise<boolean> => {
+    setVenueError('');
+    setVenueLoading(true);
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl('/api/venues/claim/'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({
+          venue_id: venueId,
+          has_student_discount: hasStudentDiscount,
+          discount_details: discountDetails,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setVenueError(data.error || 'Failed to claim venue');
+        return false;
+      }
+      await fetchManagerVenues();
+      return true;
+    } catch (err) {
+      console.error('Claim venue error:', err);
+      setVenueError('Unable to connect to server. Please try again.');
+      return false;
+    } finally {
+      setVenueLoading(false);
+    }
   };
 
-  // Filter restaurants to only show those belonging to current manager
-  const managerRestaurants = currentManager
-    ? restaurants.filter(r => r.managerId === currentManager.id)
-    : restaurants;
+  const unclaimVenue = async (venueId: string): Promise<boolean> => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/venues/${venueId}/unclaim/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-CSRFToken': csrftoken },
+      });
+      if (!response.ok) return false;
+      setRestaurants((prev) => prev.filter((r) => r.id !== venueId));
+      return true;
+    } catch (err) {
+      console.error('Unclaim venue error:', err);
+      return false;
+    }
+  };
+
+  const updateDiscount = async (
+    venueId: string,
+    hasStudentDiscount: boolean,
+    discountDetails: string
+  ): Promise<boolean> => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/venues/${venueId}/discount/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({
+          has_student_discount: hasStudentDiscount,
+          discount_details: discountDetails,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) return false;
+      // Update the restaurant in local state
+      setRestaurants((prev) =>
+        prev.map((r) =>
+          r.id === venueId
+            ? {
+                ...r,
+                studentDiscount: hasStudentDiscount,
+                discountDetails: hasStudentDiscount ? discountDetails : '',
+              }
+            : r
+        )
+      );
+      return true;
+    } catch (err) {
+      console.error('Update discount error:', err);
+      return false;
+    }
+  };
 
   return (
-    <VenueContext.Provider value={{
-      restaurants: managerRestaurants,
-      currentManager,
-      addRestaurant,
-      updateRestaurant,
-      deleteRestaurant,
-      loginVenueManager,
-      registerVenueManager,
-      logoutVenueManager,
-    }}>
+    <VenueContext.Provider
+      value={{
+        restaurants,
+        currentManager,
+        venueError,
+        venueLoading,
+        loginVenueManager,
+        registerVenueManager,
+        logoutVenueManager,
+        searchVenues,
+        claimVenue,
+        unclaimVenue,
+        updateDiscount,
+        fetchManagerVenues,
+      }}
+    >
       {children}
     </VenueContext.Provider>
   );

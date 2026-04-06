@@ -22,4 +22,7 @@ urlpatterns = [
         views.api_confirm_password_reset,
         name="api_confirm_password_reset",
     ),
+    # Venue manager endpoints - KCHEN - 2024-06-01
+    path("venue/register/", views.api_venue_register, name="api_venue_register"),
+    path("venue/login/", views.api_venue_login, name="api_venue_login"),
 ]

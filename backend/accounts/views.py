@@ -24,6 +24,7 @@ from .models import (
     DietaryTag,
     CuisineType,
     FoodTypeTag,
+    VenueManagerProfile,
 )
 from django.utils.text import slugify
 
@@ -422,5 +423,132 @@ def api_confirm_password_reset(request):
         {
             "success": True,
             "message": "Your password has been reset successfully.",
+        }
+    )
+
+
+# --- Venue Manager API Views ---
+
+
+@csrf_exempt
+def api_venue_register(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    email = data.get("email", "").strip()
+    password = data.get("password", "")
+    full_name = data.get("name", "").strip()
+    business_name = data.get("businessName", "").strip()
+
+    if not email or not password:
+        return JsonResponse({"error": "Email and password are required"}, status=400)
+
+    if len(password) < 6:
+        return JsonResponse(
+            {"error": "Password must be at least 6 characters"}, status=400
+        )
+
+    try:
+        validate_email(email)
+    except ValidationError:
+        return JsonResponse({"error": "Invalid email format"}, status=400)
+
+    if User.objects.filter(email=email).exists():
+        return JsonResponse({"error": "Email already registered"}, status=400)
+
+    # Split full name into first/last
+    name_parts = full_name.split(" ", 1)
+    first_name = name_parts[0] if name_parts else ""
+    last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+    try:
+        user = User.objects.create_user(
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+            role="venue_manager",
+        )
+
+        VenueManagerProfile.objects.create(
+            user=user,
+            business_name=business_name,
+            business_email=email,
+            is_verified=False,
+        )
+
+        login(request, user)
+
+        return JsonResponse(
+            {
+                "success": True,
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "name": full_name,
+                    "businessName": business_name,
+                    "role": user.role,
+                    "isVerified": False,
+                },
+            },
+            status=201,
+        )
+
+    except Exception as e:
+        logger.error(f"Venue registration error: {str(e)}", exc_info=True)
+        return JsonResponse(
+            {"error": "An unexpected error occurred. Please try again."}, status=500
+        )
+
+
+@csrf_exempt
+def api_venue_login(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    email = data.get("email", "").strip()
+    password = data.get("password", "")
+
+    if not email or not password:
+        return JsonResponse({"error": "Email and password are required"}, status=400)
+
+    user = authenticate(request, username=email, password=password)
+
+    if user is None:
+        return JsonResponse({"error": "Invalid email or password"}, status=401)
+
+    if user.role != "venue_manager":
+        return JsonResponse(
+            {"error": "This account is not a venue manager account"}, status=403
+        )
+
+    try:
+        profile = user.venue_manager_profile
+    except VenueManagerProfile.DoesNotExist:
+        return JsonResponse({"error": "Venue manager profile not found"}, status=404)
+
+    login(request, user)
+
+    return JsonResponse(
+        {
+            "success": True,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "name": f"{user.first_name} {user.last_name}".strip(),
+                "businessName": profile.business_name,
+                "role": user.role,
+                "isVerified": profile.is_verified,
+            },
         }
     )

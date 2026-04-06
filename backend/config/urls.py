@@ -18,9 +18,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+# added venues.urls for venue search API in manager dashboard
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.api_urls")),
     path("api/groups/", include("groups.urls")),
     path("api/chat/", include("chat.urls")),
+    path("api/venues/", include("venues.urls")),
 ]
