@@ -152,7 +152,7 @@ def api_venue_search(request):
             "hasStudentDiscount": len(active_discounts) > 0,
             "isClaimed": v.managed_by is not None,
             "claimedBy": (
-                v.managed_by.business_name or v.managed_by.user.email
+                (v.managed_by.business_name or v.managed_by.user.email)
                 if v.managed_by else None
             ),
         })
