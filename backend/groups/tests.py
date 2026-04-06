@@ -850,6 +850,29 @@ class SwipeEventAPITests(TestCase):
         self.assertIn("Pizza Place", venue_names)
         self.assertNotIn("Sushi Spot", venue_names)
 
+    def test_venues_without_place_id_and_photos_are_excluded(self):
+        """Venues with no google_place_id and no photos must not appear in swipe results."""
+        Venue.objects.create(
+            name="Ghost Venue",
+            sanitation_grade="A",
+            is_active=True,
+            # no google_place_id, no VenuePhoto
+        )
+
+        event = SwipeEvent.objects.create(
+            group=self.group,
+            name="Exclusion Test",
+            created_by=self.leader,
+        )
+
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        data = response.json()
+        venue_names = [v["name"] for v in data["venues"]]
+        self.assertNotIn("Ghost Venue", venue_names)
+
 
 class GroupManagementAPITests(TestCase):
     """Tests for group CRUD, invite, remove, make leader, leave endpoints."""

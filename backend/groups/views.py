@@ -1078,8 +1078,9 @@ def api_swipe_event_venues(request, group_id, event_id):
             .order_by(models.F("google_rating").desc(nulls_last=True))[:20]
         )
 
-        # Fetch missing Google Places photos in parallel before serializing,
-        # then refresh the photos prefetch cache so _venue_to_swipe_json stays side-effect free.
+        # Fetch missing Google Places photos in parallel (bulk_prefetch_photos) before
+        # serializing, then refresh the prefetch cache so _venue_to_swipe_json only reads
+        # already-loaded data and never performs API calls or DB writes itself.
         from venues.google_places import bulk_prefetch_photos
 
         venues_list = list(venues_qs)
