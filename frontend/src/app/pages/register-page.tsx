@@ -147,7 +147,7 @@ export function RegisterPage() {
 
         <CardContent>
           {step === 'account' ? (
-            <form onSubmit={handleAccountNext} className="space-y-4">
+            <form onSubmit={handleAccountNext} className="space-y-4" noValidate>
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
                 <Input
@@ -223,7 +223,7 @@ export function RegisterPage() {
               </div>
             </form>
           ) : (
-            <form onSubmit={handleRegister} className="space-y-6">
+            <form onSubmit={handleRegister} className="space-y-6" noValidate>
               {/* Dietary Restrictions */}
               <div className="space-y-3">
                 <Label>Dietary Restrictions (Optional)</Label>

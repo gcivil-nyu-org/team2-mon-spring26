@@ -19,7 +19,6 @@ import {
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import {
-  ArrowLeft,
   Calendar,
   MapPin,
   Type,
@@ -30,13 +29,13 @@ import {
 
 // NYU Locations organized by area
 const nyuLocations = [
-  { value: "washington-square", label: "Washington Square Campus", area: "Greenwich Village" },
-  { value: "kimmel-center", label: "Kimmel Center", area: "Greenwich Village" },
-  { value: "bobst-library", label: "Bobst Library", area: "Greenwich Village" },
-  { value: "stern-school", label: "Stern School of Business", area: "Greenwich Village" },
-  { value: "tisch-school", label: "Tisch School of the Arts", area: "Greenwich Village" },
-  { value: "tandon-school", label: "Tandon School of Engineering", area: "Downtown Brooklyn" },
-  { value: "brooklyn-campus", label: "Brooklyn Campus", area: "Downtown Brooklyn" },
+  { value: "washington-square", label: "Washington Square Campus", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "kimmel-center", label: "Kimmel Center", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "bobst-library", label: "Bobst Library", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "stern-school", label: "Stern School of Business", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "tisch-school", label: "Tisch School of the Arts", area: "Greenwich Village", borough: "Manhattan" },
+  { value: "tandon-school", label: "Tandon School of Engineering", area: "Downtown Brooklyn", borough: "Brooklyn" },
+  { value: "brooklyn-campus", label: "Brooklyn Campus", area: "Downtown Brooklyn", borough: "Brooklyn" },
 ];
 
 // Manhattan neighborhoods
@@ -106,35 +105,50 @@ export function PlanEventPage() {
 
   if (!group) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center py-12">
         <p>Group not found</p>
       </div>
     );
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Build location string
+    // Build location string and determine borough/neighborhood for filtering
     let locationString = "";
+    let eventBorough = "";
+    let eventNeighborhood = "";
     if (locationType === "nyu") {
       const selectedNYU = nyuLocations.find(l => l.value === nyuLocation);
       locationString = selectedNYU?.label || "";
+      eventBorough = selectedNYU?.borough || "Manhattan";
+      eventNeighborhood = selectedNYU?.area || "";
     } else {
-      const selectedNeighborhood = 
+      const boroughMap: Record<string, string> = {
+        manhattan: "Manhattan",
+        brooklyn: "Brooklyn",
+        queens: "Queens",
+        bronx: "Bronx",
+      };
+      const selectedNeighborhood =
         borough === "manhattan" ? manhattanAreas.find(a => a.value === neighborhood) :
         borough === "brooklyn" ? brooklynAreas.find(a => a.value === neighborhood) :
         borough === "queens" ? queensAreas.find(a => a.value === neighborhood) :
         bronxAreas.find(a => a.value === neighborhood);
       locationString = selectedNeighborhood?.label || "";
+      eventBorough = boroughMap[borough] || "Manhattan";
+      eventNeighborhood = selectedNeighborhood?.label || "";
     }
 
     const finalName = eventName || `Dining Plan - ${locationString}`;
-    const newEvent = createSwipeEvent(group.id, finalName);
-
-    setCurrentGroup(group);
-    setCurrentSwipeEvent(newEvent);
-    navigate(`/swipe/${newEvent.id}`);
+    try {
+      const newEvent = await createSwipeEvent(group.id, finalName, eventBorough, eventNeighborhood);
+      setCurrentGroup(group);
+      setCurrentSwipeEvent(newEvent);
+      navigate(`/swipe/${newEvent.id}`);
+    } catch (error) {
+      console.error('Failed to create event:', error);
+    }
   };
 
   // Get appropriate neighborhood options based on selected borough
@@ -154,28 +168,8 @@ export function PlanEventPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate(`/group/${group.id}`)}
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-xl flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-purple-600" />
-              Plan Reservation
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              For {group.name}
-            </p>
-          </div>
-        </div>
-      </header>
+    <>
+
 
       <main className="max-w-3xl mx-auto px-4 py-8">
         <Card className="border-0 shadow-xl">
@@ -359,6 +353,6 @@ export function PlanEventPage() {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </>
   );
 }

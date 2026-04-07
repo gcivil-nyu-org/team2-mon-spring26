@@ -32,5 +32,6 @@
     "Coffee/Tea",
     "Bakery/Desserts"
   ],
-  "minimumSanitationGrades": ["N", "A", "Z", "B", "C", "P"]
+  "minimumSanitationGrades": ["N", "A", "Z", "B", "C", "P"],
+  "priceRanges": ["$", "$$", "$$$", "$$$$"]
 }
