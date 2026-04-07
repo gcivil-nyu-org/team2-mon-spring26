@@ -13,6 +13,7 @@ from django.utils import timezone
 from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
 from accounts.models import UserPreference
 from venues.models import Venue, VenuePhoto
+from venues.google_places import bulk_prefetch_photos
 from chat.models import Chat, ChatMember as ChatRoomMember, Message
 
 logger = logging.getLogger(__name__)
@@ -1081,10 +1082,13 @@ def api_swipe_event_venues(request, group_id, event_id):
         # Fetch missing Google Places photos in parallel (bulk_prefetch_photos) before
         # serializing, then refresh the prefetch cache so _venue_to_swipe_json only reads
         # already-loaded data and never performs API calls or DB writes itself.
-        from venues.google_places import bulk_prefetch_photos
-
         venues_list = list(venues_qs)
         bulk_prefetch_photos(venues_list)
+        # Clear the stale photos cache from the original prefetch so
+        # prefetch_related_objects actually re-fetches (Django skips re-fetching
+        # if the key already exists in _prefetched_objects_cache).
+        for _v in venues_list:
+            getattr(_v, "_prefetched_objects_cache", {}).pop("photos", None)
         prefetch_related_objects(venues_list, "photos")
 
         venues_data = [_venue_to_swipe_json(v) for v in venues_list]
