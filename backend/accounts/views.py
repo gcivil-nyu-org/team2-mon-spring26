@@ -21,6 +21,7 @@ from .email_service import send_password_reset_email
 from .models import (
     SANITATION_GRADE_CHOICES,
     UserPreference,
+    VenueManagerProfile,
     DietaryTag,
     CuisineType,
     FoodTypeTag,
@@ -125,12 +126,89 @@ def _set_preferences_from_payload(user, payload):
 
 def _user_to_json(user):
     """Build user payload with preferences for API responses."""
-    return {
+    payload = {
         "id": user.id,
         "email": user.email,
         "name": f"{user.first_name} {user.last_name}".strip(),
+        "role": user.role,
         "preferences": _get_preferences_dict(user),
     }
+    if user.role == "venue_manager":
+        try:
+            profile = user.venue_manager_profile
+            payload["venueManager"] = {
+                "businessName": profile.business_name,
+                "businessEmail": profile.business_email,
+                "businessPhone": profile.business_phone,
+                "isVerified": profile.is_verified,
+            }
+        except VenueManagerProfile.DoesNotExist:
+            payload["venueManager"] = None
+    return payload
+
+
+@csrf_exempt
+def api_venue_register(request):
+    """
+    POST /api/auth/venue-register/
+    Register a new venue manager account.
+    Creates a User with role='venue_manager' and a linked VenueManagerProfile.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    try:
+        data = json.loads(request.body)
+        email = (data.get("email") or "").strip()
+        password = (data.get("password") or "").strip()
+        first_name = (data.get("firstName") or "").strip()
+        last_name = (data.get("lastName") or "").strip()
+        business_name = (data.get("businessName") or "").strip()
+        business_email = (data.get("businessEmail") or email).strip()
+        business_phone = (data.get("businessPhone") or "").strip()
+
+        if not email or not password:
+            return JsonResponse(
+                {"success": False, "error": "Email and password are required"},
+                status=400,
+            )
+
+        if User.objects.filter(email__iexact=email).exists():
+            return JsonResponse(
+                {"success": False, "error": "Email already registered"}, status=400
+            )
+
+        try:
+            validate_password(password)
+        except ValidationError as e:
+            return JsonResponse(
+                {"success": False, "error": " ".join(e.messages)}, status=400
+            )
+
+        from django.db import transaction as db_transaction
+
+        with db_transaction.atomic():
+            user = User.objects.create_user(
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                role="venue_manager",
+            )
+            VenueManagerProfile.objects.create(
+                user=user,
+                business_name=business_name,
+                business_email=business_email,
+                business_phone=business_phone,
+            )
+
+        login(request, user)
+        return JsonResponse({"success": True, "user": _user_to_json(user)}, status=201)
+
+    except Exception as e:
+        logger.error("Venue registration error: %s", str(e), exc_info=True)
+        return JsonResponse(
+            {"success": False, "error": "An unexpected error occurred"}, status=500
+        )
 
 
 class SignUpView(View):

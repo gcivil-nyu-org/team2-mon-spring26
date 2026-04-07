@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import type { Restaurant } from '@/app/data/mock-restaurants';
 
 const DEFAULT_PREFERENCES = {
   cuisines: [] as string[],
@@ -18,6 +19,7 @@ export interface User {
     foodTypes: string[];
     minimumSanitationGrade?: string;
   };
+  is_invited?: boolean;
 }
 
 /** Normalize API user payload to User (fill missing/partial preferences). */
@@ -32,6 +34,7 @@ export function normalizeApiUser(apiUser: {
     foodTypes?: string[];
     minimum_sanitation_grade?: string;
   };
+  is_invited?: boolean;
 }): User {
   const prefs = apiUser.preferences ?? {};
   const grade = prefs.minimum_sanitation_grade ?? 'A';
@@ -51,6 +54,7 @@ export function normalizeApiUser(apiUser: {
         : DEFAULT_PREFERENCES.foodTypes,
       minimumSanitationGrade: grade,
     },
+    is_invited: apiUser.is_invited,
   };
 }
 
@@ -61,12 +65,22 @@ export interface GroupMember {
   isLeader: boolean;
 }
 
+export interface GroupConstraints {
+  dietary?: string[];
+  cuisines?: string[];
+  foodTypes?: string[];
+  minimumSanitationGrade?: string;
+  priceRange?: string;
+}
+
 export interface Group {
   id: string;
   name: string;
   members: GroupMember[];
   createdBy: string;
   createdAt: string;
+  joinCode?: string;
+  constraints?: GroupConstraints;
 }
 
 export interface SwipeEvent {
@@ -76,6 +90,8 @@ export interface SwipeEvent {
   status: 'pending' | 'active' | 'completed';
   createdAt: string;
   matchedRestaurantId?: string;
+  borough?: string;
+  neighborhood?: string;
 }
 
 export interface Swipe {
@@ -100,15 +116,23 @@ export interface DMConversation {
   lastMessageTime: string;
 }
 
-export interface Notification {
-  id: string;
-  type: 'group_invite' | 'match_found' | 'swipe_reminder';
-  title: string;
-  message: string;
-  groupId?: string;
-  eventId?: string;
-  read: boolean;
-  timestamp: string;
+export interface Invitation {
+  id: string | number;
+  group_id: string | number;
+  group_name: string;
+  inviter_name: string;
+  created_at: string;
+}
+
+export interface SwipeNotification {
+  id: string | number;
+  event_id: string | number;
+  event_name: string;
+  group_id: string | number;
+  group_name: string;
+  creator_name: string;
+  created_at: string;
+  is_read: boolean;
 }
 
 interface RegisterData {
@@ -136,6 +160,8 @@ interface BackendGroup {
   members: BackendMember[];
   created_by: number | string;
   created_at: string;
+  join_code?: string;
+  constraints?: GroupConstraints;
 }
 
 interface BackendUser {
@@ -169,100 +195,70 @@ interface AppContextType {
     defaultLocation?: string,
     privacy?: string
   ) => Promise<Group>;
-  joinGroup: (groupId: string) => void;
+  joinGroup: (code: string) => Promise<void>;
+  fetchPublicGroups: () => Promise<Group[]>;
+  regenerateJoinCode: (groupId: string) => Promise<string>;
   leaveGroup: (groupId: string) => Promise<void>;
   deleteGroup: (groupId: string) => Promise<void>;
+  updateGroupConstraints: (groupId: string, constraints: GroupConstraints) => Promise<void>;
   removeMember: (groupId: string, userId: string) => Promise<void>;
   makeLeader: (groupId: string, userId: string) => Promise<void>;
   inviteMember: (groupId: string, userEmail: string) => Promise<void>;
   getAllUsers: () => User[];
-  fetchAvailableUsers: (query?: string) => Promise<void>;
+  fetchAvailableUsers: (query?: string, groupId?: string) => Promise<void>;
   availableUsers: User[];
   currentGroup: Group | null;
   setCurrentGroup: (group: Group | null) => void;
   swipeEvents: SwipeEvent[];
-  createSwipeEvent: (groupId: string, name: string) => SwipeEvent;
+  createSwipeEvent: (groupId: string, name: string, borough?: string, neighborhood?: string) => Promise<SwipeEvent>;
+  fetchSwipeEvents: (groupId: string, signal?: AbortSignal) => Promise<void>;
   currentSwipeEvent: SwipeEvent | null;
   setCurrentSwipeEvent: (event: SwipeEvent | null) => void;
   swipes: Record<string, Swipe[]>; // eventId -> swipes
-  addSwipe: (eventId: string, swipe: Swipe) => void;
+  addSwipe: (
+    eventId: string,
+    groupId: string,
+    venueId: string,
+    direction: 'left' | 'right'
+  ) => Promise<void>;
+  fetchSwipeVenues: (
+    groupId: string,
+    eventId: string
+  ) => Promise<Restaurant[]>;
+  fetchMatchResults: (
+    groupId: string,
+    eventId: string
+  ) => Promise<{
+    match_found: boolean;
+    matched_venue: Restaurant | null;
+    total_participants: number;
+    threshold: number;
+    likes_count: number;
+  }>;
   chatMessages: Record<string, ChatMessage[]>; // groupId or dmId -> messages
-  addChatMessage: (conversationId: string, message: ChatMessage) => void;
+  addChatMessage: (conversationId: string, message: ChatMessage) => Promise<void>;
+  deleteChatMessage: (conversationId: string, messageId: string) => Promise<void>;
+  chatMutedParticipants: Record<string, string[]>;
+  toggleMuteChatMember: (chatId: string, userId: string) => Promise<void>;
+  openUserDM: (userId: string) => Promise<void>;
   dmConversations: DMConversation[];
-  createDMConversation: (participantId: string) => DMConversation;
+  createDMConversation: (participantId: string) => Promise<DMConversation>;
   updateSwipeEventStatus: (
     eventId: string,
     status: SwipeEvent['status'],
     matchedId?: string
   ) => void;
-  notifications: Notification[];
-  addNotification: (
-    notification: Omit<Notification, 'id' | 'read' | 'timestamp'>
-  ) => void;
-  markNotificationAsRead: (notificationId: string) => void;
-  clearAllNotifications: () => void;
+  invitations: Invitation[];
+  swipeNotifications: SwipeNotification[];
+  fetchInvitations: () => Promise<void>;
+  acceptInvitation: (id: string | number) => Promise<void>;
+  declineInvitation: (id: string | number) => Promise<void>;
+  markSwipeNotificationRead: (id: string | number) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Mock users for demo
-const mockUsers: User[] = [
-  {
-    id: '1',
-    name: 'Alex Chen',
-    email: 'alex@nyu.edu',
-    preferences: {
-      cuisines: ['Italian', 'Japanese', 'Mexican'],
-      dietary: ['Vegetarian'],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-  {
-    id: '2',
-    name: 'Sarah Kim',
-    email: 'sarah@nyu.edu',
-    preferences: {
-      cuisines: ['Korean', 'Chinese', 'Thai'],
-      dietary: ['Halal'],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-  {
-    id: '3',
-    name: 'Jordan Lee',
-    email: 'jordan@nyu.edu',
-    preferences: {
-      cuisines: ['American', 'Mediterranean'],
-      dietary: [],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-  {
-    id: '4',
-    name: 'Emma Rodriguez',
-    email: 'emma@nyu.edu',
-    preferences: {
-      cuisines: ['Mexican', 'Italian', 'Mediterranean'],
-      dietary: ['Vegan', 'Gluten-Free'],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-  {
-    id: '5',
-    name: 'Michael Zhang',
-    email: 'michael@nyu.edu',
-    preferences: {
-      cuisines: ['Chinese', 'Japanese', 'Vietnamese'],
-      dietary: ['Dairy-Free'],
-      foodTypes: [],
-      minimumSanitationGrade: 'A',
-    },
-  },
-];
+
 
 // CSRF token helper
 function getCookie(name: string) {
@@ -298,7 +294,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [swipes, setSwipes] = useState<Record<string, Swipe[]>>({});
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
   const [dmConversations, setDMConversations] = useState<DMConversation[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [chatMutedParticipants, setChatMutedParticipants] = useState<Record<string, string[]>>({});
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [swipeNotifications, setSwipeNotifications] = useState<SwipeNotification[]>([]);
 
   // Seed initial data if not exists
   useEffect(() => {
@@ -360,28 +358,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         createdAt: '2026-02-01T10:00:00.000Z',
       };
 
-      // Add some initial notifications
-      const initialNotifications: Notification[] = [
-        {
-          id: 'notif-1',
-          type: 'group_invite',
-          title: 'Group Invitation',
-          message: 'Alex Chen invited you to join "Friday Night Dinner Club"',
-          groupId: 'group-feb7-2026',
-          read: false,
-          timestamp: '2026-02-01T10:00:00.000Z',
-        },
-        {
-          id: 'notif-2',
-          type: 'swipe_reminder',
-          title: 'Swipe Reminder',
-          message: 'Your group has a dinner planned for Feb 7! Start swiping.',
-          groupId: 'group-feb7-2026',
-          eventId: 'event-feb7-2026',
-          read: false,
-          timestamp: '2026-02-04T09:00:00.000Z',
-        },
-      ];
 
       // Add initial chat messages
       const initialMessages: Record<string, ChatMessage[]> = {
@@ -552,10 +528,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       localStorage.setItem('mealswipe_groups', JSON.stringify([feb7Group]));
       localStorage.setItem('mealswipe_events', JSON.stringify([feb7Event]));
-      localStorage.setItem(
-        'mealswipe_notifications',
-        JSON.stringify(initialNotifications)
-      );
       localStorage.setItem('mealswipe_messages', JSON.stringify(initialMessages));
       localStorage.setItem(
         'mealswipe_dm_conversations',
@@ -566,7 +538,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       setGroups([feb7Group]);
       setSwipeEvents([feb7Event]);
-      setNotifications(initialNotifications);
       setChatMessages(initialMessages);
       setDMConversations(initialDMConversations);
     }
@@ -603,11 +574,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (storedDMConversations) {
       setDMConversations(JSON.parse(storedDMConversations));
     }
-
-    const storedNotifications = localStorage.getItem('mealswipe_notifications');
-    if (storedNotifications) {
-      setNotifications(JSON.parse(storedNotifications));
-    }
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -632,11 +598,115 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })),
           createdBy: String(g.created_by),
           createdAt: g.created_at,
+          joinCode: g.join_code,
+          constraints: g.constraints,
         }));
         setGroups(mappedGroups);
       }
     } catch (err) {
       console.error('Failed to fetch user groups', err);
+    }
+  };
+
+  const fetchUserChats = async () => {
+    try {
+      const response = await fetch(apiUrl('/api/chat/'), {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const chats = data.chats;
+        
+        const newChatMessages: Record<string, ChatMessage[]> = {};
+        const dms: DMConversation[] = [];
+        const newMutedParticipants: Record<string, string[]> = {};
+        
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        chats.forEach((chat: any) => {
+          const msgKey = chat.type === 'direct' ? `dm-${chat.id}` : chat.id;
+          newChatMessages[msgKey] = chat.messages || [];
+          newMutedParticipants[chat.id] = chat.mutedParticipants || [];
+          if (chat.type === 'direct') {
+            dms.push({
+              id: chat.id,
+              participants: chat.participants,
+              participantNames: chat.participantNames,
+              lastMessageTime: chat.lastMessageTime ?? chat.created_at ?? ''
+            });
+          }
+        });
+        
+        setChatMessages(newChatMessages);
+        setDMConversations(dms);
+        setChatMutedParticipants(newMutedParticipants);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user chats', err);
+    }
+  };
+
+  const fetchInvitations = async () => {
+    try {
+      const response = await fetch(apiUrl('/api/groups/invitations/'), {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setInvitations(data.invitations || []);
+        setSwipeNotifications(data.swipe_sessions || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch invitations', err);
+    }
+  };
+
+  const acceptInvitation = async (id: string | number) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/invitations/${id}/accept/`), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        credentials: 'include',
+      });
+      if (response.ok) {
+        await fetchInvitations();
+        await fetchUserGroups();
+        await fetchUserChats();
+      }
+    } catch (err) {
+      console.error('Failed to accept invitation', err);
+    }
+  };
+
+  const declineInvitation = async (id: string | number) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/invitations/${id}/decline/`), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        credentials: 'include',
+      });
+      if (response.ok) {
+        await fetchInvitations();
+      }
+    } catch (err) {
+      console.error('Failed to decline invitation', err);
+    }
+  };
+
+  const markSwipeNotificationRead = async (id: string | number) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/swipe-notifications/${id}/read/`), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        credentials: 'include',
+      });
+      if (response.ok) {
+        await fetchInvitations();
+      }
+    } catch (err) {
+      console.error('Failed to mark swipe notification read', err);
     }
   };
 
@@ -653,6 +723,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (data.authenticated && data.user) {
             setCurrentUser(normalizeApiUser(data.user));
             await fetchUserGroups();
+            await fetchUserChats();
+            await fetchInvitations();
           }
         }
       } catch (error) {
@@ -663,6 +735,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     checkSession();
   }, []);
+
+  // Short polling for chat updates
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => {
+      // Basic optimization: only poll if document is visible
+      if (document.visibilityState === 'visible') {
+        // Background fetch without loading spin
+        fetchUserChats();
+        fetchInvitations();
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -681,6 +767,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (response.ok && data.success) {
         setCurrentUser(normalizeApiUser(data.user));
         await fetchUserGroups();
+        await fetchUserChats();
       } else {
         throw new Error(data.error || 'Login failed');
       }
@@ -740,6 +827,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (response.ok && data.success) {
         setCurrentUser(normalizeApiUser(data.user));
         await fetchUserGroups();
+        await fetchUserChats();
       } else {
         let errorMessage = data.error || 'Registration failed';
         if (data.errors && typeof data.errors === 'object') {
@@ -873,13 +961,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('mealswipe_dm_conversations', JSON.stringify(dmConversations));
   }, [dmConversations]);
 
-  useEffect(() => {
-    localStorage.setItem('mealswipe_notifications', JSON.stringify(notifications));
-  }, [notifications]);
 
-  useEffect(() => {
-    localStorage.setItem('mealswipe_notifications', JSON.stringify(notifications));
-  }, [notifications]);
 
   const createGroup = async (
     name: string,
@@ -925,6 +1007,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })),
       createdBy: String(newGroupBackend.created_by),
       createdAt: newGroupBackend.created_at,
+      joinCode: newGroupBackend.join_code,
+      constraints: newGroupBackend.constraints,
     };
 
     setGroups((prev) => [...prev, newGroup]);
@@ -945,41 +1029,84 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return newGroup;
   };
 
-  const joinGroup = (groupId: string) => {
-    if (!currentUser) return;
-
-    setGroups(
-      groups.map((group) => {
-        if (group.id === groupId) {
-          const isMember = group.members.some((m) => m.userId === currentUser.id);
-          if (!isMember) {
-            return {
-              ...group,
-              members: [
-                ...group.members,
-                {
-                  userId: currentUser.id,
-                  userName: currentUser.name,
-                  hasFinishedSwiping: false,
-                  isLeader: false,
-                },
-              ],
-            };
-          }
-        }
-        return group;
-      })
-    );
-
-    // Add system message
-    const group = groups.find((g) => g.id === groupId);
-    if (group) {
-      addChatMessage(groupId, {
-        id: `msg-${Date.now()}`,
-        type: 'system',
-        message: `${currentUser.name} joined the group`,
-        timestamp: new Date().toISOString(),
+  const fetchPublicGroups = async (): Promise<Group[]> => {
+    try {
+      const response = await fetch(apiUrl('/api/groups/public/'), {
+        credentials: 'include',
       });
+      const data = await response.json();
+      if (response.ok) {
+        return data.groups.map((g: BackendGroup) => ({
+          id: String(g.id),
+          name: g.name,
+          members: g.members.map((m: BackendMember) => ({
+            userId: String(m.id),
+            userName: m.name,
+            hasFinishedSwiping: false,
+            isLeader: m.role === 'leader',
+          })),
+          createdBy: String(g.created_by),
+          createdAt: g.created_at,
+          joinCode: g.join_code,
+          constraints: g.constraints,
+        }));
+      }
+      return [];
+    } catch (error) {
+      console.error('Fetch public groups error:', error);
+      return [];
+    }
+  };
+
+  const joinGroup = async (code: string): Promise<void> => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/join/${code}/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to join group. Make sure code is correct.');
+      }
+      
+      // Update local state by re-fetching
+      await fetchUserGroups();
+      await fetchUserChats();
+    } catch (error) {
+      console.error('Join group error:', error);
+      throw error;
+    }
+  };
+
+  const regenerateJoinCode = async (groupId: string): Promise<string> => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/groups/${groupId}/regenerate-code/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to regenerate code');
+      }
+      
+      // Update local state directly
+      setGroups(
+        groups.map(g => (g.id === groupId ? { ...g, joinCode: data.join_code } : g))
+      );
+      return data.join_code;
+    } catch (error) {
+      console.error('Regenerate code error:', error);
+      throw error;
     }
   };
 
@@ -1057,34 +1184,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(err.error || 'Failed to invite user');
       }
 
-      const data = await response.json();
-      const updatedBackendGroup = data.group;
+      // Invitation sent successfully, nothing more to do locally since they aren't added to the group yet
+      // The pending invitation requires the other user to accept it.
+      
 
-      // Update the group in local state with the new member list
-      setGroups((prevGroups) =>
-        prevGroups.map((group) => {
-          if (group.id === groupId) {
-            return {
-              ...group,
-              members: updatedBackendGroup.members.map((m: BackendMember) => ({
-                userId: String(m.id),
-                userName: m.name,
-                hasFinishedSwiping: false,
-                isLeader: m.role === 'leader',
-              })),
-            };
-          }
-          return group;
-        })
-      );
 
-      // Add system message
-      addChatMessage(groupId, {
-        id: `msg-${Date.now()}`,
-        type: 'system',
-        message: `${currentUser.name} invited ${userEmail} to the group`,
-        timestamp: new Date().toISOString(),
-      });
     } catch (error) {
       console.error('Invite member error:', error);
       throw error;
@@ -1128,6 +1232,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateGroupConstraints = async (groupId: string, constraints: GroupConstraints) => {
+    const csrftoken = getCookie('csrftoken') || '';
+    const body: Record<string, unknown> = {};
+    if (constraints.dietary !== undefined) body.dietary = constraints.dietary;
+    if (constraints.cuisines !== undefined) body.cuisines = constraints.cuisines;
+    if (constraints.foodTypes !== undefined) body.foodTypes = constraints.foodTypes;
+    if (constraints.minimumSanitationGrade !== undefined) {
+      body.minimumSanitationGrade = constraints.minimumSanitationGrade;
+    }
+    const response = await fetch(apiUrl(`/api/groups/${groupId}/constraints/`), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update constraints');
+    }
+    const data = await response.json();
+    const updatedBg = data.group as BackendGroup;
+    setGroups(prev => prev.map(g => g.id === String(updatedBg.id) ? { ...g, constraints: updatedBg.constraints } : g));
+    if (currentGroup?.id === String(updatedBg.id)) {
+      setCurrentGroup(prev => prev ? { ...prev, constraints: updatedBg.constraints } : null);
+    }
+  };
+
   const makeLeader = async (groupId: string, userId: string): Promise<void> => {
     if (!currentUser) return;
     try {
@@ -1167,52 +1301,73 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const fetchAvailableUsers = async (query: string = '') => {
+  const fetchAvailableUsers = useCallback(async (query: string = '', groupId?: string) => {
     if (!currentUser) return;
     try {
+      let url = `/api/groups/users/?q=${encodeURIComponent(query)}`;
+      if (groupId) {
+        url += `&group_id=${encodeURIComponent(groupId)}`;
+      }
       const response = await fetch(
-        apiUrl(`/api/groups/users/?q=${encodeURIComponent(query)}`),
+        apiUrl(url),
         {
           credentials: 'include',
         }
       );
       if (response.ok) {
         const data = await response.json();
-        const users = data.users.map((u: BackendUser) => ({
+        const users = data.users.map((u: BackendUser & { is_invited?: boolean }) => ({
           id: String(u.id),
           email: u.email,
           name: u.name,
           preferences: { cuisines: [], dietary: [], foodTypes: [] }, // Minimal mock for interface
+          is_invited: u.is_invited,
         }));
         setAvailableUsers(users);
       }
     } catch (error) {
       console.error('Failed to fetch users:', error);
     }
-  };
+  }, [currentUser]);
 
   const getAllUsers = () => {
-    return availableUsers.length > 0 ? availableUsers : mockUsers;
+    return availableUsers;
   };
 
-  const createSwipeEvent = (groupId: string, name: string): SwipeEvent => {
+  const createSwipeEvent = async (
+    groupId: string,
+    name: string,
+    borough?: string,
+    neighborhood?: string
+  ): Promise<SwipeEvent> => {
+    const csrftoken = getCookie('csrftoken') || '';
+    const response = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken,
+      },
+      body: JSON.stringify({ name, borough, neighborhood }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to create event');
+
     const newEvent: SwipeEvent = {
-      id: `event-${Date.now()}`,
-      groupId,
-      name,
-      status: 'active',
-      createdAt: new Date().toISOString(),
+      id: String(data.event.id),
+      groupId: String(data.event.group_id),
+      name: data.event.name,
+      status: data.event.status,
+      createdAt: data.event.created_at,
+      matchedRestaurantId: data.event.matched_venue_id
+        ? String(data.event.matched_venue_id)
+        : undefined,
+      borough: data.event.borough || '',
+      neighborhood: data.event.neighborhood || '',
     };
 
-    setSwipeEvents([...swipeEvents, newEvent]);
+    setSwipeEvents((prev) => [...prev, newEvent]);
 
-    // Initialize swipes array for this event
-    setSwipes((prev) => ({
-      ...prev,
-      [newEvent.id]: [],
-    }));
-
-    // Add system message
     addChatMessage(groupId, {
       id: `msg-${Date.now()}`,
       type: 'system',
@@ -1223,49 +1378,232 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return newEvent;
   };
 
-  const addSwipe = (eventId: string, swipe: Swipe) => {
-    setSwipes((prev) => ({
-      ...prev,
-      [eventId]: [...(prev[eventId] || []), swipe],
-    }));
+  const fetchSwipeEvents = useCallback(async (groupId: string, signal?: AbortSignal) => {
+    try {
+      const response = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
+        credentials: 'include',
+        signal,
+      });
+      const data = await response.json();
+      if (data.success) {
+        const events: SwipeEvent[] = data.events.map(
+          (e: {
+            id: number;
+            group_id: number;
+            name: string;
+            status: string;
+            created_at: string;
+            matched_venue_id: number | null;
+          }) => ({
+            id: String(e.id),
+            groupId: String(e.group_id),
+            name: e.name,
+            status: e.status as SwipeEvent['status'],
+            createdAt: e.created_at,
+            matchedRestaurantId: e.matched_venue_id
+              ? String(e.matched_venue_id)
+              : undefined,
+          })
+        );
+        setSwipeEvents(events);
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      console.error('Failed to fetch swipe events:', error);
+    }
+  }, []);
+
+  const addSwipe = async (
+    eventId: string,
+    groupId: string,
+    venueId: string,
+    direction: 'left' | 'right'
+  ) => {
+    const csrftoken = getCookie('csrftoken') || '';
+    const response = await fetch(
+      apiUrl(`/api/groups/${groupId}/events/${eventId}/swipes/`),
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ venue_id: Number(venueId), direction }),
+      }
+    );
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to submit swipe');
+    }
   };
 
-  const addChatMessage = (conversationId: string, message: ChatMessage) => {
-    setChatMessages((prev) => ({
-      ...prev,
-      [conversationId]: [...(prev[conversationId] || []), message],
-    }));
+  const fetchSwipeVenues = useCallback(async (
+    groupId: string,
+    eventId: string
+  ): Promise<Restaurant[]> => {
+    const response = await fetch(
+      apiUrl(`/api/groups/${groupId}/events/${eventId}/venues/`),
+      { credentials: 'include' }
+    );
+    const data = await response.json();
+    if (!data.success) throw new Error('Failed to fetch venues');
+    return data.venues as Restaurant[];
+  }, []);
+
+  const fetchMatchResults = useCallback(async (
+    groupId: string,
+    eventId: string
+  ) => {
+    const response = await fetch(
+      apiUrl(`/api/groups/${groupId}/events/${eventId}/results/`),
+      { credentials: 'include' }
+    );
+    const data = await response.json();
+    if (!data.success) throw new Error('Failed to fetch results');
+    return {
+      match_found: data.match_found as boolean,
+      matched_venue: data.matched_venue as Restaurant | null,
+      total_participants: data.total_participants as number,
+      threshold: data.threshold as number,
+      likes_count: data.likes_count as number,
+    };
+  }, []);
+
+  const addChatMessage = async (conversationId: string, message: ChatMessage) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ message: message.message, message_type: message.type }),
+      });
+
+      if (!response.ok) {
+        let errorDetail: unknown = null;
+        try {
+          const contentType = response.headers.get('Content-Type') || '';
+          if (contentType.includes('application/json')) {
+            errorDetail = await response.json();
+          } else {
+            errorDetail = await response.text();
+          }
+        } catch {
+          // Ignore secondary errors while parsing error response
+        }
+
+        console.error('Failed to send message', {
+          status: response.status,
+          statusText: response.statusText,
+          detail: errorDetail,
+        });
+
+        const errorMessage =
+          typeof errorDetail === 'string'
+            ? errorDetail
+            : 'Failed to send message';
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setChatMessages((prev) => ({
+        ...prev,
+        [conversationId]: [...(prev[conversationId] || []), data.message],
+      }));
+
+      return data.message;
+    } catch (err) {
+      console.error('Failed to send message', err);
+      throw err;
+    }
   };
 
-  const createDMConversation = (participantId: string): DMConversation => {
+  const deleteChatMessage = async (conversationId: string, messageId: string) => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/${messageId}/`), {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+
+      if (response.ok) {
+        setChatMessages((prev) => {
+          const messages = prev[conversationId] || [];
+          return {
+            ...prev,
+            [conversationId]: messages.map(msg => 
+              msg.id === (messageId.startsWith('msg-') ? messageId : `msg-${messageId}`)
+                ? { ...msg, message: '[This message has been deleted]' }
+                : msg
+            ),
+          };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to delete message', err);
+    }
+  };
+
+  const createDMConversation = async (participantId: string): Promise<DMConversation> => {
     if (!currentUser) throw new Error('Must be logged in');
 
-    const participant = mockUsers.find((u) => u.id === participantId);
-    if (!participant) throw new Error('Participant not found');
-
-    const newConversation: DMConversation = {
-      id: `dm-${Date.now()}`,
-      participants: [currentUser.id, participantId],
-      participantNames: [currentUser.name, participant.name],
-      lastMessageTime: new Date().toISOString(),
-    };
-
-    setDMConversations([...dmConversations, newConversation]);
-
-    // Initialize chat for this DM conversation
-    setChatMessages((prev) => ({
-      ...prev,
-      [newConversation.id]: [
-        {
-          id: `msg-${Date.now()}`,
-          type: 'system',
-          message: `${currentUser.name} started a conversation with ${participant.name}`,
-          timestamp: new Date().toISOString(),
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/chat/`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
         },
-      ],
-    }));
+        body: JSON.stringify({ participantId }),
+      });
 
-    return newConversation;
+      if (response.ok) {
+        const data = await response.json();
+        const chat = data.chat;
+        const newDm: DMConversation = {
+          id: chat.id,
+          participants: chat.participants,
+          participantNames: chat.participantNames,
+          // Normalize lastMessageTime: backend may return null when there are no messages
+          lastMessageTime: chat.lastMessageTime || chat.created_at,
+        };
+        setDMConversations(prev => [...prev.filter(dm => dm.id !== chat.id), newDm]);
+        setChatMessages(prev => ({ ...prev, [`dm-${chat.id}`]: chat.messages || [] }));
+        return newDm;
+      }
+    } catch (err) {
+      console.error('Failed to create DM', err);
+    }
+    throw new Error('Failed to create DM');
+  };
+
+  const toggleMuteChatMember = async (chatId: string, userId: string): Promise<void> => {
+    try {
+      const csrftoken = getCookie('csrftoken') || '';
+      const response = await fetch(apiUrl(`/api/chat/${chatId}/members/${userId}/mute/`), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to toggle mute');
+      await fetchUserChats();
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const openUserDM = async (userId: string): Promise<void> => {
+    window.dispatchEvent(new CustomEvent('open-chat-dm', { detail: userId }));
   };
 
   const updateSwipeEventStatus = (
@@ -1282,33 +1620,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addNotification = (
-    notification: Omit<Notification, 'id' | 'read' | 'timestamp'>
-  ) => {
-    setNotifications((prev) => [
-      ...prev,
-      {
-        ...notification,
-        id: `notification-${Date.now()}`,
-        read: false,
-        timestamp: new Date().toISOString(),
-      },
-    ]);
-  };
 
-  const markNotificationAsRead = (notificationId: string) => {
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        notification.id === notificationId
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
-  };
-
-  const clearAllNotifications = () => {
-    setNotifications([]);
-  };
 
   // Skip rendering the rest of the application until we've checked the auth state
   if (isInitializingAuth) {
@@ -1329,8 +1641,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         groups,
         createGroup,
         joinGroup,
+        fetchPublicGroups,
+        regenerateJoinCode,
         leaveGroup,
         deleteGroup,
+        updateGroupConstraints,
         removeMember,
         makeLeader,
         inviteMember,
@@ -1341,19 +1656,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setCurrentGroup,
         swipeEvents,
         createSwipeEvent,
+        fetchSwipeEvents,
         currentSwipeEvent,
         setCurrentSwipeEvent,
         swipes,
         addSwipe,
+        fetchSwipeVenues,
+        fetchMatchResults,
         chatMessages,
         addChatMessage,
+        deleteChatMessage,
+        chatMutedParticipants,
+        toggleMuteChatMember,
+        openUserDM,
         dmConversations,
         createDMConversation,
         updateSwipeEventStatus,
-        notifications,
-        addNotification,
-        markNotificationAsRead,
-        clearAllNotifications,
+        invitations,
+        swipeNotifications,
+        fetchInvitations,
+        acceptInvitation,
+        declineInvitation,
+        markSwipeNotificationRead,
       }}
     >
       {children}
@@ -1364,8 +1688,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function useApp() {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp must be used within AppProvider');
+  if (context === undefined) {
+    throw new Error('useApp must be used within an AppProvider');
   }
   return context;
 }

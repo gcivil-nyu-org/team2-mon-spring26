@@ -172,8 +172,8 @@ Use two terminals: one for backend and one for frontend.
 cd backend
 source .venv/bin/activate
 pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver 8000
+python3 manage.py migrate
+python3 manage.py runserver 8000
 ```
 
 Backend URL: `http://127.0.0.1:8000`
@@ -194,9 +194,9 @@ Frontend URL: `http://localhost:5173`
 
 This repo deploys as two independent Elastic Beanstalk applications in **us-east-1**:
 
-| Component | EB Application      | EB Environment        | Platform                              |
-| --------- | ------------------- | --------------------- | ------------------------------------- |
-| Backend   | `mealswipe-backend` | `mealswipe-backend-env` | Python 3.x on 64bit Amazon Linux 2023 |
+| Component | EB Application       | EB Environment           | Platform                              |
+| --------- | -------------------- | ------------------------ | ------------------------------------- |
+| Backend   | `mealswipe-backend`  | `mealswipe-backend-env`  | Python 3.x on 64bit Amazon Linux 2023 |
 | Frontend  | `mealswipe-frontend` | `Mealswipe-frontend-env` | Node.js on 64bit Amazon Linux 2023    |
 
 ### 7.1 CI/CD via Travis CI
@@ -212,6 +212,7 @@ Deployments are **automated via Travis CI**. Every merge to `develop` triggers t
 **No manual `eb deploy` is needed for routine deployments.** Just merge to `develop`.
 
 Travis CI requires two environment variables set in the repository settings:
+
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 
@@ -220,6 +221,7 @@ Travis CI requires two environment variables set in the repository settings:
 If the EB environments need to be recreated from scratch, use the EB CLI to initialise and configure them. This is a one-time operation per environment.
 
 **Prerequisites:**
+
 - **AWS CLI** installed (`brew install awscli` on macOS)
 - **EB CLI** installed (`pip install awsebcli`)
 - AWS credentials configured: `aws configure` (set region to `us-east-1`)
