@@ -34,7 +34,7 @@ script:
   - (cd frontend && npm run build)
 
 after_success:
-  - (cd backend && coveralls)
+  - (cd backend && GIT_BRANCH=$TRAVIS_BRANCH coveralls)
 
 before_deploy:
   # Package only the backend directory for backend EB deploy
