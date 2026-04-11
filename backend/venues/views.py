@@ -1,12 +1,14 @@
 import json
 import logging
+import math
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
+from django.utils import timezone
 
 from .models import Venue, StudentDiscount, VenueClaim
-from accounts.models import VenueManagerProfile
+from accounts.models import VenueManagerProfile, CuisineType, DietaryTag, FoodTypeTag
 
 logger = logging.getLogger(__name__)
 
@@ -383,5 +385,453 @@ def api_venue_discount_detail(request, venue_id, discount_id):
     if request.method == "DELETE":
         discount.delete()
         return JsonResponse({"success": True})
+
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+# ---------------------------------------------------------------------------
+# Admin Venue Verification API
+# ---------------------------------------------------------------------------
+
+
+def _require_admin(request):
+    """Returns None or an error JsonResponse."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+    if request.user.role != "admin":
+        return JsonResponse({"error": "Admin access required"}, status=403)
+    return None
+
+
+@csrf_exempt
+def api_admin_venue_claims(request):
+    """
+    GET /api/venues/admin/claims/?status=pending&page=1
+    Returns paginated venue claims for admin review.
+    """
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    err = _require_admin(request)
+    if err:
+        return err
+
+    status_filter = request.GET.get("status", "").strip()
+    page = int(request.GET.get("page", 1))
+    per_page = 20
+
+    claims_qs = VenueClaim.objects.select_related(
+        "venue",
+        "venue__cuisine_type",
+        "manager",
+        "manager__user",
+    ).order_by("-created_at")
+
+    if status_filter and status_filter in dict(VenueClaim.Status.choices):
+        claims_qs = claims_qs.filter(status=status_filter)
+
+    total = claims_qs.count()
+    total_pages = max(1, math.ceil(total / per_page))
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
+    claims_page = claims_qs[offset : offset + per_page]
+
+    results = []
+    for claim in claims_page:
+        venue = claim.venue
+        manager = claim.manager
+        user = manager.user if manager else None
+        results.append(
+            {
+                "id": claim.id,
+                "status": claim.status,
+                "note": claim.note,
+                "adminNote": claim.admin_note,
+                "createdAt": claim.created_at.isoformat(),
+                "reviewedAt": (
+                    claim.reviewed_at.isoformat() if claim.reviewed_at else None
+                ),
+                "venue": {
+                    "id": venue.id,
+                    "name": venue.name,
+                    "streetAddress": venue.street_address,
+                    "borough": venue.borough,
+                    "neighborhood": venue.neighborhood,
+                    "cuisineType": (
+                        venue.cuisine_type.name if venue.cuisine_type else ""
+                    ),
+                },
+                "manager": {
+                    "id": manager.id if manager else None,
+                    "businessName": manager.business_name if manager else "",
+                    "businessEmail": manager.business_email if manager else "",
+                    "userName": (
+                        f"{user.first_name} {user.last_name}".strip() if user else ""
+                    ),
+                    "userEmail": user.email if user else "",
+                },
+            }
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "claims": results,
+            "page": page,
+            "totalPages": total_pages,
+            "totalCount": total,
+        }
+    )
+
+
+@csrf_exempt
+def api_admin_venue_claim_action(request, claim_id):
+    """
+    POST /api/venues/admin/claims/<claim_id>/
+    Body: { "action": "approve" | "reject", "adminNote": "..." }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    err = _require_admin(request)
+    if err:
+        return err
+
+    try:
+        claim = VenueClaim.objects.select_related("venue", "manager").get(pk=claim_id)
+    except VenueClaim.DoesNotExist:
+        return JsonResponse({"error": "Claim not found"}, status=404)
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    action = (data.get("action") or "").strip().lower()
+    admin_note = (data.get("adminNote") or "").strip()
+
+    if action not in ("approve", "reject"):
+        return JsonResponse(
+            {"error": "action must be 'approve' or 'reject'"}, status=400
+        )
+
+    with transaction.atomic():
+        if action == "approve":
+            claim.status = VenueClaim.Status.APPROVED
+            claim.admin_note = admin_note
+            claim.reviewed_at = timezone.now()
+            claim.save(update_fields=["status", "admin_note", "reviewed_at"])
+            # Mark venue as verified
+            claim.venue.is_verified = True
+            claim.venue.save(update_fields=["is_verified", "updated_at"])
+        else:
+            claim.status = VenueClaim.Status.REJECTED
+            claim.admin_note = admin_note
+            claim.reviewed_at = timezone.now()
+            claim.save(update_fields=["status", "admin_note", "reviewed_at"])
+            # Remove manager from venue on rejection
+            claim.venue.managed_by = None
+            claim.venue.is_verified = False
+            claim.venue.save(update_fields=["managed_by", "is_verified", "updated_at"])
+
+    return JsonResponse(
+        {
+            "success": True,
+            "claim": {
+                "id": claim.id,
+                "status": claim.status,
+                "reviewedAt": claim.reviewed_at.isoformat(),
+            },
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin Venue Management API
+# ---------------------------------------------------------------------------
+
+
+def _admin_venue_to_json(venue):
+    """Full venue serialization for admin editing."""
+    latest_inspection = (
+        venue.inspections.first()
+        if hasattr(venue, "_prefetched_objects_cache")
+        else venue.inspections.first()
+    )
+    manager = venue.managed_by
+    manager_user = manager.user if manager else None
+    return {
+        "id": venue.id,
+        "name": venue.name,
+        "streetAddress": venue.street_address,
+        "borough": venue.borough,
+        "neighborhood": venue.neighborhood,
+        "zipcode": venue.zipcode,
+        "phone": venue.phone,
+        "email": venue.email,
+        "website": venue.website,
+        "cuisineType": venue.cuisine_type.name if venue.cuisine_type else "",
+        "cuisineTypeId": venue.cuisine_type_id,
+        "priceRange": venue.price_range,
+        "sanitationGrade": venue.sanitation_grade,
+        "seatingCapacity": venue.seating_capacity,
+        "hasGroupSeating": venue.has_group_seating,
+        "hasTakeout": venue.has_takeout,
+        "hasDelivery": venue.has_delivery,
+        "hasDineIn": venue.has_dine_in,
+        "isReservable": venue.is_reservable,
+        "googleRating": float(venue.google_rating) if venue.google_rating else None,
+        "googleReviewCount": venue.google_review_count,
+        "googleMapsUrl": venue.google_maps_url,
+        "isVerified": venue.is_verified,
+        "isActive": venue.is_active,
+        "dietaryTags": list(venue.dietary_tags.values_list("name", flat=True)),
+        "foodTypeTags": list(venue.food_type_tags.values_list("name", flat=True)),
+        "lastInspectionDate": (
+            latest_inspection.inspection_date.isoformat()
+            if latest_inspection and latest_inspection.inspection_date
+            else None
+        ),
+        "lastInspectionGrade": latest_inspection.grade if latest_inspection else "",
+        "lastInspectionScore": latest_inspection.score if latest_inspection else None,
+        "isClaimed": venue.managed_by is not None,
+        "manager": (
+            {
+                "id": manager.id if manager else None,
+                "businessName": manager.business_name if manager else "",
+                "userName": (
+                    f"{manager_user.first_name} {manager_user.last_name}".strip()
+                    if manager_user
+                    else ""
+                ),
+                "userEmail": manager_user.email if manager_user else "",
+            }
+            if manager
+            else None
+        ),
+    }
+
+
+@csrf_exempt
+def api_admin_venue_options(request):
+    """
+    GET /api/venues/admin/options/
+    Returns all available cuisine types, dietary tags, and food type tags.
+    """
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    err = _require_admin(request)
+    if err:
+        return err
+
+    return JsonResponse(
+        {
+            "cuisineTypes": list(
+                CuisineType.objects.order_by("name").values("id", "name")
+            ),
+            "dietaryTags": list(
+                DietaryTag.objects.order_by("name").values_list("name", flat=True)
+            ),
+            "foodTypeTags": list(
+                FoodTypeTag.objects.order_by("name").values_list("name", flat=True)
+            ),
+        }
+    )
+
+
+@csrf_exempt
+def api_admin_venues(request):
+    """
+    GET /api/venues/admin/venues/?q=&borough=&page=1
+    Returns paginated venues for admin management.
+    """
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    err = _require_admin(request)
+    if err:
+        return err
+
+    q = request.GET.get("q", "").strip()
+    borough = request.GET.get("borough", "").strip()
+    page = int(request.GET.get("page", 1))
+    per_page = 20
+
+    venues_qs = (
+        Venue.objects.select_related("cuisine_type", "managed_by", "managed_by__user")
+        .prefetch_related("dietary_tags", "food_type_tags", "inspections")
+        .order_by("name")
+    )
+
+    if q:
+        venues_qs = venues_qs.filter(name__icontains=q)
+    if borough:
+        venues_qs = venues_qs.filter(borough=borough)
+
+    total = venues_qs.count()
+    total_pages = max(1, math.ceil(total / per_page))
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
+    venues_page = venues_qs[offset : offset + per_page]
+
+    results = []
+    for v in venues_page:
+        results.append(
+            {
+                "id": v.id,
+                "name": v.name,
+                "streetAddress": v.street_address,
+                "borough": v.borough,
+                "neighborhood": v.neighborhood,
+                "cuisineType": v.cuisine_type.name if v.cuisine_type else "",
+                "priceRange": v.price_range,
+                "sanitationGrade": v.sanitation_grade,
+                "isVerified": v.is_verified,
+                "isActive": v.is_active,
+                "isClaimed": v.managed_by is not None,
+            }
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "venues": results,
+            "page": page,
+            "totalPages": total_pages,
+            "totalCount": total,
+        }
+    )
+
+
+@csrf_exempt
+def api_admin_venue_detail(request, venue_id):
+    """
+    GET   /api/venues/admin/venues/<id>/  — full venue detail
+    PATCH /api/venues/admin/venues/<id>/  — update venue fields
+    """
+    err = _require_admin(request)
+    if err:
+        return err
+
+    try:
+        venue = (
+            Venue.objects.select_related(
+                "cuisine_type", "managed_by", "managed_by__user"
+            )
+            .prefetch_related("dietary_tags", "food_type_tags", "inspections")
+            .get(pk=venue_id)
+        )
+    except Venue.DoesNotExist:
+        return JsonResponse({"error": "Venue not found"}, status=404)
+
+    if request.method == "GET":
+        return JsonResponse({"venue": _admin_venue_to_json(venue)})
+
+    if request.method == "PATCH":
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        fields_updated = []
+
+        # Text / scalar fields
+        field_map = {
+            "name": "name",
+            "streetAddress": "street_address",
+            "borough": "borough",
+            "neighborhood": "neighborhood",
+            "zipcode": "zipcode",
+            "phone": "phone",
+            "email": "email",
+            "website": "website",
+            "priceRange": "price_range",
+            "sanitationGrade": "sanitation_grade",
+        }
+        for js_key, db_key in field_map.items():
+            if js_key in data:
+                setattr(venue, db_key, (data[js_key] or "").strip())
+                fields_updated.append(db_key)
+
+        # Integer fields
+        if "seatingCapacity" in data:
+            val = data["seatingCapacity"]
+            venue.seating_capacity = int(val) if val else None
+            fields_updated.append("seating_capacity")
+
+        # Boolean fields
+        bool_map = {
+            "hasGroupSeating": "has_group_seating",
+            "hasTakeout": "has_takeout",
+            "hasDelivery": "has_delivery",
+            "hasDineIn": "has_dine_in",
+            "isReservable": "is_reservable",
+            "isVerified": "is_verified",
+            "isActive": "is_active",
+        }
+        for js_key, db_key in bool_map.items():
+            if js_key in data:
+                setattr(venue, db_key, bool(data[js_key]))
+                fields_updated.append(db_key)
+
+        # Cuisine type (FK by name)
+        if "cuisineType" in data:
+            ct_name = (data["cuisineType"] or "").strip()
+            if ct_name:
+                ct, _ = CuisineType.objects.get_or_create(name=ct_name)
+                venue.cuisine_type = ct
+            else:
+                venue.cuisine_type = None
+            fields_updated.append("cuisine_type_id")
+
+        # Remove venue manager
+        if data.get("removeManager"):
+            venue.managed_by = None
+            venue.is_verified = False
+            if "managed_by_id" not in fields_updated:
+                fields_updated.append("managed_by_id")
+            if "is_verified" not in fields_updated:
+                fields_updated.append("is_verified")
+            # Also reject any pending claims for this venue
+            VenueClaim.objects.filter(
+                venue=venue, status=VenueClaim.Status.PENDING
+            ).update(
+                status=VenueClaim.Status.REJECTED,
+                admin_note="Manager removed by admin",
+                reviewed_at=timezone.now(),
+            )
+            # Mark approved claims as rejected too
+            VenueClaim.objects.filter(
+                venue=venue, status=VenueClaim.Status.APPROVED
+            ).update(
+                status=VenueClaim.Status.REJECTED,
+                admin_note="Manager removed by admin",
+                reviewed_at=timezone.now(),
+            )
+
+        if fields_updated:
+            fields_updated.append("updated_at")
+            venue.save(update_fields=fields_updated)
+
+        # M2M: dietary tags
+        if "dietaryTags" in data:
+            tag_names = data["dietaryTags"] or []
+            tags = []
+            for name in tag_names:
+                tag, _ = DietaryTag.objects.get_or_create(name=name.strip())
+                tags.append(tag)
+            venue.dietary_tags.set(tags)
+
+        # M2M: food type tags
+        if "foodTypeTags" in data:
+            tag_names = data["foodTypeTags"] or []
+            tags = []
+            for name in tag_names:
+                tag, _ = FoodTypeTag.objects.get_or_create(name=name.strip())
+                tags.append(tag)
+            venue.food_type_tags.set(tags)
+
+        venue.refresh_from_db()
+        return JsonResponse({"success": True, "venue": _admin_venue_to_json(venue)})
 
     return JsonResponse({"error": "Method not allowed"}, status=405)

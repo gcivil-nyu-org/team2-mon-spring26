@@ -4,7 +4,13 @@ import { useApp } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/app/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -35,7 +41,7 @@ export function LoginPage() {
       const message = err instanceof Error ? err.message : 'Login failed.';
       setLoginError(
         message === 'Invalid credentials'
-          ? 'Invalid email or password. If you don\'t have an account, please register first.'
+          ? "Invalid email or password. If you don't have an account, please register first."
           : message
       );
     }
@@ -44,17 +50,21 @@ export function LoginPage() {
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setResetError('');
-    
+
     if (!resetEmail) {
       setResetError('Please enter your email address.');
       return;
     }
-    
+
     try {
       await requestPasswordReset(resetEmail);
       setResetSent(true);
     } catch (err: unknown) {
-      setResetError(err instanceof Error ? err.message : 'Failed to request password reset. Please try again.');
+      setResetError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to request password reset. Please try again.'
+      );
     }
   };
 
@@ -69,11 +79,14 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 via-purple-400 to-violet-300 p-4 relative overflow-hidden">
       {/* Subtle background pattern */}
       <div className="absolute inset-0 opacity-5">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-        }}></div>
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}
+        ></div>
       </div>
-      
+
       <Card className="w-full max-w-md bg-gray-50/90 backdrop-blur-sm shadow-2xl border-gray-200/50 relative z-10">
         <CardHeader className="text-center space-y-4">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-purple-600 to-violet-700 rounded-2xl flex items-center justify-center shadow-lg">
@@ -120,10 +133,13 @@ export function LoginPage() {
               />
               {loginError && <p className="text-sm text-red-600">{loginError}</p>}
             </div>
-            <Button type="submit" className="w-full bg-purple-700 hover:bg-purple-800 text-white shadow-lg">
+            <Button
+              type="submit"
+              className="w-full bg-purple-700 hover:bg-purple-800 text-white shadow-lg"
+            >
               Sign In
             </Button>
-            
+
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t"></div>
@@ -132,32 +148,25 @@ export function LoginPage() {
                 <span className="bg-gray-50 px-2 text-muted-foreground">Or</span>
               </div>
             </div>
-            
-            <Button 
-              type="button" 
-              variant="outline" 
+
+            <Button
+              type="button"
+              variant="outline"
               className="w-full border-purple-200 hover:bg-purple-50"
               onClick={() => navigate('/register')}
             >
               Create New Account
             </Button>
-            
+
             <div className="text-center space-y-2">
               <p className="text-sm text-muted-foreground">
                 Demo: Use alex@nyu.edu, sarah@nyu.edu, or jordan@nyu.edu
               </p>
-              <button
-                type="button"
-                onClick={() => navigate('/venue/login')}
-                className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                Venue Manager Login
-              </button>
             </div>
           </form>
         </CardContent>
       </Card>
-      
+
       <Dialog open={showForgotPassword} onOpenChange={handleCloseForgotPassword}>
         <DialogContent className="sm:max-w-md">
           {!resetSent ? (
@@ -165,7 +174,8 @@ export function LoginPage() {
               <DialogHeader>
                 <DialogTitle>Forgot Password?</DialogTitle>
                 <DialogDescription>
-                  Enter your email address and we'll send you a link to reset your password.
+                  Enter your email address and we'll send you a link to reset your
+                  password.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleForgotPassword} className="space-y-4" noValidate>
@@ -215,7 +225,8 @@ export function LoginPage() {
                 </div>
                 <DialogTitle className="text-center">Check Your Email</DialogTitle>
                 <DialogDescription className="text-center">
-                  We've sent a password reset link to <span className="font-medium text-foreground">{resetEmail}</span>. 
+                  We've sent a password reset link to{' '}
+                  <span className="font-medium text-foreground">{resetEmail}</span>.
                   Click the link in the email to reset your password.
                 </DialogDescription>
               </DialogHeader>

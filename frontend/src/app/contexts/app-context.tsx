@@ -13,6 +13,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  role?: 'student' | 'venue_manager' | 'admin';
   preferences: {
     cuisines: string[];
     dietary: string[];
@@ -28,6 +29,7 @@ export function normalizeApiUser(apiUser: {
   id: number | string;
   email: string;
   name: string;
+  role?: 'student' | 'venue_manager' | 'admin';
   preferences?: {
     dietary?: string[];
     cuisines?: string[];
@@ -42,6 +44,7 @@ export function normalizeApiUser(apiUser: {
     id: String(apiUser.id),
     email: apiUser.email,
     name: apiUser.name,
+    role: apiUser.role,
     preferences: {
       cuisines: Array.isArray(prefs.cuisines)
         ? prefs.cuisines
@@ -200,7 +203,10 @@ interface AppContextType {
   regenerateJoinCode: (groupId: string) => Promise<string>;
   leaveGroup: (groupId: string) => Promise<void>;
   deleteGroup: (groupId: string) => Promise<void>;
-  updateGroupConstraints: (groupId: string, constraints: GroupConstraints) => Promise<void>;
+  updateGroupConstraints: (
+    groupId: string,
+    constraints: GroupConstraints
+  ) => Promise<void>;
   removeMember: (groupId: string, userId: string) => Promise<void>;
   makeLeader: (groupId: string, userId: string) => Promise<void>;
   inviteMember: (groupId: string, userEmail: string) => Promise<void>;
@@ -210,7 +216,12 @@ interface AppContextType {
   currentGroup: Group | null;
   setCurrentGroup: (group: Group | null) => void;
   swipeEvents: SwipeEvent[];
-  createSwipeEvent: (groupId: string, name: string, borough?: string, neighborhood?: string) => Promise<SwipeEvent>;
+  createSwipeEvent: (
+    groupId: string,
+    name: string,
+    borough?: string,
+    neighborhood?: string
+  ) => Promise<SwipeEvent>;
   fetchSwipeEvents: (groupId: string, signal?: AbortSignal) => Promise<void>;
   currentSwipeEvent: SwipeEvent | null;
   setCurrentSwipeEvent: (event: SwipeEvent | null) => void;
@@ -221,10 +232,7 @@ interface AppContextType {
     venueId: string,
     direction: 'left' | 'right'
   ) => Promise<void>;
-  fetchSwipeVenues: (
-    groupId: string,
-    eventId: string
-  ) => Promise<Restaurant[]>;
+  fetchSwipeVenues: (groupId: string, eventId: string) => Promise<Restaurant[]>;
   fetchMatchResults: (
     groupId: string,
     eventId: string
@@ -257,8 +265,6 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
-
 
 // CSRF token helper
 function getCookie(name: string) {
@@ -294,7 +300,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [swipes, setSwipes] = useState<Record<string, Swipe[]>>({});
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
   const [dmConversations, setDMConversations] = useState<DMConversation[]>([]);
-  const [chatMutedParticipants, setChatMutedParticipants] = useState<Record<string, string[]>>({});
+  const [chatMutedParticipants, setChatMutedParticipants] = useState<
+    Record<string, string[]>
+  >({});
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [swipeNotifications, setSwipeNotifications] = useState<SwipeNotification[]>([]);
 
@@ -357,7 +365,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         status: 'pending',
         createdAt: '2026-02-01T10:00:00.000Z',
       };
-
 
       // Add initial chat messages
       const initialMessages: Record<string, ChatMessage[]> = {
@@ -616,11 +623,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         const chats = data.chats;
-        
+
         const newChatMessages: Record<string, ChatMessage[]> = {};
         const dms: DMConversation[] = [];
         const newMutedParticipants: Record<string, string[]> = {};
-        
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         chats.forEach((chat: any) => {
           const msgKey = chat.type === 'direct' ? `dm-${chat.id}` : chat.id;
@@ -631,11 +638,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               id: chat.id,
               participants: chat.participants,
               participantNames: chat.participantNames,
-              lastMessageTime: chat.lastMessageTime ?? chat.created_at ?? ''
+              lastMessageTime: chat.lastMessageTime ?? chat.created_at ?? '',
             });
           }
         });
-        
+
         setChatMessages(newChatMessages);
         setDMConversations(dms);
         setChatMutedParticipants(newMutedParticipants);
@@ -697,11 +704,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const markSwipeNotificationRead = async (id: string | number) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch(apiUrl(`/api/groups/swipe-notifications/${id}/read/`), {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrftoken },
-        credentials: 'include',
-      });
+      const response = await fetch(
+        apiUrl(`/api/groups/swipe-notifications/${id}/read/`),
+        {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrftoken },
+          credentials: 'include',
+        }
+      );
       if (response.ok) {
         await fetchInvitations();
       }
@@ -961,8 +971,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('mealswipe_dm_conversations', JSON.stringify(dmConversations));
   }, [dmConversations]);
 
-
-
   const createGroup = async (
     name: string,
     groupType: string = 'casual',
@@ -1071,9 +1079,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to join group. Make sure code is correct.');
+        throw new Error(
+          data.error || 'Failed to join group. Make sure code is correct.'
+        );
       }
-      
+
       // Update local state by re-fetching
       await fetchUserGroups();
       await fetchUserChats();
@@ -1098,10 +1108,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         throw new Error(data.error || 'Failed to regenerate code');
       }
-      
+
       // Update local state directly
       setGroups(
-        groups.map(g => (g.id === groupId ? { ...g, joinCode: data.join_code } : g))
+        groups.map((g) => (g.id === groupId ? { ...g, joinCode: data.join_code } : g))
       );
       return data.join_code;
     } catch (error) {
@@ -1186,9 +1196,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Invitation sent successfully, nothing more to do locally since they aren't added to the group yet
       // The pending invitation requires the other user to accept it.
-      
-
-
     } catch (error) {
       console.error('Invite member error:', error);
       throw error;
@@ -1232,7 +1239,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateGroupConstraints = async (groupId: string, constraints: GroupConstraints) => {
+  const updateGroupConstraints = async (
+    groupId: string,
+    constraints: GroupConstraints
+  ) => {
     const csrftoken = getCookie('csrftoken') || '';
     const body: Record<string, unknown> = {};
     if (constraints.dietary !== undefined) body.dietary = constraints.dietary;
@@ -1256,9 +1266,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     const data = await response.json();
     const updatedBg = data.group as BackendGroup;
-    setGroups(prev => prev.map(g => g.id === String(updatedBg.id) ? { ...g, constraints: updatedBg.constraints } : g));
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id === String(updatedBg.id) ? { ...g, constraints: updatedBg.constraints } : g
+      )
+    );
     if (currentGroup?.id === String(updatedBg.id)) {
-      setCurrentGroup(prev => prev ? { ...prev, constraints: updatedBg.constraints } : null);
+      setCurrentGroup((prev) =>
+        prev ? { ...prev, constraints: updatedBg.constraints } : null
+      );
     }
   };
 
@@ -1301,34 +1317,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const fetchAvailableUsers = useCallback(async (query: string = '', groupId?: string) => {
-    if (!currentUser) return;
-    try {
-      let url = `/api/groups/users/?q=${encodeURIComponent(query)}`;
-      if (groupId) {
-        url += `&group_id=${encodeURIComponent(groupId)}`;
-      }
-      const response = await fetch(
-        apiUrl(url),
-        {
-          credentials: 'include',
+  const fetchAvailableUsers = useCallback(
+    async (query: string = '', groupId?: string) => {
+      if (!currentUser) return;
+      try {
+        let url = `/api/groups/users/?q=${encodeURIComponent(query)}`;
+        if (groupId) {
+          url += `&group_id=${encodeURIComponent(groupId)}`;
         }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const users = data.users.map((u: BackendUser & { is_invited?: boolean }) => ({
-          id: String(u.id),
-          email: u.email,
-          name: u.name,
-          preferences: { cuisines: [], dietary: [], foodTypes: [] }, // Minimal mock for interface
-          is_invited: u.is_invited,
-        }));
-        setAvailableUsers(users);
+        const response = await fetch(apiUrl(url), {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const users = data.users.map((u: BackendUser & { is_invited?: boolean }) => ({
+            id: String(u.id),
+            email: u.email,
+            name: u.name,
+            preferences: { cuisines: [], dietary: [], foodTypes: [] }, // Minimal mock for interface
+            is_invited: u.is_invited,
+          }));
+          setAvailableUsers(users);
+        }
+      } catch (error) {
+        console.error('Failed to fetch users:', error);
       }
-    } catch (error) {
-      console.error('Failed to fetch users:', error);
-    }
-  }, [currentUser]);
+    },
+    [currentUser]
+  );
 
   const getAllUsers = () => {
     return availableUsers;
@@ -1378,40 +1394,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return newEvent;
   };
 
-  const fetchSwipeEvents = useCallback(async (groupId: string, signal?: AbortSignal) => {
-    try {
-      const response = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
-        credentials: 'include',
-        signal,
-      });
-      const data = await response.json();
-      if (data.success) {
-        const events: SwipeEvent[] = data.events.map(
-          (e: {
-            id: number;
-            group_id: number;
-            name: string;
-            status: string;
-            created_at: string;
-            matched_venue_id: number | null;
-          }) => ({
-            id: String(e.id),
-            groupId: String(e.group_id),
-            name: e.name,
-            status: e.status as SwipeEvent['status'],
-            createdAt: e.created_at,
-            matchedRestaurantId: e.matched_venue_id
-              ? String(e.matched_venue_id)
-              : undefined,
-          })
-        );
-        setSwipeEvents(events);
+  const fetchSwipeEvents = useCallback(
+    async (groupId: string, signal?: AbortSignal) => {
+      try {
+        const response = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
+          credentials: 'include',
+          signal,
+        });
+        const data = await response.json();
+        if (data.success) {
+          const events: SwipeEvent[] = data.events.map(
+            (e: {
+              id: number;
+              group_id: number;
+              name: string;
+              status: string;
+              created_at: string;
+              matched_venue_id: number | null;
+            }) => ({
+              id: String(e.id),
+              groupId: String(e.group_id),
+              name: e.name,
+              status: e.status as SwipeEvent['status'],
+              createdAt: e.created_at,
+              matchedRestaurantId: e.matched_venue_id
+                ? String(e.matched_venue_id)
+                : undefined,
+            })
+          );
+          setSwipeEvents(events);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        console.error('Failed to fetch swipe events:', error);
       }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      console.error('Failed to fetch swipe events:', error);
-    }
-  }, []);
+    },
+    []
+  );
 
   const addSwipe = async (
     eventId: string,
@@ -1438,23 +1457,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const fetchSwipeVenues = useCallback(async (
-    groupId: string,
-    eventId: string
-  ): Promise<Restaurant[]> => {
-    const response = await fetch(
-      apiUrl(`/api/groups/${groupId}/events/${eventId}/venues/`),
-      { credentials: 'include' }
-    );
-    const data = await response.json();
-    if (!data.success) throw new Error('Failed to fetch venues');
-    return data.venues as Restaurant[];
-  }, []);
+  const fetchSwipeVenues = useCallback(
+    async (groupId: string, eventId: string): Promise<Restaurant[]> => {
+      const response = await fetch(
+        apiUrl(`/api/groups/${groupId}/events/${eventId}/venues/`),
+        { credentials: 'include' }
+      );
+      const data = await response.json();
+      if (!data.success) throw new Error('Failed to fetch venues');
+      return data.venues as Restaurant[];
+    },
+    []
+  );
 
-  const fetchMatchResults = useCallback(async (
-    groupId: string,
-    eventId: string
-  ) => {
+  const fetchMatchResults = useCallback(async (groupId: string, eventId: string) => {
     const response = await fetch(
       apiUrl(`/api/groups/${groupId}/events/${eventId}/results/`),
       { credentials: 'include' }
@@ -1503,9 +1519,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
 
         const errorMessage =
-          typeof errorDetail === 'string'
-            ? errorDetail
-            : 'Failed to send message';
+          typeof errorDetail === 'string' ? errorDetail : 'Failed to send message';
         throw new Error(errorMessage);
       }
 
@@ -1525,20 +1539,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteChatMessage = async (conversationId: string, messageId: string) => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch(apiUrl(`/api/chat/${conversationId}/messages/${messageId}/`), {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          'X-CSRFToken': csrftoken,
-        },
-      });
+      const response = await fetch(
+        apiUrl(`/api/chat/${conversationId}/messages/${messageId}/`),
+        {
+          method: 'DELETE',
+          credentials: 'include',
+          headers: {
+            'X-CSRFToken': csrftoken,
+          },
+        }
+      );
 
       if (response.ok) {
         setChatMessages((prev) => {
           const messages = prev[conversationId] || [];
           return {
             ...prev,
-            [conversationId]: messages.map(msg => 
+            [conversationId]: messages.map((msg) =>
               msg.id === (messageId.startsWith('msg-') ? messageId : `msg-${messageId}`)
                 ? { ...msg, message: '[This message has been deleted]' }
                 : msg
@@ -1551,7 +1568,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const createDMConversation = async (participantId: string): Promise<DMConversation> => {
+  const createDMConversation = async (
+    participantId: string
+  ): Promise<DMConversation> => {
     if (!currentUser) throw new Error('Must be logged in');
 
     try {
@@ -1576,8 +1595,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Normalize lastMessageTime: backend may return null when there are no messages
           lastMessageTime: chat.lastMessageTime || chat.created_at,
         };
-        setDMConversations(prev => [...prev.filter(dm => dm.id !== chat.id), newDm]);
-        setChatMessages(prev => ({ ...prev, [`dm-${chat.id}`]: chat.messages || [] }));
+        setDMConversations((prev) => [
+          ...prev.filter((dm) => dm.id !== chat.id),
+          newDm,
+        ]);
+        setChatMessages((prev) => ({
+          ...prev,
+          [`dm-${chat.id}`]: chat.messages || [],
+        }));
         return newDm;
       }
     } catch (err) {
@@ -1586,14 +1611,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     throw new Error('Failed to create DM');
   };
 
-  const toggleMuteChatMember = async (chatId: string, userId: string): Promise<void> => {
+  const toggleMuteChatMember = async (
+    chatId: string,
+    userId: string
+  ): Promise<void> => {
     try {
       const csrftoken = getCookie('csrftoken') || '';
-      const response = await fetch(apiUrl(`/api/chat/${chatId}/members/${userId}/mute/`), {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrftoken },
-        credentials: 'include'
-      });
+      const response = await fetch(
+        apiUrl(`/api/chat/${chatId}/members/${userId}/mute/`),
+        {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrftoken },
+          credentials: 'include',
+        }
+      );
       if (!response.ok) throw new Error('Failed to toggle mute');
       await fetchUserChats();
     } catch (err) {
@@ -1619,8 +1650,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       )
     );
   };
-
-
 
   // Skip rendering the rest of the application until we've checked the auth state
   if (isInitializingAuth) {
