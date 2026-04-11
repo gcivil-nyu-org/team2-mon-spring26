@@ -162,6 +162,13 @@ export function LoginPage() {
               <p className="text-sm text-muted-foreground">
                 Demo: Use alex@nyu.edu, sarah@nyu.edu, or jordan@nyu.edu
               </p>
+              <button
+                type="button"
+                onClick={() => navigate('/venue/login')}
+                className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                Venue Manager Login
+              </button>
             </div>
           </form>
         </CardContent>

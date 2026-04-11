@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router';
 import { useAdmin } from '@/app/contexts/admin-context';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { Users, ShieldCheck, Store } from 'lucide-react';
+import { Users, ShieldCheck, Store, UserPlus } from 'lucide-react';
 
 export function AdminDashboardPage() {
   const { currentAdmin, logoutAdmin } = useAdmin();
@@ -77,6 +77,21 @@ export function AdminDashboardPage() {
               <CardTitle className="text-blue-900">Venues</CardTitle>
               <CardDescription className="text-blue-500">
                 Browse and manage all venue listings
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card
+            className="cursor-pointer hover:shadow-lg transition-shadow border-blue-100 hover:border-blue-300"
+            onClick={() => navigate('/admin/register')}
+          >
+            <CardHeader>
+              <div className="w-11 h-11 bg-blue-100 rounded-lg flex items-center justify-center mb-2">
+                <UserPlus className="w-5.5 h-5.5 text-blue-700" />
+              </div>
+              <CardTitle className="text-blue-900">Add New Admin</CardTitle>
+              <CardDescription className="text-blue-500">
+                Register a new administrator account
               </CardDescription>
             </CardHeader>
           </Card>

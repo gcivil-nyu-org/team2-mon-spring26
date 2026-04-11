@@ -92,14 +92,6 @@ export function AdminLoginPage() {
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? 'Signing in…' : 'Sign In'}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => navigate('/admin/register')}
-              >
-                Register Admin
-              </Button>
             </form>
           ) : (
             <form onSubmit={handleReset} className="space-y-4">
