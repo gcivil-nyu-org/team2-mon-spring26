@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router';
 import { useAdmin } from '@/app/contexts/admin-context';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -52,7 +51,6 @@ interface VenueClaim {
 
 export function AdminVenueVerificationPage() {
   const { currentAdmin } = useAdmin();
-  const navigate = useNavigate();
 
   const [claims, setClaims] = useState<VenueClaim[]>([]);
   const [loading, setLoading] = useState(true);
