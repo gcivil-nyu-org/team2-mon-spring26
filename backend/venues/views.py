@@ -653,10 +653,9 @@ def api_admin_venues(request):
     page = int(request.GET.get("page", 1))
     per_page = 20
 
-    venues_qs = (
-        Venue.objects.select_related("cuisine_type", "managed_by", "managed_by__user")
-        .order_by("name")
-    )
+    venues_qs = Venue.objects.select_related(
+        "cuisine_type", "managed_by", "managed_by__user"
+    ).order_by("name")
 
     if q:
         venues_qs = venues_qs.filter(name__icontains=q)
