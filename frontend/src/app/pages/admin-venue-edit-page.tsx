@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { ArrowLeft, Save, UserX } from 'lucide-react';
+import { Save, UserX } from 'lucide-react';
 import preferenceOptions from '@/app/data/preference-options.json';
 
 const API = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
@@ -215,8 +215,6 @@ export function AdminVenueEditPage() {
     }
   };
 
-  // Build combined options lists — merge DB options, hardcoded prefs, AND the
-  // venue's current tags so every possible option is always visible.
   const unique = (arr: string[]) => [...new Set(arr)].sort();
 
   const allCuisines = unique([
@@ -239,10 +237,10 @@ export function AdminVenueEditPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-blue-50/40 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent animate-spin mx-auto mb-3" />
-          <p className="text-blue-600">Loading venue…</p>
+          <div className="rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent animate-spin mx-auto mb-3" />
+          <p className="text-muted-foreground">Loading venue…</p>
         </div>
       </div>
     );
@@ -250,62 +248,47 @@ export function AdminVenueEditPage() {
 
   if (!venue) {
     return (
-      <div className="min-h-screen bg-blue-50/40 flex items-center justify-center">
-        <p className="text-blue-600">Venue not found.</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted-foreground">Venue not found.</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-blue-50/40">
-      {/* Header */}
-      <div className="bg-white border-b border-blue-100 shadow-sm sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate('/admin/venues')}
-              className="text-blue-700 hover:bg-blue-100"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold text-blue-900">{venue.name}</h1>
-              <p className="text-xs text-blue-500">ID #{venue.id}</p>
-            </div>
-          </div>
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Save className="w-4 h-4 mr-1.5" />
-            {saving ? 'Saving…' : 'Save Changes'}
-          </Button>
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-5">
+      {/* Venue name + Save button */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold">{venue.name}</h2>
+          <p className="text-xs text-muted-foreground">ID #{venue.id}</p>
         </div>
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white"
+        >
+          <Save className="w-4 h-4 mr-1.5" />
+          {saving ? 'Saving…' : 'Save Changes'}
+        </Button>
       </div>
-
-      <div className="max-w-4xl mx-auto px-6 py-6 space-y-5">
         {/* Basic Info */}
-        <Card className="border-blue-100">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-blue-900">Basic Information</CardTitle>
+            <CardTitle>Basic Information</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div>
-              <Label className="text-blue-800">Venue Name</Label>
+              <Label>Venue Name</Label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="border-blue-200 focus-visible:ring-blue-400"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-blue-800">Cuisine Type</Label>
+                <Label>Cuisine Type</Label>
                 <Select value={cuisineType} onValueChange={setCuisineType}>
-                  <SelectTrigger className="border-blue-200">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select cuisine" />
                   </SelectTrigger>
                   <SelectContent>
@@ -318,9 +301,9 @@ export function AdminVenueEditPage() {
                 </Select>
               </div>
               <div>
-                <Label className="text-blue-800">Price Range</Label>
+                <Label>Price Range</Label>
                 <Select value={priceRange} onValueChange={setPriceRange}>
-                  <SelectTrigger className="border-blue-200">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
@@ -335,9 +318,9 @@ export function AdminVenueEditPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-blue-800">Sanitation Grade</Label>
+                <Label>Sanitation Grade</Label>
                 <Select value={sanitationGrade} onValueChange={setSanitationGrade}>
-                  <SelectTrigger className="border-blue-200">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
@@ -350,12 +333,11 @@ export function AdminVenueEditPage() {
                 </Select>
               </div>
               <div>
-                <Label className="text-blue-800">Seating Capacity</Label>
+                <Label>Seating Capacity</Label>
                 <Input
                   type="number"
                   value={seatingCapacity}
                   onChange={(e) => setSeatingCapacity(e.target.value)}
-                  className="border-blue-200 focus-visible:ring-blue-400"
                   placeholder="e.g. 50"
                 />
               </div>
@@ -364,24 +346,23 @@ export function AdminVenueEditPage() {
         </Card>
 
         {/* Location */}
-        <Card className="border-blue-100">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-blue-900">Location</CardTitle>
+            <CardTitle>Location</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div>
-              <Label className="text-blue-800">Street Address</Label>
+              <Label>Street Address</Label>
               <Input
                 value={streetAddress}
                 onChange={(e) => setStreetAddress(e.target.value)}
-                className="border-blue-200 focus-visible:ring-blue-400"
               />
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label className="text-blue-800">Borough</Label>
+                <Label>Borough</Label>
                 <Select value={borough} onValueChange={setBorough}>
-                  <SelectTrigger className="border-blue-200">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
@@ -394,19 +375,17 @@ export function AdminVenueEditPage() {
                 </Select>
               </div>
               <div>
-                <Label className="text-blue-800">Neighborhood</Label>
+                <Label>Neighborhood</Label>
                 <Input
                   value={neighborhood}
                   onChange={(e) => setNeighborhood(e.target.value)}
-                  className="border-blue-200 focus-visible:ring-blue-400"
                 />
               </div>
               <div>
-                <Label className="text-blue-800">Zipcode</Label>
+                <Label>Zipcode</Label>
                 <Input
                   value={zipcode}
                   onChange={(e) => setZipcode(e.target.value)}
-                  className="border-blue-200 focus-visible:ring-blue-400"
                 />
               </div>
             </div>
@@ -414,34 +393,31 @@ export function AdminVenueEditPage() {
         </Card>
 
         {/* Contact */}
-        <Card className="border-blue-100">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-blue-900">Contact</CardTitle>
+            <CardTitle>Contact</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label className="text-blue-800">Phone</Label>
+                <Label>Phone</Label>
                 <Input
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="border-blue-200 focus-visible:ring-blue-400"
                 />
               </div>
               <div>
-                <Label className="text-blue-800">Email</Label>
+                <Label>Email</Label>
                 <Input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="border-blue-200 focus-visible:ring-blue-400"
                 />
               </div>
               <div>
-                <Label className="text-blue-800">Website</Label>
+                <Label>Website</Label>
                 <Input
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
-                  className="border-blue-200 focus-visible:ring-blue-400"
                 />
               </div>
             </div>
@@ -449,10 +425,10 @@ export function AdminVenueEditPage() {
         </Card>
 
         {/* Dietary Tags */}
-        <Card className="border-blue-100">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-blue-900">Dietary Options</CardTitle>
-            <CardDescription className="text-blue-500">
+            <CardTitle>Dietary Options</CardTitle>
+            <CardDescription>
               Select dietary options this venue offers
             </CardDescription>
           </CardHeader>
@@ -465,15 +441,15 @@ export function AdminVenueEditPage() {
                   variant={dietaryTags.includes(tag) ? 'default' : 'secondary'}
                   className={`text-sm py-1.5 px-4 transition-colors ${
                     dietaryTags.includes(tag)
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-sm'
-                      : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent shadow-sm'
+                      : 'hover:bg-muted'
                   }`}
                 >
                   <button
                     type="button"
                     onClick={() => toggleTag(dietaryTags, setDietaryTags, tag)}
                     aria-pressed={dietaryTags.includes(tag)}
-                    className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-md"
+                    className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 rounded-md"
                   >
                     {tag}
                   </button>
@@ -484,10 +460,10 @@ export function AdminVenueEditPage() {
         </Card>
 
         {/* Food Type Tags */}
-        <Card className="border-blue-100">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-blue-900">Food Types</CardTitle>
-            <CardDescription className="text-blue-500">
+            <CardTitle>Food Types</CardTitle>
+            <CardDescription>
               Types of food this venue serves
             </CardDescription>
           </CardHeader>
@@ -500,15 +476,15 @@ export function AdminVenueEditPage() {
                   variant={foodTypeTags.includes(tag) ? 'default' : 'secondary'}
                   className={`text-sm py-1.5 px-4 transition-colors ${
                     foodTypeTags.includes(tag)
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-sm'
-                      : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent shadow-sm'
+                      : 'hover:bg-muted'
                   }`}
                 >
                   <button
                     type="button"
                     onClick={() => toggleTag(foodTypeTags, setFoodTypeTags, tag)}
                     aria-pressed={foodTypeTags.includes(tag)}
-                    className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-md"
+                    className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 rounded-md"
                   >
                     {tag}
                   </button>
@@ -519,9 +495,9 @@ export function AdminVenueEditPage() {
         </Card>
 
         {/* Service Options */}
-        <Card className="border-blue-100">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-blue-900">Service & Status</CardTitle>
+            <CardTitle>Service & Status</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-4">
@@ -540,9 +516,8 @@ export function AdminVenueEditPage() {
                   <Switch
                     checked={value}
                     onCheckedChange={setter}
-                    className="data-[state=checked]:bg-blue-600"
                   />
-                  <Label className="text-blue-800 text-sm">{label}</Label>
+                  <Label className="text-sm">{label}</Label>
                 </div>
               ))}
             </div>
@@ -550,10 +525,10 @@ export function AdminVenueEditPage() {
         </Card>
 
         {/* Venue Manager */}
-        <Card className="border-blue-100">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-blue-900">Venue Manager</CardTitle>
-            <CardDescription className="text-blue-500">
+            <CardTitle>Venue Manager</CardTitle>
+            <CardDescription>
               {venue.manager
                 ? 'This venue is currently managed by a venue manager.'
                 : 'No venue manager is assigned. A manager can claim this venue.'}
@@ -562,23 +537,23 @@ export function AdminVenueEditPage() {
           <CardContent>
             {venue.manager ? (
               <div className="space-y-4">
-                <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                <div className="bg-muted/50 rounded-lg p-4 border">
                   <div className="grid gap-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-blue-600">Name</span>
-                      <span className="font-medium text-blue-900">
+                      <span className="text-muted-foreground">Name</span>
+                      <span className="font-medium">
                         {venue.manager.userName || '—'}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-blue-600">Business</span>
-                      <span className="font-medium text-blue-900">
+                      <span className="text-muted-foreground">Business</span>
+                      <span className="font-medium">
                         {venue.manager.businessName || '—'}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-blue-600">Email</span>
-                      <span className="font-medium text-blue-900">
+                      <span className="text-muted-foreground">Email</span>
+                      <span className="font-medium">
                         {venue.manager.userEmail}
                       </span>
                     </div>
@@ -629,13 +604,10 @@ export function AdminVenueEditPage() {
               </div>
             ) : (
               <div className="text-center py-4">
-                <Badge
-                  variant="outline"
-                  className="bg-blue-50 text-blue-600 border-blue-200"
-                >
+                <Badge variant="outline">
                   Unclaimed
                 </Badge>
-                <p className="text-xs text-blue-400 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   A venue manager can claim this venue from their dashboard.
                 </p>
               </div>
@@ -645,23 +617,23 @@ export function AdminVenueEditPage() {
 
         {/* Read-only Google / Inspection info */}
         {(venue.googleRating || venue.lastInspectionGrade) && (
-          <Card className="border-blue-100">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-blue-900">Inspection & Ratings</CardTitle>
+              <CardTitle>Inspection & Ratings</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 text-sm">
               {venue.googleRating && (
                 <div className="flex justify-between">
-                  <span className="text-blue-600">Google Rating</span>
-                  <span className="font-medium text-blue-900">
+                  <span className="text-muted-foreground">Google Rating</span>
+                  <span className="font-medium">
                     {venue.googleRating}★ ({venue.googleReviewCount} reviews)
                   </span>
                 </div>
               )}
               {venue.lastInspectionGrade && (
                 <div className="flex justify-between">
-                  <span className="text-blue-600">Last Inspection</span>
-                  <span className="font-medium text-blue-900">
+                  <span className="text-muted-foreground">Last Inspection</span>
+                  <span className="font-medium">
                     Grade {venue.lastInspectionGrade}
                     {venue.lastInspectionScore != null &&
                       ` (Score: ${venue.lastInspectionScore})`}
@@ -673,24 +645,22 @@ export function AdminVenueEditPage() {
           </Card>
         )}
 
-        {/* Save button at bottom too */}
+        {/* Save button at bottom */}
         <div className="flex gap-3">
           <Button
             onClick={handleSave}
             disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
+            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white flex-1"
           >
             <Save className="w-4 h-4 mr-1.5" />
             {saving ? 'Saving…' : 'Save Changes'}
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => navigate('/admin/venues')}
-            className="border-blue-200 text-blue-700 hover:bg-blue-50"
-          >
-            Cancel
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          onClick={() => navigate('/admin/venues')}
+        >
+          Cancel
+        </Button>
       </div>
     </div>
   );

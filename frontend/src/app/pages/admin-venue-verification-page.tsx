@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router';
 import { useAdmin } from '@/app/contexts/admin-context';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -10,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { ArrowLeft, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
@@ -52,7 +51,6 @@ interface VenueClaim {
 
 export function AdminVenueVerificationPage() {
   const { currentAdmin } = useAdmin();
-  const navigate = useNavigate();
 
   const [claims, setClaims] = useState<VenueClaim[]>([]);
   const [loading, setLoading] = useState(true);
@@ -155,29 +153,12 @@ export function AdminVenueVerificationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-blue-50/40">
-      {/* Header bar */}
-      <div className="bg-white border-b border-blue-100 shadow-sm">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/admin/dashboard')}
-            className="text-blue-700 hover:bg-blue-100"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-blue-900">Venue Verification</h1>
-            <p className="text-sm text-blue-600">
-              Review and approve venue manager claims — {totalCount} total
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+      <p className="text-sm text-muted-foreground">
+        Review and approve venue manager claims — {totalCount} total
+      </p>
 
-      <div className="max-w-6xl mx-auto px-6 py-6 space-y-5">
-        {/* Filter */}
+      {/* Filter */}
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium">Filter by status:</span>
           <Select
@@ -202,34 +183,34 @@ export function AdminVenueVerificationPage() {
         {/* Table */}
         {loading ? (
           <div className="text-center py-12">
-            <div className="rounded-full h-10 w-10 border-4 border-slate-600 border-t-transparent animate-spin mx-auto mb-3" />
+            <div className="rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent animate-spin mx-auto mb-3" />
             <p className="text-muted-foreground">Loading claims...</p>
           </div>
         ) : claims.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border">
+          <div className="text-center py-12 bg-white rounded-xl border">
             <p className="text-muted-foreground">
               No venue claims found for this filter.
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-slate-50">
-                    <th className="text-left px-4 py-3 font-medium">Venue</th>
-                    <th className="text-left px-4 py-3 font-medium">Address</th>
-                    <th className="text-left px-4 py-3 font-medium">Manager</th>
-                    <th className="text-left px-4 py-3 font-medium">Status</th>
-                    <th className="text-left px-4 py-3 font-medium">Submitted</th>
-                    <th className="text-right px-4 py-3 font-medium">Actions</th>
+                  <tr className="border-b bg-muted/50">
+                    <th className="text-left px-4 py-3 font-semibold">Venue</th>
+                    <th className="text-left px-4 py-3 font-semibold">Address</th>
+                    <th className="text-left px-4 py-3 font-semibold">Manager</th>
+                    <th className="text-left px-4 py-3 font-semibold">Status</th>
+                    <th className="text-left px-4 py-3 font-semibold">Submitted</th>
+                    <th className="text-right px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {claims.map((claim) => (
                     <tr
                       key={claim.id}
-                      className="border-b last:border-b-0 hover:bg-slate-50/50"
+                      className="border-b last:border-b-0 hover:bg-muted/30"
                     >
                       <td className="px-4 py-3">
                         <div className="font-medium">{claim.venue.name}</div>
@@ -305,7 +286,7 @@ export function AdminVenueVerificationPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t bg-slate-50">
+              <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
                 <span className="text-sm text-muted-foreground">
                   Page {page} of {totalPages}
                 </span>
@@ -331,7 +312,6 @@ export function AdminVenueVerificationPage() {
             )}
           </div>
         )}
-      </div>
     </div>
   );
 }
