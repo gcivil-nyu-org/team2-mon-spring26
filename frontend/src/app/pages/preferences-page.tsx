@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { ArrowLeft } from 'lucide-react';
 import { useApp } from '@/app/contexts/app-context';
 import preferenceOptions from '@/app/data/preference-options.json';
 import { formatSanitationGradeLabel } from '@/app/utils/sanitation-grade';
@@ -89,15 +88,8 @@ export function PreferencesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
-      <header className="bg-white border-b">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/home')}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <h1 className="text-xl">Preferences</h1>
-        </div>
-      </header>
+    <>
+
 
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-6">
         <Card>
@@ -244,6 +236,6 @@ export function PreferencesPage() {
           </Button>
         </div>
       </main>
-    </div>
+    </>
   );
 }

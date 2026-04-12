@@ -34,17 +34,24 @@ script:
   - (cd frontend && npm run build)
 
 after_success:
+  - git checkout $TRAVIS_BRANCH
   - (cd backend && coveralls)
 
 before_deploy:
   # Package only the backend directory for backend EB deploy
   - (cd backend && zip -r ../backend-deploy.zip . --exclude "*.pyc" --exclude "*/__pycache__/*" --exclude ".venv/*" --exclude "db.sqlite3" --exclude "db.sqlite3.bak" --exclude ".env" --exclude ".DS_Store" --exclude ".elasticbeanstalk/*" --exclude "aws-elastic-beanstalk-cli-setup/*")
-  # Inject backend EB URL into Nginx config before packaging
-  - sed -i "s|BACKEND_EB_URL|$EB_DEV_BACKEND_URL|g" frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf
+  # Inject the correct backend EB URL into Nginx config based on target branch
+  - |
+    if [ "$TRAVIS_BRANCH" = "main" ]; then
+      sed -i "s|BACKEND_EB_URL|$EB_PROD_BACKEND_URL|g" frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf
+    else
+      sed -i "s|BACKEND_EB_URL|$EB_DEV_BACKEND_URL|g" frontend/.platform/nginx/conf.d/elasticbeanstalk/10_api_proxy.conf
+    fi
   # Package the pre-built frontend dist/, Procfile, package.json, lockfile, and .platform/ Nginx config
   - (cd frontend && zip -r ../frontend-deploy.zip dist/ Procfile package.json package-lock.json .platform/)
 
 deploy:
+  # --- Development (develop branch) ---
   - provider: elasticbeanstalk
     access_key_id: $AWS_ACCESS_KEY_ID
     secret_access_key: $AWS_SECRET_ACCESS_KEY
@@ -68,3 +75,28 @@ deploy:
     edge: true
     on:
       branch: develop
+
+  # --- Production (main branch) ---
+  - provider: elasticbeanstalk
+    access_key_id: $AWS_ACCESS_KEY_ID_PROD
+    secret_access_key: $AWS_SECRET_ACCESS_KEY_PROD
+    region: $AWS_PROD_REGION
+    app: $EB_PROD_BACKEND_APP
+    env: $EB_PROD_BACKEND_ENV
+    bucket_name: $EB_PROD_BUCKET_NAME
+    zip_file: backend-deploy.zip
+    edge: true
+    on:
+      branch: main
+
+  - provider: elasticbeanstalk
+    access_key_id: $AWS_ACCESS_KEY_ID_PROD
+    secret_access_key: $AWS_SECRET_ACCESS_KEY_PROD
+    region: $AWS_PROD_REGION
+    app: $EB_PROD_FRONTEND_APP
+    env: $EB_PROD_FRONTEND_ENV
+    bucket_name: $EB_PROD_BUCKET_NAME
+    zip_file: frontend-deploy.zip
+    edge: true
+    on:
+      branch: main

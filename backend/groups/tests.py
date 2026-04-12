@@ -1,9 +1,11 @@
+from unittest.mock import patch
+
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 import json
 
-from .models import Group, GroupMembership, SwipeEvent, Swipe
-from venues.models import Venue
+from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
+from venues.models import Venue, VenuePhoto
 from accounts.models import UserPreference
 
 User = get_user_model()
@@ -95,7 +97,9 @@ class GroupAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(
-            GroupMembership.objects.filter(user=self.user2, group=group).exists()
+            GroupInvitation.objects.filter(
+                invitee=self.user2, group=group, status="pending"
+            ).exists()
         )
 
     def test_cannot_leave_if_only_leader(self):
@@ -226,15 +230,43 @@ class SwipeEventAPITests(TestCase):
             user=self.member2, group=self.group, role=GroupMembership.Role.MEMBER
         )
 
-        # Create venues
+        # Create venues with google_place_id and a pre-cached photo so they pass
+        # the "has place ID or photo" filter and bulk_prefetch_photos skips API calls.
         self.venue1 = Venue.objects.create(
-            name="Pizza Place", sanitation_grade="A", is_active=True
+            name="Pizza Place",
+            sanitation_grade="A",
+            is_active=True,
+            google_place_id="test_place_id_1",
+        )
+        VenuePhoto.objects.create(
+            venue=self.venue1,
+            image_url="https://example.com/pizza.jpg",
+            source="google_places",
+            is_primary=True,
         )
         self.venue2 = Venue.objects.create(
-            name="Sushi Spot", sanitation_grade="A", is_active=True
+            name="Sushi Spot",
+            sanitation_grade="A",
+            is_active=True,
+            google_place_id="test_place_id_2",
+        )
+        VenuePhoto.objects.create(
+            venue=self.venue2,
+            image_url="https://example.com/sushi.jpg",
+            source="google_places",
+            is_primary=True,
         )
         self.venue3 = Venue.objects.create(
-            name="Burger Joint", sanitation_grade="B", is_active=True
+            name="Burger Joint",
+            sanitation_grade="B",
+            is_active=True,
+            google_place_id="test_place_id_3",
+        )
+        VenuePhoto.objects.create(
+            venue=self.venue3,
+            image_url="https://example.com/burger.jpg",
+            source="google_places",
+            is_primary=True,
         )
 
     def test_create_event_as_leader(self):
@@ -820,6 +852,72 @@ class SwipeEventAPITests(TestCase):
         self.assertIn("Pizza Place", venue_names)
         self.assertNotIn("Sushi Spot", venue_names)
 
+    def test_venues_without_place_id_and_photos_are_excluded(self):
+        """Venues with no google_place_id and no photos must not appear in swipe results."""
+        Venue.objects.create(
+            name="Ghost Venue",
+            sanitation_grade="A",
+            is_active=True,
+            # no google_place_id, no VenuePhoto
+        )
+
+        event = SwipeEvent.objects.create(
+            group=self.group,
+            name="Exclusion Test",
+            created_by=self.leader,
+        )
+
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        data = response.json()
+        venue_names = [v["name"] for v in data["venues"]]
+        self.assertNotIn("Ghost Venue", venue_names)
+
+    @patch("groups.views.bulk_prefetch_photos")
+    def test_venues_photos_appear_on_first_load(self, mock_bulk):
+        """Photos created by bulk_prefetch_photos must be visible on the first response,
+        not only after a second request (regression for stale prefetch cache bug)."""
+
+        venue = Venue.objects.create(
+            name="Photo Test Venue",
+            sanitation_grade="A",
+            is_active=True,
+            google_place_id="test_place_photo_load",
+        )
+
+        def _create_photo(venues_list, **kwargs):
+            for v in venues_list:
+                if v.id == venue.id:
+                    VenuePhoto.objects.get_or_create(
+                        venue=v,
+                        source="google_places",
+                        is_primary=True,
+                        defaults={
+                            "image_url": "https://lh3.googleusercontent.com/test"
+                        },
+                    )
+
+        mock_bulk.side_effect = _create_photo
+
+        event = SwipeEvent.objects.create(
+            group=self.group,
+            name="Photo Load Test",
+            created_by=self.leader,
+        )
+
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(
+            f"/api/groups/{self.group.id}/events/{event.id}/venues/"
+        )
+        data = response.json()
+        match = next(
+            (v for v in data["venues"] if v["name"] == "Photo Test Venue"), None
+        )
+        self.assertIsNotNone(match)
+        self.assertIn("https://lh3.googleusercontent.com/test", match["images"])
+
 
 class GroupManagementAPITests(TestCase):
     """Tests for group CRUD, invite, remove, make leader, leave endpoints."""
@@ -1022,6 +1120,53 @@ class GroupManagementAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(
+            GroupInvitation.objects.filter(
+                invitee=self.outsider, group=self.group, status="pending"
+            ).exists()
+        )
+
+    def test_invitation_list_and_action(self):
+        # Create an invitation
+        invitation = GroupInvitation.objects.create(
+            group=self.group,
+            inviter=self.leader,
+            invitee=self.outsider,
+            status="pending",
+        )
+
+        # Test listing invitations
+        self.client.login(email="outsider@example.com", password="pass123")
+        response = self.client.get("/api/groups/invitations/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json().get("invitations", [])), 1)
+        self.assertEqual(response.json()["invitations"][0]["id"], invitation.id)
+
+        # Test accepting invitation
+        response = self.client.post(f"/api/groups/invitations/{invitation.id}/accept/")
+        self.assertEqual(response.status_code, 200)
+
+        invitation.refresh_from_db()
+        self.assertEqual(invitation.status, "accepted")
+        self.assertTrue(
+            GroupMembership.objects.filter(
+                user=self.outsider, group=self.group
+            ).exists()
+        )
+
+    def test_invitation_decline(self):
+        invitation = GroupInvitation.objects.create(
+            group=self.group,
+            inviter=self.leader,
+            invitee=self.outsider,
+            status="pending",
+        )
+        self.client.login(email="outsider@example.com", password="pass123")
+        response = self.client.post(f"/api/groups/invitations/{invitation.id}/decline/")
+        self.assertEqual(response.status_code, 200)
+
+        invitation.refresh_from_db()
+        self.assertEqual(invitation.status, "declined")
+        self.assertFalse(
             GroupMembership.objects.filter(
                 user=self.outsider, group=self.group
             ).exists()

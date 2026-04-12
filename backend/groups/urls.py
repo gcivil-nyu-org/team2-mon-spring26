@@ -3,9 +3,32 @@ from . import views
 
 urlpatterns = [
     path("", views.api_groups_list_create, name="api_groups_list_create"),
+    path("public/", views.api_public_groups_list, name="api_public_groups_list"),
+    path(
+        "join/<str:join_code>/",
+        views.api_join_group_by_code,
+        name="api_join_group_by_code",
+    ),
+    path(
+        "<int:group_id>/regenerate-code/",
+        views.api_regenerate_join_code,
+        name="api_regenerate_join_code",
+    ),
     path("<int:group_id>/", views.api_edit_group, name="api_edit_group"),
     # Delete requires its own distinct view although we could combine them
     path("<int:group_id>/delete/", views.api_delete_group, name="api_delete_group"),
+    # Invitations
+    path("invitations/", views.api_invitations_list, name="api_invitations_list"),
+    path(
+        "invitations/<int:invitation_id>/<str:action>/",
+        views.api_invitation_action,
+        name="api_invitation_action",
+    ),
+    path(
+        "swipe-notifications/<int:notification_id>/read/",
+        views.api_mark_swipe_notification_read,
+        name="api_mark_swipe_notification_read",
+    ),
     # Users
     path("users/", views.api_list_users, name="api_list_users"),
     # Members

@@ -5,14 +5,15 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
 from django.db import transaction, models
-from django.db.models import Count
+from django.db.models import Count, prefetch_related_objects
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
 
-from .models import Group, GroupMembership, SwipeEvent, Swipe
+from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
 from accounts.models import UserPreference
-from venues.models import Venue
+from venues.models import Venue, VenuePhoto
+from venues.google_places import bulk_prefetch_photos
 from chat.models import Chat, ChatMember as ChatRoomMember, Message
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,23 @@ def api_list_users(request):
 
     try:
         query = request.GET.get("q", "").strip()
+        group_id = request.GET.get("group_id")
         users_qs = User.objects.exclude(id=request.user.id)
+
+        invited_user_ids = set()
+        if group_id:
+            try:
+                invited_user_ids = set(
+                    GroupInvitation.objects.filter(
+                        group_id=group_id, status=GroupInvitation.Status.PENDING
+                    ).values_list("invitee_id", flat=True)
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to fetch pending invitations for group %s",
+                    group_id,
+                    exc_info=True,
+                )
 
         if query:
             users_qs = users_qs.filter(
@@ -48,6 +65,7 @@ def api_list_users(request):
                 "id": u.id,
                 "email": u.email,
                 "name": f"{u.first_name} {u.last_name}".strip() or u.username,
+                "is_invited": u.id in invited_user_ids,
             }
             for u in users_qs[:50]  # Limit to 50 for performance
         ]
@@ -71,6 +89,7 @@ def _group_to_json(group):
                 constraints.food_type_tags.values_list("name", flat=True)
             ),
             "minimumSanitationGrade": constraints.minimum_sanitation_grade,
+            "priceRange": constraints.price_range,
         }
 
     return {
@@ -86,6 +105,7 @@ def _group_to_json(group):
         "privacy": group.privacy,
         "created_by": group.created_by.id if group.created_by else None,
         "created_at": group.created_at.isoformat(),
+        "join_code": group.join_code,
         "members": [
             {
                 "id": m.user.id,
@@ -301,27 +321,19 @@ def api_invite_to_group(request, group_id):
                 {"error": "User is already a member of this group"}, status=400
             )
 
-        GroupMembership.objects.create(
-            group=group, user=target_user, role=GroupMembership.Role.MEMBER
+        # Create invitation instead of direct membership
+        invitation, created = GroupInvitation.objects.get_or_create(
+            group=group,
+            invitee=target_user,
+            status=GroupInvitation.Status.PENDING,
+            defaults={"inviter": request.user},
         )
+        if not created:
+            return JsonResponse({"error": "User has already been invited"}, status=400)
 
-        if hasattr(group, "chat"):
-            ChatRoomMember.objects.update_or_create(
-                chat=group.chat,
-                user=target_user,
-                defaults={
-                    "role": ChatRoomMember.Role.MEMBER,
-                    "left_at": None,
-                },
-            )
-            username_display = target_user.first_name or target_user.username
-            Message.objects.create(
-                chat=group.chat,
-                message_type=Message.MessageType.SYSTEM,
-                body=f"{username_display} joined the group",
-            )
-
-        return JsonResponse({"success": True, "group": _group_to_json(group)})
+        return JsonResponse(
+            {"success": True, "message": "Invitation sent successfully"}
+        )
 
     except Group.DoesNotExist:
         return JsonResponse({"error": "Group not found"}, status=404)
@@ -329,6 +341,167 @@ def api_invite_to_group(request, group_id):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
     except Exception as e:
         logger.error(f"Group invite error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An expected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_invitations_list(request):
+    """
+    GET /api/groups/invitations/
+    Returns a list of pending invitations for the current user.
+    """
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    invitations = GroupInvitation.objects.filter(
+        invitee=request.user, status=GroupInvitation.Status.PENDING
+    )
+
+    invites_data = []
+    for invite in invitations:
+        inviter_name = (
+            invite.inviter.first_name or invite.inviter.username or invite.inviter.email
+        )
+        invites_data.append(
+            {
+                "id": invite.id,
+                "group_id": invite.group.id,
+                "group_name": invite.group.name,
+                "inviter_name": inviter_name,
+                "created_at": invite.created_at.isoformat(),
+            }
+        )
+
+    from .models import SwipeSessionNotification, SwipeEvent
+
+    swipe_notifications = (
+        SwipeSessionNotification.objects.filter(
+            user=request.user, event__status=SwipeEvent.Status.ACTIVE
+        )
+        .exclude(event__created_by=request.user)
+        .select_related("event", "event__group", "event__created_by")
+    )
+
+    swipe_data = []
+    for sn in swipe_notifications:
+        creator_name = (
+            sn.event.created_by.first_name
+            or sn.event.created_by.username
+            or sn.event.created_by.email
+            if sn.event.created_by
+            else "Someone"
+        )
+        swipe_data.append(
+            {
+                "id": sn.id,
+                "event_id": sn.event.id,
+                "event_name": sn.event.name,
+                "group_id": sn.event.group.id,
+                "group_name": sn.event.group.name,
+                "creator_name": creator_name,
+                "created_at": sn.created_at.isoformat(),
+                "is_read": sn.is_read,
+            }
+        )
+
+    return JsonResponse(
+        {"success": True, "invitations": invites_data, "swipe_sessions": swipe_data}
+    )
+
+
+@csrf_exempt
+def api_mark_swipe_notification_read(request, notification_id):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        from .models import SwipeSessionNotification
+
+        notification = SwipeSessionNotification.objects.get(
+            id=notification_id, user=request.user
+        )
+        notification.is_read = True
+        notification.save(update_fields=["is_read"])
+        return JsonResponse({"success": True})
+    except SwipeSessionNotification.DoesNotExist:
+        return JsonResponse({"error": "Notification not found"}, status=404)
+    except Exception as e:
+        logger.error(f"Mark read error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An expected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_invitation_action(request, invitation_id, action):
+    """
+    POST /api/groups/invitations/<invitation_id>/<action>/
+    action can be 'accept' or 'decline'.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        invitation = GroupInvitation.objects.get(
+            id=invitation_id,
+            invitee=request.user,
+            status=GroupInvitation.Status.PENDING,
+        )
+
+        if action == "accept":
+            with transaction.atomic():
+                invitation.status = GroupInvitation.Status.ACCEPTED
+                invitation.save()
+
+                # Create membership
+                if not GroupMembership.objects.filter(
+                    group=invitation.group, user=request.user
+                ).exists():
+                    GroupMembership.objects.create(
+                        group=invitation.group,
+                        user=request.user,
+                        role=GroupMembership.Role.MEMBER,
+                    )
+
+                    # Add to chat
+                    if hasattr(invitation.group, "chat"):
+                        ChatRoomMember.objects.update_or_create(
+                            chat=invitation.group.chat,
+                            user=request.user,
+                            defaults={
+                                "role": ChatRoomMember.Role.MEMBER,
+                                "left_at": None,
+                            },
+                        )
+                        username_display = (
+                            request.user.first_name or request.user.username
+                        )
+                        Message.objects.create(
+                            chat=invitation.group.chat,
+                            message_type=Message.MessageType.SYSTEM,
+                            body=f"{username_display} joined the group",
+                        )
+
+            return JsonResponse({"success": True})
+
+        elif action == "decline":
+            invitation.status = GroupInvitation.Status.DECLINED
+            invitation.save()
+            return JsonResponse({"success": True})
+
+        else:
+            return JsonResponse({"error": "Invalid action"}, status=400)
+
+    except GroupInvitation.DoesNotExist:
+        return JsonResponse(
+            {"error": "Invitation not found or already processed"}, status=404
+        )
+    except Exception as e:
+        logger.error(f"Group invitation action error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
@@ -523,9 +696,25 @@ def api_update_group_constraints(request, group_id):
 
         grade = data.get("minimumSanitationGrade")
         valid_grades = {c[0] for c in SANITATION_GRADE_CHOICES}
+        fields_to_update = []
         if grade in valid_grades:
             constraints.minimum_sanitation_grade = grade
-            constraints.save(update_fields=["minimum_sanitation_grade", "updated_at"])
+            fields_to_update.append("minimum_sanitation_grade")
+
+        price_range = data.get("priceRange")
+        from venues.models import PRICE_RANGE_CHOICES
+
+        valid_prices = {c[0] for c in PRICE_RANGE_CHOICES}
+        if price_range in valid_prices:
+            constraints.price_range = price_range
+            fields_to_update.append("price_range")
+        elif price_range == "":
+            constraints.price_range = ""
+            fields_to_update.append("price_range")
+
+        if fields_to_update:
+            fields_to_update.append("updated_at")
+            constraints.save(update_fields=fields_to_update)
 
         return JsonResponse({"success": True, "group": _group_to_json(group)})
 
@@ -697,6 +886,14 @@ def _venue_to_swipe_json(venue):
         "healthInspection": health_inspection,
         "foodTypeTags": food_type_tags,
         "dietaryTags": dietary_tags,
+        "neighborhood": venue.neighborhood or "",
+        "seatingCapacity": venue.seating_capacity,
+        "hasTakeout": venue.has_takeout,
+        "hasDelivery": venue.has_delivery,
+        "hasDineIn": venue.has_dine_in,
+        "isReservable": venue.is_reservable,
+        "googleMapsUrl": venue.google_maps_url or "",
+        "hours": venue.hours or {},
     }
 
 
@@ -746,6 +943,22 @@ def api_swipe_events(request, group_id):
                 borough=(data.get("borough") or "").strip(),
                 neighborhood=(data.get("neighborhood") or "").strip(),
             )
+
+            from .models import SwipeSessionNotification
+
+            members = GroupMembership.objects.filter(group=group)
+            notifications = []
+            for member in members:
+                # Do not notify the creator of the event
+                if member.user.id == request.user.id:
+                    continue
+                notifications.append(
+                    SwipeSessionNotification(
+                        event=event, user=member.user, is_read=False
+                    )
+                )
+            SwipeSessionNotification.objects.bulk_create(notifications)
+
             return JsonResponse(
                 {"success": True, "event": _event_to_json(event)}, status=201
             )
@@ -830,11 +1043,32 @@ def api_swipe_event_venues(request, group_id, event_id):
         if all_cuisine_ids:
             venues_qs = venues_qs.filter(cuisine_type_id__in=all_cuisine_ids)
 
+        # Apply price range from group constraints
+        if hasattr(group, "constraints") and group.constraints.price_range:
+            from venues.models import PRICE_RANGE_CHOICES
+
+            valid_prices = [c[0] for c in PRICE_RANGE_CHOICES]
+            max_len = len(group.constraints.price_range)
+            allowed_prices = [p for p in valid_prices if len(p) <= max_len]
+            venues_qs = venues_qs.filter(
+                models.Q(price_range__in=allowed_prices)
+                | models.Q(price_range__exact="")
+            )
+
         # Exclude venues already swiped on by this user for this event
         swiped_venue_ids = Swipe.objects.filter(
             event=event, user=request.user
         ).values_list("venue_id", flat=True)
         venues_qs = venues_qs.exclude(id__in=swiped_venue_ids)
+
+        # Only show venues that have a photo already or a Google Place ID to fetch one from
+        has_place_id = models.Q(google_place_id__isnull=False) & ~models.Q(
+            google_place_id=""
+        )
+        has_photos = models.Exists(
+            VenuePhoto.objects.filter(venue=models.OuterRef("pk"))
+        )
+        venues_qs = venues_qs.filter(has_place_id | has_photos)
 
         # Order by rating (best first), limit to 20
         venues_qs = (
@@ -845,7 +1079,19 @@ def api_swipe_event_venues(request, group_id, event_id):
             .order_by(models.F("google_rating").desc(nulls_last=True))[:20]
         )
 
-        venues_data = [_venue_to_swipe_json(v) for v in venues_qs]
+        # Fetch missing Google Places photos in parallel (bulk_prefetch_photos) before
+        # serializing, then refresh the prefetch cache so _venue_to_swipe_json only reads
+        # already-loaded data and never performs API calls or DB writes itself.
+        venues_list = list(venues_qs)
+        bulk_prefetch_photos(venues_list)
+        # Clear the stale photos cache from the original prefetch so
+        # prefetch_related_objects actually re-fetches (Django skips re-fetching
+        # if the key already exists in _prefetched_objects_cache).
+        for _v in venues_list:
+            getattr(_v, "_prefetched_objects_cache", {}).pop("photos", None)
+        prefetch_related_objects(venues_list, "photos")
+
+        venues_data = [_venue_to_swipe_json(v) for v in venues_list]
         return JsonResponse({"success": True, "venues": venues_data})
 
     except Group.DoesNotExist:
@@ -1028,3 +1274,105 @@ def api_swipe_event_results(request, group_id, event_id):
     except Exception as e:
         logger.error(f"Match results error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "An unexpected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_public_groups_list(request):
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        public_groups = (
+            Group.objects.filter(privacy=Group.PrivacyType.PUBLIC)
+            .exclude(memberships__user=request.user)
+            .order_by("-created_at")[:50]
+        )
+        return JsonResponse(
+            {"success": True, "groups": [_group_to_json(g) for g in public_groups]}
+        )
+    except Exception as e:
+        logger.error(f"Public group fetch error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An expected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_join_group_by_code(request, join_code):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.filter(join_code=join_code).first()
+        if not group:
+            return JsonResponse({"error": "Invalid join code"}, status=404)
+
+        if GroupMembership.objects.filter(group=group, user=request.user).exists():
+            return JsonResponse(
+                {"error": "You are already a member of this group"}, status=400
+            )
+
+        if group.privacy != Group.PrivacyType.PUBLIC:
+            return JsonResponse(
+                {"error": "This group is private and cannot be joined via code"},
+                status=403,
+            )
+
+        with transaction.atomic():
+            GroupMembership.objects.create(
+                group=group, user=request.user, role=GroupMembership.Role.MEMBER
+            )
+
+            if hasattr(group, "chat"):
+                from chat.models import ChatMember, Message
+
+                ChatMember.objects.update_or_create(
+                    chat=group.chat,
+                    user=request.user,
+                    defaults={"role": ChatMember.Role.MEMBER, "left_at": None},
+                )
+                username_display = (
+                    request.user.first_name or request.user.email.split("@")[0]
+                )
+                Message.objects.create(
+                    chat=group.chat,
+                    message_type=Message.MessageType.SYSTEM,
+                    body=f"{username_display} joined the group via directly entering code {join_code}",
+                )
+
+        return JsonResponse({"success": True, "group": _group_to_json(group)})
+    except Exception as e:
+        logger.error(f"Join group error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An expected error occurred"}, status=500)
+
+
+@csrf_exempt
+def api_regenerate_join_code(request, group_id):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        # Verify the user is the leader
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user, role=GroupMembership.Role.LEADER
+        ).first()
+        if not membership:
+            return JsonResponse(
+                {"error": "Only group leaders can regenerate the join code"}, status=403
+            )
+
+        # Reset the join code and save to auto-generate a new one
+        group.join_code = None
+        group.save()
+
+        return JsonResponse({"success": True, "join_code": group.join_code})
+    except Group.DoesNotExist:
+        return JsonResponse({"error": "Group not found"}, status=404)
+    except Exception as e:
+        logger.error(f"Regenerate code error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An expected error occurred"}, status=500)

@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { MessageCircle, X, Send, Plus, Users, Trash2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { MessageCircle, X, Send, Plus, Users, Trash2, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
@@ -17,7 +17,8 @@ import { useApp } from '@/app/contexts/app-context';
 type ConversationType = 'group' | 'dm';
 
 interface Conversation {
-  id: string;
+  id: string;      // namespaced UI key: "group-{id}" or "dm-{id}"
+  chatId: string;  // raw backend ID for message/API calls
   type: ConversationType;
   name: string;
   lastMessage?: string;
@@ -28,63 +29,69 @@ interface Conversation {
 export function FloatingChat() {
   const { groups, dmConversations, chatMessages, addChatMessage, deleteChatMessage, currentUser, createDMConversation, getAllUsers } = useApp();
   const [isOpen, setIsOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string>('');
   const [newMessage, setNewMessage] = useState('');
   const [showNewDMDialog, setShowNewDMDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Build conversation list
-  const conversations: Conversation[] = [
-    ...groups.map(g => ({
-      id: g.id,
-      type: 'group' as ConversationType,
-      name: g.name,
-      isGroup: true,
-      lastMessage: chatMessages[g.id]?.slice(-1)[0]?.message,
-      lastMessageTime: chatMessages[g.id]?.slice(-1)[0]?.timestamp
-    })),
-    ...dmConversations.map(dm => {
-      // Get the other participant's name
-      const otherParticipantName = dm.participantNames.find(name => name !== currentUser?.name) || 'Unknown';
-      return {
-        id: dm.id,
-        type: 'dm' as ConversationType,
-        name: otherParticipantName,
-        isGroup: false,
-        lastMessage: chatMessages[dm.id]?.slice(-1)[0]?.message,
-        lastMessageTime: dm.lastMessageTime
-      };
-    })
-  ];
+  // Build and sort conversation list
+  const conversations = useMemo((): Conversation[] => {
+    const list: Conversation[] = [
+      ...groups.map(g => ({
+        id: `group-${g.id}`,
+        chatId: g.id,
+        type: 'group' as ConversationType,
+        name: g.name,
+        isGroup: true,
+        lastMessage: chatMessages[g.id]?.slice(-1)[0]?.message,
+        lastMessageTime: chatMessages[g.id]?.slice(-1)[0]?.timestamp
+      })),
+      ...dmConversations.map(dm => {
+        const otherParticipantName = dm.participantNames.find(name => name !== currentUser?.name) || 'Unknown';
+        return {
+          id: `dm-${dm.id}`,
+          chatId: `dm-${dm.id}`,
+          type: 'dm' as ConversationType,
+          name: otherParticipantName,
+          isGroup: false,
+          lastMessage: chatMessages[`dm-${dm.id}`]?.slice(-1)[0]?.message,
+          lastMessageTime: dm.lastMessageTime
+        };
+      })
+    ];
+    list.sort((a, b) => (b.lastMessageTime || '0').localeCompare(a.lastMessageTime || '0'));
+    return list;
+  }, [groups, dmConversations, chatMessages, currentUser?.name]);
 
-  // Sort conversations by last message time
-  conversations.sort((a, b) => {
-    const aTime = a.lastMessageTime || '0';
-    const bTime = b.lastMessageTime || '0';
-    return bTime.localeCompare(aTime);
-  });
+  // Derive the active conversation ID: use explicit selection if valid, else fall back to first
+  const activeConversationId = useMemo(
+    () => (selectedConversationId && conversations.some(c => c.id === selectedConversationId))
+      ? selectedConversationId
+      : (conversations[0]?.id ?? ''),
+    [conversations, selectedConversationId]
+  );
 
-  // Set initial conversation when data loads
-  useEffect(() => {
-    if (conversations.length > 0 && !selectedConversationId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSelectedConversationId(conversations[0].id);
-    }
-  }, [conversations.length, selectedConversationId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const selectedConversation = conversations.find(c => c.id === selectedConversationId);
-  const messages = useMemo(() => selectedConversationId ? chatMessages[selectedConversationId] || [] : [], [selectedConversationId, chatMessages]);
-  const isLeader = selectedConversation?.isGroup ? groups.find(g => g.id === selectedConversationId)?.members.find(m => m.userId === currentUser?.id)?.isLeader : false;
+  const selectedConversation = useMemo(
+    () => conversations.find(c => c.id === activeConversationId),
+    [conversations, activeConversationId]
+  );
+  const selectedChatId = selectedConversation?.chatId ?? '';
+  const messages = useMemo(
+    () => (selectedChatId ? chatMessages[selectedChatId] || [] : []),
+    [selectedChatId, chatMessages]
+  );
+  const isLeader = selectedConversation?.isGroup ? groups.find(g => g.id === selectedChatId)?.members.find(m => m.userId === currentUser?.id)?.isLeader : false;
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim() || !selectedConversationId || !currentUser) return;
+  const handleSendMessage = useCallback(() => {
+    if (!newMessage.trim() || !selectedChatId || !currentUser) return;
 
-    addChatMessage(selectedConversationId, {
+    addChatMessage(selectedChatId, {
       id: `msg-${Date.now()}`,
       type: 'user',
       userId: currentUser.id,
@@ -94,7 +101,7 @@ export function FloatingChat() {
     });
 
     setNewMessage('');
-  };
+  }, [newMessage, selectedChatId, currentUser, addChatMessage]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -103,24 +110,35 @@ export function FloatingChat() {
     }
   };
 
-  const handleStartDM = async (participantId: string) => {
+  const handleStartDM = useCallback(async (participantId: string) => {
     // Check if DM already exists
     const existingDM = dmConversations.find(dm => 
       dm.participants.includes(participantId) && dm.participants.includes(currentUser!.id)
     );
 
     if (existingDM) {
-      setSelectedConversationId(existingDM.id);
+      setSelectedConversationId(`dm-${existingDM.id}`);
     } else {
       try {
         const newDM = await createDMConversation(participantId);
-        setSelectedConversationId(newDM.id);
+        setSelectedConversationId(`dm-${newDM.id}`);
       } catch (err) {
         console.error('Failed to create or navigate to DM', err);
       }
     }
     setShowNewDMDialog(false);
-  };
+  }, [dmConversations, currentUser, createDMConversation]);
+
+  useEffect(() => {
+    const handleOpenDM = (e: CustomEvent<string>) => {
+      setIsOpen(true);
+      handleStartDM(e.detail);
+    };
+    window.addEventListener('open-chat-dm', handleOpenDM as EventListener);
+    return () => {
+      window.removeEventListener('open-chat-dm', handleOpenDM as EventListener);
+    };
+  }, [handleStartDM]);
 
   // Get all users from groups (potential DM contacts)
   const potentialDMContacts = getAllUsers().filter(user => {
@@ -153,9 +171,9 @@ export function FloatingChat() {
 
       {/* Chat Window */}
       {isOpen && (
-        <Card className="fixed bottom-6 right-6 w-[680px] h-[580px] shadow-2xl flex flex-row z-50 overflow-hidden">
+        <Card className={`fixed bottom-6 right-6 ${isExpanded ? 'w-[calc(100vw-3rem)] h-[calc(100vh-3rem)]' : 'w-[680px] h-[580px]'} shadow-2xl flex flex-row z-50 overflow-hidden transition-all duration-300 ease-in-out`}>
           {/* Conversations List - Left Side */}
-          <div className="w-[240px] border-r flex flex-col bg-muted/30">
+          <div className="w-[240px] border-r flex flex-col bg-muted/30 min-h-0 overflow-hidden">
             {/* Header */}
             <div className="px-4 py-3 border-b bg-background flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -205,10 +223,10 @@ export function FloatingChat() {
             </div>
 
             {/* Conversations */}
-            <ScrollArea className="flex-1">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="py-2">
                 {conversations.map(conversation => {
-                  const isSelected = conversation.id === selectedConversationId;
+                  const isSelected = conversation.id === activeConversationId;
                   return (
                     <button
                       key={conversation.id}
@@ -246,7 +264,7 @@ export function FloatingChat() {
                   );
                 })}
               </div>
-            </ScrollArea>
+            </div>
           </div>
 
           {/* Messages - Right Side */}
@@ -267,14 +285,27 @@ export function FloatingChat() {
                 </div>
                 <h3 className="font-semibold truncate">{selectedConversation?.name}</h3>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 flex-shrink-0"
-                onClick={() => setIsOpen(false)}
-              >
-                <X className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                >
+                  {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0"
+                  onClick={() => {
+                    setIsOpen(false);
+                    setIsExpanded(false);
+                  }}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
 
             {/* Messages */}
@@ -300,40 +331,44 @@ export function FloatingChat() {
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} group/msg relative`}
+                        className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} group/msg relative w-full`}
                       >
                         {!isCurrentUser && (
                           <span className="text-xs text-muted-foreground mb-1 px-1">
                             {msg.userName}
                           </span>
                         )}
-                        <div className="flex items-center gap-2">
-                          {isLeader && !isCurrentUser && msg.message !== '[This message has been deleted]' && selectedConversationId && (
-                            <button 
-                              onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
-                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
-                              title="Delete message"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                          <div
-                            className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                              isCurrentUser
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-muted text-foreground'
-                            } ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}
-                          >
-                            <p className="text-sm break-words">{msg.message}</p>
-                          </div>
-                          {isLeader && isCurrentUser && msg.message !== '[This message has been deleted]' && selectedConversationId && (
-                            <button 
-                              onClick={() => deleteChatMessage(selectedConversationId, msg.id)}
-                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
-                              title="Delete message"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                        <div className="flex items-center gap-2 w-full justify-end max-w-full">
+                          {!isCurrentUser ? (
+                            <div className="flex items-center gap-2 w-full justify-start">
+                              <div className={`max-w-[75%] rounded-2xl px-4 py-2 bg-muted text-foreground ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
+                                <p className="text-sm break-words">{msg.message}</p>
+                              </div>
+                              {isLeader && msg.message !== '[This message has been deleted]' && selectedChatId && (
+                                <button
+                                  onClick={() => deleteChatMessage(selectedChatId, msg.id)}
+                                  className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                                  title="Delete message"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 w-full justify-end">
+                              {isLeader && msg.message !== '[This message has been deleted]' && selectedChatId && (
+                                <button
+                                  onClick={() => deleteChatMessage(selectedChatId, msg.id)}
+                                  className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                                  title="Delete message"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              <div className={`max-w-[75%] rounded-2xl px-4 py-2 bg-purple-600 text-white ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
+                                <p className="text-sm break-words">{msg.message}</p>
+                              </div>
+                            </div>
                           )}
                         </div>
                         <span className="text-xs text-muted-foreground mt-1 px-1">

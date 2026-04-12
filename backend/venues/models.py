@@ -175,7 +175,7 @@ class VenuePhoto(models.Model):
     """Photo references for venue profiles (Google Places URL or S3 URL)."""
 
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="photos")
-    image_url = models.URLField()
+    image_url = models.URLField(max_length=2048)
     source = models.CharField(max_length=50, blank=True)
     is_primary = models.BooleanField(default=False)
     caption = models.CharField(max_length=255, blank=True)
@@ -187,6 +187,17 @@ class VenuePhoto(models.Model):
         related_name="uploaded_photos",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            # Enforces at DB level that each venue has at most one primary photo per source,
+            # making get_or_create in fetch_and_cache_primary_photo race-safe.
+            models.UniqueConstraint(
+                fields=["venue", "source"],
+                condition=models.Q(is_primary=True),
+                name="unique_primary_photo_per_source",
+            )
+        ]
 
     def __str__(self):
         return f"{self.venue.name} — {'primary' if self.is_primary else 'photo'}"
@@ -234,6 +245,34 @@ class Review(models.Model):
 
     def __str__(self):
         return f"{self.user.email} — {self.venue.name} ({self.rating}★)"
+
+
+class VenueClaim(models.Model):
+    """Tracks a venue manager's claim to own/manage a venue. Admin approves claims."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="claims")
+    manager = models.ForeignKey(
+        VenueManagerProfile, on_delete=models.CASCADE, related_name="claims"
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING
+    )
+    note = models.TextField(blank=True)  # manager's justification
+    admin_note = models.TextField(blank=True)  # reviewer notes
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("venue", "manager")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.manager} → {self.venue.name} ({self.status})"
 
 
 class ReviewComment(models.Model):

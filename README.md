@@ -1,4 +1,4 @@
-Main: [![Coverage Status](https://coveralls.io/repos/github/gcivil-nyu-org/team2-mon-spring26/badge.svg?branch=main)](https://coveralls.io/github/gcivil-nyu-org/team2-mon-spring26?branch=main)
+Main: [![Coverage Status](https://coveralls.io/repos/github/gcivil-nyu-org/team2-mon-spring26/badge.svg?branch=develop)](https://coveralls.io/github/gcivil-nyu-org/team2-mon-spring26?branch=develop)
 [![Build Status](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26.svg?token=JELzXxdXXHqneS9SacAF&branch=main)](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26)
 
 Develop: [![Coverage Status](https://coveralls.io/repos/github/gcivil-nyu-org/team2-mon-spring26/badge.svg?branch=develop)](https://coveralls.io/github/gcivil-nyu-org/team2-mon-spring26?branch=develop)
@@ -175,8 +175,8 @@ Use two terminals: one for backend and one for frontend.
 cd backend
 source .venv/bin/activate
 pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver 8000
+python3 manage.py migrate
+python3 manage.py runserver 8000
 ```
 
 Backend URL: `http://127.0.0.1:8000`

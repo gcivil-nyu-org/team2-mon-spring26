@@ -94,37 +94,43 @@ export function GroupChatWindow({ groupId: initialGroupId, groupName: initialGro
                       </p>
                     </div>
                   ) : (
-                    <div className={`flex flex-col ${msg.userId === currentUser?.id ? 'items-end' : 'items-start'} group/msg relative`}>
-                      <p className="text-xs text-muted-foreground mb-1">
-                        {msg.userName}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        {isLeader && msg.userId !== currentUser?.id && msg.message !== '[This message has been deleted]' && (
-                          <button 
-                            onClick={() => deleteChatMessage(selectedGroupId, msg.id)}
-                            className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
-                            title="Delete message"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        <div className={`rounded-lg px-3 py-2 max-w-[75%] ${
-                          msg.userId === currentUser?.id
-                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                            : 'bg-muted'
-                        } ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
-                          <p className="text-sm">{msg.message}</p>
+                      <div className={`flex flex-col ${msg.userId === currentUser?.id ? 'items-end' : 'items-start'} group/msg relative w-full`}>
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {msg.userName}
+                        </p>
+                        <div className="flex items-center gap-2 w-full justify-end max-w-full">
+                          {msg.userId !== currentUser?.id ? (
+                            <div className="flex items-center gap-2 w-full justify-start">
+                              <div className={`rounded-lg px-3 py-2 max-w-[75%] bg-muted ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
+                                <p className="text-sm">{msg.message}</p>
+                              </div>
+                              {isLeader && msg.message !== '[This message has been deleted]' && (
+                                <button 
+                                  onClick={() => deleteChatMessage(selectedGroupId, msg.id)}
+                                  className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                                  title="Delete message"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 w-full justify-end">
+                              {isLeader && msg.message !== '[This message has been deleted]' && (
+                                <button 
+                                  onClick={() => deleteChatMessage(selectedGroupId, msg.id)}
+                                  className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                                  title="Delete message"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              <div className={`rounded-lg px-3 py-2 max-w-[75%] bg-gradient-to-r from-purple-600 to-pink-600 text-white ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
+                                <p className="text-sm">{msg.message}</p>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {isLeader && msg.userId === currentUser?.id && msg.message !== '[This message has been deleted]' && (
-                          <button 
-                            onClick={() => deleteChatMessage(selectedGroupId, msg.id)}
-                            className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
-                            title="Delete message"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
                       <p className="text-xs text-muted-foreground mt-1">
                         {new Date(msg.timestamp).toLocaleTimeString([], { 
                           hour: '2-digit', 

@@ -19,7 +19,6 @@ import {
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import {
-  ArrowLeft,
   Calendar,
   MapPin,
   Type,
@@ -106,7 +105,7 @@ export function PlanEventPage() {
 
   if (!group) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center py-12">
         <p>Group not found</p>
       </div>
     );
@@ -169,28 +168,8 @@ export function PlanEventPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate(`/group/${group.id}`)}
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-xl flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-purple-600" />
-              Plan Reservation
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              For {group.name}
-            </p>
-          </div>
-        </div>
-      </header>
+    <>
+
 
       <main className="max-w-3xl mx-auto px-4 py-8">
         <Card className="border-0 shadow-xl">
@@ -374,6 +353,6 @@ export function PlanEventPage() {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </>
   );
 }

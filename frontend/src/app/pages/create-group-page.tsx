@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { ArrowLeft, Users, MapPin, Lock, Search, X } from 'lucide-react';
+import { MapPin, Lock, Search, X } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 
 export function CreateGroupPage() {
@@ -78,27 +78,10 @@ export function CreateGroupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl">
-        <header className="bg-white border-b rounded-t-xl">
-          <div className="px-6 py-4 flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/home')}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl flex items-center gap-2">
-                <Users className="w-5 h-5 text-purple-600" />
-                Create New Group
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Set up your dining group
-              </p>
-            </div>
-          </div>
-        </header>
-
-        <Card className="border-0 rounded-t-none shadow-xl">
-          <CardHeader className="bg-gradient-to-r from-purple-500/90 to-pink-500/90 text-white pb-6">
+    <div className="flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl py-8">
+        <Card className="border-0 shadow-xl rounded-xl">
+          <CardHeader className="bg-gradient-to-r from-purple-500/90 to-pink-500/90 text-white pb-6 rounded-t-xl">
             <CardTitle className="text-xl">Group Details</CardTitle>
             <CardDescription className="text-purple-50 pt-1">
               Configure your group settings and invite members
