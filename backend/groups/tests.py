@@ -1,12 +1,20 @@
+import json
 from unittest.mock import patch
 
-from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
-import json
+from django.test import TestCase, Client
+from django.urls import reverse
 
-from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
-from venues.models import Venue, VenuePhoto
 from accounts.models import UserPreference
+from chat.models import Chat, ChatMember, Message
+from groups.models import (
+    Group,
+    GroupMembership,
+    SwipeEvent,
+    Swipe,
+    GroupInvitation,
+)
+from venues.models import Venue, VenuePhoto
 
 User = get_user_model()
 
@@ -1383,3 +1391,226 @@ class GroupManagementAPITests(TestCase):
         self.client.login(email="leader@example.com", password="pass123")
         response = self.client.get(f"/api/groups/{self.group.id}/leave/")
         self.assertEqual(response.status_code, 405)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage for new endpoints: public group listing, join-by-code,
+# and regenerating the join code.
+# ---------------------------------------------------------------------------
+
+
+def _make_user(email):
+    return User.objects.create_user(email=email, password="pass12345")
+
+
+# ---------------------------------------------------------------------------
+# api_public_groups_list
+# ---------------------------------------------------------------------------
+
+
+class PublicGroupsListTests(TestCase):
+    url = reverse("api_public_groups_list")
+
+    def setUp(self):
+        self.user = _make_user("u@example.com")
+        self.other = _make_user("o@example.com")
+
+        self.public_open = Group.objects.create(
+            name="Public Open",
+            created_by=self.other,
+            privacy=Group.PrivacyType.PUBLIC,
+        )
+        self.public_joined = Group.objects.create(
+            name="Public Joined",
+            created_by=self.other,
+            privacy=Group.PrivacyType.PUBLIC,
+        )
+        GroupMembership.objects.create(
+            user=self.user,
+            group=self.public_joined,
+            role=GroupMembership.Role.MEMBER,
+        )
+        self.private = Group.objects.create(
+            name="Private",
+            created_by=self.other,
+            privacy=Group.PrivacyType.INVITE_ONLY,
+        )
+
+    def test_method_not_allowed(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(self.url)
+        self.assertEqual(resp.status_code, 405)
+
+    def test_requires_auth(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_excludes_private_and_joined_groups(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        names = [g["name"] for g in resp.json()["groups"]]
+        self.assertIn("Public Open", names)
+        self.assertNotIn("Public Joined", names)  # user is already a member
+        self.assertNotIn("Private", names)
+
+    def test_exception_returns_500(self):
+        from unittest.mock import patch
+
+        self.client.force_login(self.user)
+        with patch("groups.views.Group.objects") as mock_objects:
+            mock_objects.filter.side_effect = Exception("boom")
+            resp = self.client.get(self.url)
+            self.assertEqual(resp.status_code, 500)
+
+
+# ---------------------------------------------------------------------------
+# api_join_group_by_code
+# ---------------------------------------------------------------------------
+
+
+class JoinGroupByCodeTests(TestCase):
+    def setUp(self):
+        self.user = _make_user("u@example.com")
+        self.creator = _make_user("c@example.com")
+        self.public_group = Group.objects.create(
+            name="Public Group",
+            created_by=self.creator,
+            privacy=Group.PrivacyType.PUBLIC,
+        )
+        self.private_group = Group.objects.create(
+            name="Private Group",
+            created_by=self.creator,
+            privacy=Group.PrivacyType.INVITE_ONLY,
+        )
+        # Provision a chat on the public group so the join message path runs.
+        self.chat = Chat.objects.create(
+            type=Chat.ChatType.GROUP,
+            name=self.public_group.name,
+            created_by=self.creator,
+            group=self.public_group,
+        )
+        ChatMember.objects.create(
+            chat=self.chat, user=self.creator, role=ChatMember.Role.ADMIN
+        )
+
+    def _url(self, code):
+        return reverse("api_join_group_by_code", args=[code])
+
+    def test_method_not_allowed(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(self._url(self.public_group.join_code))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_requires_auth(self):
+        resp = self.client.post(self._url(self.public_group.join_code))
+        self.assertEqual(resp.status_code, 401)
+
+    def test_invalid_code(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(self._url("NOCODE"))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_already_member(self):
+        GroupMembership.objects.create(
+            user=self.user,
+            group=self.public_group,
+            role=GroupMembership.Role.MEMBER,
+        )
+        self.client.force_login(self.user)
+        resp = self.client.post(self._url(self.public_group.join_code))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_private_group_forbidden(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(self._url(self.private_group.join_code))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_successful_join_creates_chat_member_and_system_message(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(self._url(self.public_group.join_code))
+        self.assertEqual(resp.status_code, 200)
+
+        self.assertTrue(
+            GroupMembership.objects.filter(
+                group=self.public_group, user=self.user
+            ).exists()
+        )
+        # A ChatMember should have been created (update_or_create).
+        self.assertTrue(
+            ChatMember.objects.filter(chat=self.chat, user=self.user).exists()
+        )
+        # A "joined via code" system message should exist.
+        self.assertTrue(
+            Message.objects.filter(
+                chat=self.chat, message_type=Message.MessageType.SYSTEM
+            ).exists()
+        )
+
+    def test_exception_returns_500(self):
+        from unittest.mock import patch
+
+        self.client.force_login(self.user)
+        with patch("groups.views.Group.objects") as mock_objects:
+            mock_objects.filter.side_effect = Exception("boom")
+            resp = self.client.post(self._url(self.public_group.join_code))
+            self.assertEqual(resp.status_code, 500)
+
+
+# ---------------------------------------------------------------------------
+# api_regenerate_join_code
+# ---------------------------------------------------------------------------
+
+
+class RegenerateJoinCodeTests(TestCase):
+    def setUp(self):
+        self.leader = _make_user("leader@example.com")
+        self.member = _make_user("member@example.com")
+        self.group = Group.objects.create(name="G", created_by=self.leader)
+        GroupMembership.objects.create(
+            user=self.leader, group=self.group, role=GroupMembership.Role.LEADER
+        )
+        GroupMembership.objects.create(
+            user=self.member, group=self.group, role=GroupMembership.Role.MEMBER
+        )
+
+    def _url(self, group_id):
+        return reverse("api_regenerate_join_code", args=[group_id])
+
+    def test_method_not_allowed(self):
+        self.client.force_login(self.leader)
+        resp = self.client.get(self._url(self.group.id))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_requires_auth(self):
+        resp = self.client.post(self._url(self.group.id))
+        self.assertEqual(resp.status_code, 401)
+
+    def test_group_not_found(self):
+        self.client.force_login(self.leader)
+        resp = self.client.post(self._url(99999))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_non_leader_forbidden(self):
+        self.client.force_login(self.member)
+        resp = self.client.post(self._url(self.group.id))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_leader_regenerates_code(self):
+        old_code = self.group.join_code
+        self.client.force_login(self.leader)
+        resp = self.client.post(self._url(self.group.id))
+        self.assertEqual(resp.status_code, 200)
+        new_code = resp.json()["join_code"]
+        self.assertNotEqual(new_code, old_code)
+        self.group.refresh_from_db()
+        self.assertEqual(self.group.join_code, new_code)
+
+    def test_exception_returns_500(self):
+        from unittest.mock import patch
+
+        self.client.force_login(self.leader)
+        with patch("groups.views.Group.objects") as mock_objects:
+            mock_objects.get.side_effect = Exception("boom")
+            resp = self.client.post(self._url(self.group.id))
+            self.assertEqual(resp.status_code, 500)
