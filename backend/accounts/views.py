@@ -217,10 +217,16 @@ def api_venue_register(request):
 def api_admin_register(request):
     """
     POST /api/auth/admin-register/
-    Register a new admin account.
+    Register a new admin account. Requires an existing admin session.
     """
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+    if request.user.role != "admin":
+        return JsonResponse({"error": "Admin access required"}, status=403)
+
     try:
         data = json.loads(request.body)
         email = (data.get("email") or "").strip()
@@ -256,7 +262,6 @@ def api_admin_register(request):
             is_staff=True,
         )
 
-        login(request, user)
         return JsonResponse({"success": True, "user": _user_to_json(user)}, status=201)
 
     except Exception as e:

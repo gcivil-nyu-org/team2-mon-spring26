@@ -70,8 +70,8 @@ export function AdminVenuesPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    // setPage triggers a new fetchVenues via useCallback/useEffect — no direct call needed
     setPage(1);
-    fetchVenues();
   };
 
   return (

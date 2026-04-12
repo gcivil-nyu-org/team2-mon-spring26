@@ -1,15 +1,38 @@
+import logging
+import os
+
 from django.db import migrations
 from django.contrib.auth.hashers import make_password
 
+logger = logging.getLogger(__name__)
+
 
 def seed_default_admin_user(apps, schema_editor):
+    from django.conf import settings
+
     User = apps.get_model("accounts", "User")
 
-    default_email = "admin@mealswipe.local"
-    default_password = "mealswipe_admin"
+    email = os.environ.get("ADMIN_SEED_EMAIL", "").strip()
+    password = os.environ.get("ADMIN_SEED_PASSWORD", "").strip()
+
+    if not email or not password:
+        if settings.DEBUG:
+            email = email or "admin@mealswipe.local"
+            password = password or "mealswipe_admin"
+            logger.warning(
+                "ADMIN_SEED_EMAIL/ADMIN_SEED_PASSWORD not set — "
+                "using insecure dev defaults. Do not use in production."
+            )
+        else:
+            logger.warning(
+                "ADMIN_SEED_EMAIL or ADMIN_SEED_PASSWORD environment variable not set "
+                "— skipping default admin seed. Set both variables and re-run "
+                "migrations to create the bootstrap admin account."
+            )
+            return
 
     admin_user, created = User.objects.get_or_create(
-        email=default_email,
+        email=email,
         defaults={
             "first_name": "Admin",
             "last_name": "",
@@ -17,7 +40,7 @@ def seed_default_admin_user(apps, schema_editor):
             "is_staff": True,
             "is_superuser": False,
             "is_active": True,
-            "password": make_password(default_password),
+            "password": make_password(password),
         },
     )
 

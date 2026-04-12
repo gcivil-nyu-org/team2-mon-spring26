@@ -109,12 +109,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     if (!response.ok || !data.success) {
       throw new Error(data.error || 'Admin registration failed');
     }
-    setCurrentAdmin({
-      id: String(data.user.id),
-      email: data.user.email,
-      name: data.user.name,
-      role: 'admin',
-    });
+    // The calling admin remains the active session; the new account is created
+    // server-side but not logged in automatically.
   };
 
   const logoutAdmin = async () => {

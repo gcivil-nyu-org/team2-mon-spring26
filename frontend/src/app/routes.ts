@@ -49,10 +49,6 @@ export const router = createBrowserRouter([
         Component: AdminLoginPage,
       },
       {
-        path: 'admin/register',
-        Component: AdminRegisterPage,
-      },
-      {
         path: 'admin/reset-password/:uid/:token',
         Component: AdminResetPasswordPage,
       },
@@ -63,6 +59,10 @@ export const router = createBrowserRouter([
           {
             path: 'admin/dashboard',
             Component: AdminDashboardPage,
+          },
+          {
+            path: 'admin/register',
+            Component: AdminRegisterPage,
           },
           {
             path: 'admin/venue-verification',

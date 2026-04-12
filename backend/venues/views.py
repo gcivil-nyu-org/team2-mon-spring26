@@ -553,11 +553,7 @@ def api_admin_venue_claim_action(request, claim_id):
 
 def _admin_venue_to_json(venue):
     """Full venue serialization for admin editing."""
-    latest_inspection = (
-        venue.inspections.first()
-        if hasattr(venue, "_prefetched_objects_cache")
-        else venue.inspections.first()
-    )
+    latest_inspection = venue.inspections.first()
     manager = venue.managed_by
     manager_user = manager.user if manager else None
     return {
@@ -659,7 +655,6 @@ def api_admin_venues(request):
 
     venues_qs = (
         Venue.objects.select_related("cuisine_type", "managed_by", "managed_by__user")
-        .prefetch_related("dietary_tags", "food_type_tags", "inspections")
         .order_by("name")
     )
 
@@ -771,7 +766,12 @@ def api_admin_venue_detail(request, venue_id):
         }
         for js_key, db_key in bool_map.items():
             if js_key in data:
-                setattr(venue, db_key, bool(data[js_key]))
+                val = data[js_key]
+                if not isinstance(val, bool):
+                    return JsonResponse(
+                        {"error": f"'{js_key}' must be a boolean"}, status=400
+                    )
+                setattr(venue, db_key, val)
                 fields_updated.append(db_key)
 
         # Cuisine type (FK by name)
@@ -818,6 +818,8 @@ def api_admin_venue_detail(request, venue_id):
             tag_names = data["dietaryTags"] or []
             tags = []
             for name in tag_names:
+                if not isinstance(name, str) or not name.strip():
+                    continue
                 tag, _ = DietaryTag.objects.get_or_create(name=name.strip())
                 tags.append(tag)
             venue.dietary_tags.set(tags)
@@ -827,6 +829,8 @@ def api_admin_venue_detail(request, venue_id):
             tag_names = data["foodTypeTags"] or []
             tags = []
             for name in tag_names:
+                if not isinstance(name, str) or not name.strip():
+                    continue
                 tag, _ = FoodTypeTag.objects.get_or_create(name=name.strip())
                 tags.append(tag)
             venue.food_type_tags.set(tags)

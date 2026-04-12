@@ -104,17 +104,16 @@ export function AdminVenueVerificationPage() {
         },
         body: JSON.stringify({ action }),
       });
+      const data = await response.json();
       if (response.ok) {
-        // Update inline
         setClaims((prev) =>
           prev.map((c) =>
             c.id === claimId
-              ? { ...c, status: action === 'approve' ? 'approved' : 'rejected' }
+              ? { ...c, status: data.claim.status, reviewedAt: data.claim.reviewedAt }
               : c
           )
         );
       } else {
-        const data = await response.json();
         alert(data.error || 'Action failed');
       }
     } catch (err) {
