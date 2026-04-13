@@ -7,6 +7,12 @@ dist: noble # Use Ubuntu 24.04 'Noble' with a stable Python 3.12 environment
 node_js:
   - '20'
 
+# Disable shallow clone so Coveralls can find parent commits and properly
+# chain branch builds — shallow clones made every upload a "First build",
+# which broke Coveralls' branch-level aggregation.
+git:
+  depth: false
+
 install:
   # Ensure the environment uses Node 20 immediately
   - nvm install 20
