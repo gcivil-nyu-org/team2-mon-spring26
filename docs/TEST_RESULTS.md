@@ -33,6 +33,30 @@ The chunk size warning from `npm run build` is expected for this bundle size. It
 | Login rate limiting    | 2     | ✅ Pass        |
 | **Total**              | **17**| **✅ All pass**|
 
+---
+
+## Backend: CSRF protection tests
+
+**Suite:** `backend/accounts/tests.py` — `CSRFProtectionTests`
+**Run from:** `backend/` directory
+**Command:** `python manage.py test accounts.CSRFProtectionTests -v 2`
+
+These tests use `Client(enforce_csrf_checks=True)` to verify that all
+state-changing endpoints enforce Django's CSRF middleware after removing
+all `@csrf_exempt` decorators in WS1.
+
+### Summary
+
+| Endpoint                         | Without token | With token | Status     |
+|----------------------------------|---------------|------------|------------|
+| `GET /api/auth/me/`              | Sets cookie   | —          | ✅ Pass    |
+| `POST /api/auth/login/`          | 403           | 200        | ✅ Pass    |
+| `POST /api/auth/register/`       | 403           | 200        | ✅ Pass    |
+| `POST /api/auth/logout/`         | 403           | 200        | ✅ Pass    |
+| `PATCH /api/auth/preferences/`   | 403           | 200        | ✅ Pass    |
+| `POST /api/auth/request-password-reset/` | 403   | 200        | ✅ Pass    |
+| **Total**                        | **6 reject**  | **5 accept**| **✅ All pass** |
+
 ### Coverage by feature
 
 - **Registration:** success (hash password, auto-login), duplicate email, invalid email, GET → 405.
@@ -49,6 +73,9 @@ Use the full test path (Django expects the first segment to be an app name; we u
 ```sh
 cd backend
 python manage.py test tests.test_auth_integration.AuthIntegrationTests.test_login_success -v 2
+
+# Run the full CSRF suite (lives in the accounts app):
+python manage.py test accounts.CSRFProtectionTests -v 2
 ```
 
 ---

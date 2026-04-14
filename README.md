@@ -319,7 +319,7 @@ Keep tests close to feature work and treat them as part of every PR.
 - Prefer queries users rely on (`getByRole`, `getByText`) over brittle selectors.
 - Cover loading, empty, error, and success UI states where applicable.
 - Keep tests isolated and avoid shared mutable state between test cases.
-- _Note:_ Frontend test setup (Vitest + React Testing Library) is in place, but tests may not pass under Vite 8 beta without version/config alignment; see `docs/TEST_RESULTS.md` for current status and recommendations.
+- See `docs/TEST_RESULTS.md` for current test status and how to run the test suites.
 
 #### Team Expectations
 
