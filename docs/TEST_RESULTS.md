@@ -19,7 +19,7 @@ The chunk size warning from `npm run build` is expected for this bundle size. It
 
 **Suite:** `backend/tests/test_auth_integration.py`
 **Run from:** `backend/` directory
-**Command:** `python manage.py test tests.test_auth_integration -v 2`
+**Command:** `python manage.py test tests.test_auth_integration --settings=config.test_settings -v 2`
 
 ### Summary
 
@@ -39,7 +39,7 @@ The chunk size warning from `npm run build` is expected for this bundle size. It
 
 **Suite:** `backend/accounts/tests.py` — `CSRFProtectionTests`
 **Run from:** `backend/` directory
-**Command:** `python manage.py test accounts.CSRFProtectionTests -v 2`
+**Command:** `python manage.py test accounts.CSRFProtectionTests --settings=config.test_settings -v 2`
 
 These tests use `Client(enforce_csrf_checks=True)` to verify that all
 state-changing endpoints enforce Django's CSRF middleware after removing
@@ -72,10 +72,11 @@ Use the full test path (Django expects the first segment to be an app name; we u
 
 ```sh
 cd backend
-python manage.py test tests.test_auth_integration.AuthIntegrationTests.test_login_success -v 2
+python manage.py test tests.test_auth_integration.AuthIntegrationTests.test_login_success \
+  --settings=config.test_settings -v 2
 
 # Run the full CSRF suite (lives in the accounts app):
-python manage.py test accounts.CSRFProtectionTests -v 2
+python manage.py test accounts.CSRFProtectionTests --settings=config.test_settings -v 2
 ```
 
 ---
