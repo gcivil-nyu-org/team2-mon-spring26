@@ -2,19 +2,6 @@ import '@testing-library/jest-dom';
 import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
-// Workaround when Vitest loads app code with SSR-like transform (Vite 8 beta or config)
-(globalThis as unknown as Record<string, unknown>).__vite_ssr_exportName__ = function (
-  exports: unknown,
-  name: string,
-  getter: () => unknown
-) {
-  if (exports !== null && typeof exports === 'object') {
-    try {
-      Object.defineProperty(exports, name, { get: getter, enumerable: true });
-    } catch { /* intentionally ignored */ }
-  }
-};
-
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();

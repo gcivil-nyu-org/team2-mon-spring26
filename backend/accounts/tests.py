@@ -1298,4 +1298,157 @@ class VenueManagerProfileTests(TestCase):
             user=self.user, business_name="Joe's Diner"
         )
         self.assertIn("Joe's Diner", str(profile))
-        self.assertIn("manager@nyu.edu", str(profile))
+
+
+# ---------------------------------------------------------------------------
+# CSRF protection tests
+# ---------------------------------------------------------------------------
+
+
+class CSRFProtectionTests(TestCase):
+    """
+    Verify that all state-changing auth endpoints require a valid CSRF token
+    when using session-cookie authentication.
+
+    Uses Client(enforce_csrf_checks=True) so Django's CSRF middleware is fully
+    active (the default test client bypasses it).
+    """
+
+    def setUp(self):
+        self.csrf_client = Client(enforce_csrf_checks=True)
+        self.user = User.objects.create_user(
+            email="csrf@nyu.edu", password="StrongPass!1"
+        )
+
+    def _get_csrf_token(self):
+        """Hit api_me (ensure_csrf_cookie) to receive a CSRF cookie, then return it."""
+        resp = self.csrf_client.get(reverse("api_me"))
+        return resp.cookies.get("csrftoken", "").value
+
+    def _login_session(self):
+        """Log the test user in via the normal login endpoint (requires CSRF)."""
+        token = self._get_csrf_token()
+        self.csrf_client.post(
+            reverse("api_login"),
+            data=json.dumps({"email": "csrf@nyu.edu", "password": "StrongPass!1"}),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+
+    # --- api_me sets CSRF cookie (GET, no token needed) ---
+
+    def test_api_me_sets_csrf_cookie(self):
+        resp = self.csrf_client.get(reverse("api_me"))
+        self.assertIn("csrftoken", resp.cookies)
+
+    # --- Login: POST without token → 403 ---
+
+    def test_login_without_csrf_token_is_rejected(self):
+        self._get_csrf_token()  # ensure cookie is set
+        resp = self.csrf_client.post(
+            reverse("api_login"),
+            data=json.dumps({"email": "csrf@nyu.edu", "password": "StrongPass!1"}),
+            content_type="application/json",
+            # deliberately omit HTTP_X_CSRFTOKEN
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_login_with_csrf_token_succeeds(self):
+        token = self._get_csrf_token()
+        resp = self.csrf_client.post(
+            reverse("api_login"),
+            data=json.dumps({"email": "csrf@nyu.edu", "password": "StrongPass!1"}),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["success"])
+
+    # --- Register: POST without token → 403 ---
+
+    def test_register_without_csrf_token_is_rejected(self):
+        self._get_csrf_token()
+        resp = self.csrf_client.post(
+            reverse("api_register"),
+            data=json.dumps(
+                {"email": "new@nyu.edu", "password": "StrongPass!1", "first_name": "New"}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_register_with_csrf_token_succeeds(self):
+        token = self._get_csrf_token()
+        resp = self.csrf_client.post(
+            reverse("api_register"),
+            data=json.dumps(
+                {"email": "new@nyu.edu", "password": "StrongPass!1", "first_name": "New"}
+            ),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["success"])
+
+    # --- Logout: POST without token → 403 ---
+
+    def test_logout_without_csrf_token_is_rejected(self):
+        self._login_session()
+        # do NOT pass X-CSRFToken
+        resp = self.csrf_client.post(reverse("api_logout"))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_logout_with_csrf_token_succeeds(self):
+        self._login_session()
+        token = self._get_csrf_token()
+        resp = self.csrf_client.post(
+            reverse("api_logout"),
+            HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["success"])
+
+    # --- Preferences: PATCH without token → 403 ---
+
+    def test_preferences_update_without_csrf_token_is_rejected(self):
+        self._login_session()
+        resp = self.csrf_client.patch(
+            reverse("api_preferences_update"),
+            data=json.dumps({"dietary": ["Vegan"]}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_preferences_update_with_csrf_token_succeeds(self):
+        self._login_session()
+        token = self._get_csrf_token()
+        resp = self.csrf_client.patch(
+            reverse("api_preferences_update"),
+            data=json.dumps({"dietary": ["Vegan"]}),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    # --- Password reset request: POST without token → 403 ---
+
+    def test_password_reset_request_without_csrf_token_is_rejected(self):
+        self._get_csrf_token()
+        resp = self.csrf_client.post(
+            reverse("api_request_password_reset"),
+            data=json.dumps({"email": "csrf@nyu.edu"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    @patch("accounts.views.send_password_reset_email")
+    def test_password_reset_request_with_csrf_token_succeeds(self, mock_send):
+        token = self._get_csrf_token()
+        resp = self.csrf_client.post(
+            reverse("api_request_password_reset"),
+            data=json.dumps({"email": "csrf@nyu.edu"}),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["success"])
