@@ -40,7 +40,7 @@ script:
   - (cd frontend && npm run build)
 
 after_script:
-  - coveralls --service=travis-pro
+  - (cd backend && coveralls --service=travis-pro)
 
 before_deploy:
   # Package only the backend directory for backend EB deploy
