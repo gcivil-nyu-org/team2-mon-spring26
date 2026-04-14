@@ -297,7 +297,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [swipeEvents, setSwipeEvents] = useState<SwipeEvent[]>([]);
   const [currentSwipeEvent, setCurrentSwipeEvent] = useState<SwipeEvent | null>(null);
-  const [swipes, setSwipes] = useState<Record<string, Swipe[]>>({});
+  const [swipes] = useState<Record<string, Swipe[]>>({});
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
   const [dmConversations, setDMConversations] = useState<DMConversation[]>([]);
   const [chatMutedParticipants, setChatMutedParticipants] = useState<
@@ -306,282 +306,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [swipeNotifications, setSwipeNotifications] = useState<SwipeNotification[]>([]);
 
-  // Seed initial data if not exists
+  // Clean up legacy localStorage demo data left from older versions of the app.
+  // This runs once on mount — it does not seed anything new.
   useEffect(() => {
-    const hasSeeded = localStorage.getItem('mealswipe_seeded');
-    const currentVersion = localStorage.getItem('mealswipe_version');
-    const CURRENT_VERSION = '3'; // Increment when schema changes
-
-    // Reset data if version changed (for schema updates like isLeader field)
-    if (currentVersion !== CURRENT_VERSION) {
-      localStorage.removeItem('mealswipe_groups');
-      localStorage.removeItem('mealswipe_events');
-      localStorage.removeItem('mealswipe_swipes');
-      localStorage.removeItem('mealswipe_messages');
-      localStorage.removeItem('mealswipe_notifications');
-      localStorage.removeItem('mealswipe_seeded');
-    }
-
-    if (!hasSeeded || currentVersion !== CURRENT_VERSION) {
-      // Create a pre-existing group for Feb 7, 2026
-      const feb7Group: Group = {
-        id: 'group-feb7-2026',
-        name: 'Friday Night Dinner Club',
-        members: [
-          {
-            userId: '1',
-            userName: 'Alex Chen',
-            hasFinishedSwiping: false,
-            isLeader: true,
-          },
-          {
-            userId: '2',
-            userName: 'Sarah Kim',
-            hasFinishedSwiping: false,
-            isLeader: false,
-          },
-          {
-            userId: '3',
-            userName: 'Jordan Lee',
-            hasFinishedSwiping: false,
-            isLeader: false,
-          },
-          {
-            userId: '4',
-            userName: 'Emma Rodriguez',
-            hasFinishedSwiping: false,
-            isLeader: false,
-          },
-        ],
-        createdBy: '1',
-        createdAt: '2026-02-01T10:00:00.000Z',
-      };
-
-      // Create a swipe event for Feb 7
-      const feb7Event: SwipeEvent = {
-        id: 'event-feb7-2026',
-        groupId: 'group-feb7-2026',
-        name: 'Friday Dinner - Feb 7',
-        status: 'pending',
-        createdAt: '2026-02-01T10:00:00.000Z',
-      };
-
-      // Add initial chat messages
-      const initialMessages: Record<string, ChatMessage[]> = {
-        'group-feb7-2026': [
-          {
-            id: 'msg-1',
-            type: 'system',
-            message: 'Alex Chen created the group',
-            timestamp: '2026-02-01T10:00:00.000Z',
-          },
-          {
-            id: 'msg-2',
-            type: 'system',
-            message: 'Sarah Kim joined the group',
-            timestamp: '2026-02-01T10:15:00.000Z',
-          },
-          {
-            id: 'msg-3',
-            type: 'system',
-            message: 'Jordan Lee joined the group',
-            timestamp: '2026-02-01T11:30:00.000Z',
-          },
-          {
-            id: 'msg-4',
-            type: 'system',
-            message: 'Emma Rodriguez joined the group',
-            timestamp: '2026-02-01T14:20:00.000Z',
-          },
-          {
-            id: 'msg-5',
-            type: 'user',
-            userId: '1',
-            userName: 'Alex Chen',
-            message: 'Hey everyone! Looking forward to dinner on Friday!',
-            timestamp: '2026-02-02T18:00:00.000Z',
-          },
-          {
-            id: 'msg-6',
-            type: 'user',
-            userId: '2',
-            userName: 'Sarah Kim',
-            message: 'Me too! Any preferences on cuisine?',
-            timestamp: '2026-02-02T18:15:00.000Z',
-          },
-          {
-            id: 'msg-7',
-            type: 'user',
-            userId: '3',
-            userName: 'Jordan Lee',
-            message: "I'm down for anything! Maybe Italian or Thai?",
-            timestamp: '2026-02-03T09:30:00.000Z',
-          },
-          {
-            id: 'msg-8',
-            type: 'user',
-            userId: '4',
-            userName: 'Emma Rodriguez',
-            message: 'Thai sounds great! 🍜',
-            timestamp: '2026-02-03T10:15:00.000Z',
-          },
-          {
-            id: 'msg-9',
-            type: 'user',
-            userId: '1',
-            userName: 'Alex Chen',
-            message: "Perfect! Let's start swiping soon so we can make a reservation",
-            timestamp: '2026-02-04T14:20:00.000Z',
-          },
-          {
-            id: 'msg-10',
-            type: 'user',
-            userId: '2',
-            userName: 'Sarah Kim',
-            message: 'Should we aim for 7pm or 8pm?',
-            timestamp: '2026-02-05T16:45:00.000Z',
-          },
-          {
-            id: 'msg-11',
-            type: 'user',
-            userId: '3',
-            userName: 'Jordan Lee',
-            message: '8pm works better for me, I have class until 6:30',
-            timestamp: '2026-02-05T17:00:00.000Z',
-          },
-          {
-            id: 'msg-12',
-            type: 'user',
-            userId: '4',
-            userName: 'Emma Rodriguez',
-            message: '8pm is perfect!',
-            timestamp: '2026-02-05T17:10:00.000Z',
-          },
-        ],
-        // DM with Jordan Lee
-        'dm-jordan-init': [
-          {
-            id: 'dm-msg-1',
-            type: 'user',
-            userId: '3',
-            userName: 'Jordan Lee',
-            message:
-              'Hey! Are you free this Saturday too? Thinking of checking out that new ramen place',
-            timestamp: '2026-02-06T11:30:00.000Z',
-          },
-          {
-            id: 'dm-msg-2',
-            type: 'user',
-            userId: '1',
-            userName: 'Alex Chen',
-            message:
-              "Oh that sounds great! I've been wanting to try that place. What time?",
-            timestamp: '2026-02-06T11:45:00.000Z',
-          },
-          {
-            id: 'dm-msg-3',
-            type: 'user',
-            userId: '3',
-            userName: 'Jordan Lee',
-            message: 'Maybe 1pm? We could walk there from campus',
-            timestamp: '2026-02-06T12:00:00.000Z',
-          },
-        ],
-        // DM with Sarah Kim
-        'dm-sarah-init': [
-          {
-            id: 'dm-msg-4',
-            type: 'user',
-            userId: '2',
-            userName: 'Sarah Kim',
-            message:
-              "Hey! Quick question - do you have the notes from yesterday's lecture?",
-            timestamp: '2026-02-07T09:15:00.000Z',
-          },
-          {
-            id: 'dm-msg-5',
-            type: 'user',
-            userId: '1',
-            userName: 'Alex Chen',
-            message: "Yeah I do! I'll send them over in a bit",
-            timestamp: '2026-02-07T09:20:00.000Z',
-          },
-          {
-            id: 'dm-msg-6',
-            type: 'user',
-            userId: '2',
-            userName: 'Sarah Kim',
-            message: 'Thanks! Also super excited for dinner tonight!',
-            timestamp: '2026-02-07T09:25:00.000Z',
-          },
-        ],
-      };
-
-      // Add initial DM conversations
-      const initialDMConversations: DMConversation[] = [
-        {
-          id: 'dm-jordan-init',
-          participants: ['1', '3'], // Alex and Jordan
-          participantNames: ['Alex Chen', 'Jordan Lee'],
-          lastMessageTime: '2026-02-06T12:00:00.000Z',
-        },
-        {
-          id: 'dm-sarah-init',
-          participants: ['1', '2'], // Alex and Sarah
-          participantNames: ['Alex Chen', 'Sarah Kim'],
-          lastMessageTime: '2026-02-07T09:25:00.000Z',
-        },
-      ];
-
-      localStorage.setItem('mealswipe_groups', JSON.stringify([feb7Group]));
-      localStorage.setItem('mealswipe_events', JSON.stringify([feb7Event]));
-      localStorage.setItem('mealswipe_messages', JSON.stringify(initialMessages));
-      localStorage.setItem(
-        'mealswipe_dm_conversations',
-        JSON.stringify(initialDMConversations)
-      );
-      localStorage.setItem('mealswipe_seeded', 'true');
-      localStorage.setItem('mealswipe_version', CURRENT_VERSION);
-
-      setGroups([feb7Group]);
-      setSwipeEvents([feb7Event]);
-      setChatMessages(initialMessages);
-      setDMConversations(initialDMConversations);
-    }
+    const LEGACY_KEYS = [
+      'mealswipe_seeded',
+      'mealswipe_version',
+      'mealswipe_groups',
+      'mealswipe_events',
+      'mealswipe_swipes',
+      'mealswipe_messages',
+      'mealswipe_notifications',
+      'mealswipe_dm_conversations',
+      'mealswipe_user',
+    ];
+    LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
   }, []);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const storedUser = localStorage.getItem('mealswipe_user');
-    if (storedUser) {
-      setCurrentUser(JSON.parse(storedUser));
-    }
 
-    const storedGroups = localStorage.getItem('mealswipe_groups');
-    if (storedGroups) {
-      setGroups(JSON.parse(storedGroups));
-    }
-
-    const storedEvents = localStorage.getItem('mealswipe_events');
-    if (storedEvents) {
-      setSwipeEvents(JSON.parse(storedEvents));
-    }
-
-    const storedSwipes = localStorage.getItem('mealswipe_swipes');
-    if (storedSwipes) {
-      setSwipes(JSON.parse(storedSwipes));
-    }
-
-    const storedMessages = localStorage.getItem('mealswipe_messages');
-    if (storedMessages) {
-      setChatMessages(JSON.parse(storedMessages));
-    }
-
-    const storedDMConversations = localStorage.getItem('mealswipe_dm_conversations');
-    if (storedDMConversations) {
-      setDMConversations(JSON.parse(storedDMConversations));
-    }
-  }, []);
 
   // ---------------------------------------------------------------------------
   // ACTUAL API AUTHENTICATION LOGIC (Django Session Auth)
@@ -941,35 +683,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCurrentUser(null);
       setCurrentGroup(null);
       setCurrentSwipeEvent(null);
-      localStorage.removeItem('mealswipe_user'); // Still clean up local storage just in case
+      setGroups([]);
+      setSwipeEvents([]);
+      setChatMessages({});
+      setDMConversations([]);
+      setInvitations([]);
+      setSwipeNotifications([]);
     } catch (error) {
       console.error('Logout error:', error);
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // APP / UI STATE SAVING LOGIC
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    localStorage.setItem('mealswipe_groups', JSON.stringify(groups));
-  }, [groups]);
-
-  useEffect(() => {
-    localStorage.setItem('mealswipe_events', JSON.stringify(swipeEvents));
-  }, [swipeEvents]);
-
-  useEffect(() => {
-    localStorage.setItem('mealswipe_swipes', JSON.stringify(swipes));
-  }, [swipes]);
-
-  useEffect(() => {
-    localStorage.setItem('mealswipe_messages', JSON.stringify(chatMessages));
-  }, [chatMessages]);
-
-  useEffect(() => {
-    localStorage.setItem('mealswipe_dm_conversations', JSON.stringify(dmConversations));
-  }, [dmConversations]);
 
   const createGroup = async (
     name: string,
