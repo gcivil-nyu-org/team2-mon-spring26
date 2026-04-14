@@ -39,9 +39,8 @@ script:
   # 3. Frontend Build
   - (cd frontend && npm run build)
 
-after_success:
-  - git checkout $TRAVIS_BRANCH
-  - (cd backend && coveralls)
+after_script:
+  - (cd backend && coveralls --service=travis-pro)
 
 before_deploy:
   # Package only the backend directory for backend EB deploy
