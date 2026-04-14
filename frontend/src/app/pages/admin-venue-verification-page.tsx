@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAdmin } from '@/app/contexts/admin-context';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
+import { toast } from 'sonner';
 import {
   Select,
   SelectContent,
@@ -112,7 +113,7 @@ export function AdminVenueVerificationPage() {
           )
         );
       } else {
-        alert(data.error || 'Action failed');
+        toast.error(data.error || 'Action failed');
       }
     } catch (err) {
       console.error('Claim action error:', err);

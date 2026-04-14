@@ -7,6 +7,7 @@ import { ChatSidebar } from "@/app/components/chat-sidebar";
 import { Button } from "@/app/components/ui/button";
 import { Progress } from "@/app/components/ui/progress";
 import { MessageCircle, Users } from "lucide-react";
+import { toast } from "sonner";
 
 export function SwipePage() {
   const { eventId } = useParams();
@@ -124,7 +125,7 @@ export function SwipePage() {
     } catch (error: unknown) {
       console.error("Failed to submit swipe:", error);
       if (error instanceof Error && error.message === "This event is no longer active") {
-        alert("A match has already been found for this session!");
+        toast.info("A match has already been found for this session!");
         navigate(`/match/${event.id}`);
         return;
       }
