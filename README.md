@@ -340,10 +340,10 @@ python manage.py test --settings=config.test_settings --keepdb
 
 # Run a specific app or test class
 python manage.py test accounts --settings=config.test_settings --keepdb
-python manage.py test accounts.CSRFProtectionTests --settings=config.test_settings --keepdb
+python manage.py test accounts.tests.CSRFProtectionTests --settings=config.test_settings --keepdb
 
 # Run a single test method
-python manage.py test accounts.tests.AuthViewsTests.test_login_success --settings=config.test_settings -v 2
+python manage.py test accounts.tests.AuthIntegrationTests.test_login_success --settings=config.test_settings -v 2
 ```
 
 **Why `--settings=config.test_settings`?**
