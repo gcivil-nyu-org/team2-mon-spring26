@@ -1371,7 +1371,11 @@ class CSRFProtectionTests(TestCase):
         resp = self.csrf_client.post(
             reverse("api_register"),
             data=json.dumps(
-                {"email": "new@nyu.edu", "password": "StrongPass!1", "first_name": "New"}
+                {
+                    "email": "new@nyu.edu",
+                    "password": "StrongPass!1",
+                    "first_name": "New",
+                }
             ),
             content_type="application/json",
         )
@@ -1382,7 +1386,11 @@ class CSRFProtectionTests(TestCase):
         resp = self.csrf_client.post(
             reverse("api_register"),
             data=json.dumps(
-                {"email": "new@nyu.edu", "password": "StrongPass!1", "first_name": "New"}
+                {
+                    "email": "new@nyu.edu",
+                    "password": "StrongPass!1",
+                    "first_name": "New",
+                }
             ),
             content_type="application/json",
             HTTP_X_CSRFTOKEN=token,
