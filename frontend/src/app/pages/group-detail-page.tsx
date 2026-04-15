@@ -99,6 +99,7 @@ export function GroupDetailPage() {
     description: string;
     onConfirm: () => Promise<void>;
   }>({ open: false, title: '', description: '', onConfirm: async () => {} });
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const group = groups.find((g) => g.id === groupId);
   const groupEvents = swipeEvents.filter(
@@ -812,16 +813,20 @@ export function GroupDetailPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={isConfirming}
               onClick={async () => {
+                setIsConfirming(true);
                 setConfirmDialog((d) => ({ ...d, open: false }));
                 try {
                   await confirmDialog.onConfirm();
                 } catch (e) {
                   toast.error((e as Error).message);
+                } finally {
+                  setIsConfirming(false);
                 }
               }}
             >
-              Confirm
+              {isConfirming ? 'Confirming…' : 'Confirm'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1298,6 +1298,7 @@ class VenueManagerProfileTests(TestCase):
             user=self.user, business_name="Joe's Diner"
         )
         self.assertIn("Joe's Diner", str(profile))
+        self.assertIn(self.user.email, str(profile))
 
 
 # ---------------------------------------------------------------------------
