@@ -1,10 +1,10 @@
 # MealSwipe — Frontend
 
-React 19 + TypeScript + Vite 8 SPA for the MealSwipe application.
+React 18 + TypeScript + Vite SPA for the MealSwipe application.
 
 ## Stack
 
-- **React 19** with TypeScript
+- **React 18** with TypeScript
 - **Vite 8** (Rolldown-based) for bundling and dev server
 - **Tailwind CSS v4** for styling
 - **shadcn/ui** component library (Radix UI primitives)

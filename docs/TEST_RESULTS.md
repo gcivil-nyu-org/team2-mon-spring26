@@ -55,7 +55,7 @@ all `@csrf_exempt` decorators in WS1.
 | `POST /api/auth/logout/`         | 403           | 200        | ✅ Pass    |
 | `PATCH /api/auth/preferences/`   | 403           | 200        | ✅ Pass    |
 | `POST /api/auth/request-password-reset/` | 403   | 200        | ✅ Pass    |
-| **Total**                        | **6 reject**  | **5 accept**| **✅ All pass** |
+| **Total**                        | **5 reject**  | **5 accept**| **✅ All pass** |
 
 ### Coverage by feature
 

@@ -154,7 +154,6 @@ export interface AppContextType extends AuthContextType {
   fetchSwipeEvents: (groupId: string, signal?: AbortSignal) => Promise<void>;
   currentSwipeEvent: SwipeEvent | null;
   setCurrentSwipeEvent: (event: SwipeEvent | null) => void;
-  swipes: Record<string, Swipe[]>;
   addSwipe: (eventId: string, groupId: string, venueId: string, direction: 'left' | 'right') => Promise<void>;
   fetchSwipeVenues: (groupId: string, eventId: string) => Promise<Restaurant[]>;
   fetchMatchResults: (groupId: string, eventId: string) => Promise<{
@@ -196,7 +195,7 @@ function AppInner({ children }: { children: ReactNode }) {
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [swipeEvents, setSwipeEvents] = useState<SwipeEvent[]>([]);
   const [currentSwipeEvent, setCurrentSwipeEvent] = useState<SwipeEvent | null>(null);
-  const swipes: Record<string, Swipe[]> = {};
+
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
   const [dmConversations, setDMConversations] = useState<DMConversation[]>([]);
   const [chatMutedParticipants, setChatMutedParticipants] = useState<Record<string, string[]>>({});
@@ -842,7 +841,6 @@ function AppInner({ children }: { children: ReactNode }) {
         fetchSwipeEvents,
         currentSwipeEvent,
         setCurrentSwipeEvent,
-        swipes,
         addSwipe,
         fetchSwipeVenues,
         fetchMatchResults,
