@@ -97,8 +97,8 @@ export function GroupDetailPage() {
     open: boolean;
     title: string;
     description: string;
-    onConfirm: () => void;
-  }>({ open: false, title: '', description: '', onConfirm: () => {} });
+    onConfirm: () => Promise<void>;
+  }>({ open: false, title: '', description: '', onConfirm: async () => {} });
 
   const group = groups.find((g) => g.id === groupId);
   const groupEvents = swipeEvents.filter(
@@ -812,9 +812,13 @@ export function GroupDetailPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700 text-white"
-              onClick={() => {
+              onClick={async () => {
                 setConfirmDialog((d) => ({ ...d, open: false }));
-                confirmDialog.onConfirm();
+                try {
+                  await confirmDialog.onConfirm();
+                } catch (e) {
+                  toast.error((e as Error).message);
+                }
               }}
             >
               Confirm

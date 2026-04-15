@@ -196,7 +196,7 @@ function AppInner({ children }: { children: ReactNode }) {
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [swipeEvents, setSwipeEvents] = useState<SwipeEvent[]>([]);
   const [currentSwipeEvent, setCurrentSwipeEvent] = useState<SwipeEvent | null>(null);
-  const [swipes] = useState<Record<string, Swipe[]>>({});
+  const swipes: Record<string, Swipe[]> = {};
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
   const [dmConversations, setDMConversations] = useState<DMConversation[]>([]);
   const [chatMutedParticipants, setChatMutedParticipants] = useState<Record<string, string[]>>({});
