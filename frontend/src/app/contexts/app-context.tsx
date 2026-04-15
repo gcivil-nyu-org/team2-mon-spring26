@@ -681,8 +681,8 @@ function AppInner({ children }: { children: ReactNode }) {
       body: JSON.stringify({ venue_id: Number(venueId), direction }),
     });
     if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || 'Failed to submit swipe');
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to submit swipe (${res.status})`);
     }
   };
 

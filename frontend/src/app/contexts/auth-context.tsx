@@ -132,11 +132,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
       body: JSON.stringify({ email, password }),
     });
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (response.ok && data.success) {
       setCurrentUser(normalizeApiUser(data.user));
     } else {
-      throw new Error(data.error || 'Login failed');
+      throw new Error(data.error || `Login failed (${response.status})`);
     }
   };
 
@@ -148,11 +148,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
       body: JSON.stringify(userData),
     });
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (response.ok && data.success) {
       setCurrentUser(normalizeApiUser(data.user));
     } else {
-      let errorMessage = data.error || 'Registration failed';
+      let errorMessage = data.error || `Registration failed (${response.status})`;
       if (data.errors && typeof data.errors === 'object') {
         const firstKey = Object.keys(data.errors)[0];
         if (firstKey && data.errors[firstKey]?.length > 0) {

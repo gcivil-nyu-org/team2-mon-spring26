@@ -4,7 +4,7 @@ import { afterEach, vi } from 'vitest';
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.restoreAllMocks(); // restores spies created with vi.spyOn, clears all mocks
 });
 
 // Default fetch mock so AppProvider's session check doesn't hit the network.

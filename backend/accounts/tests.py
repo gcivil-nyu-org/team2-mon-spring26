@@ -1328,11 +1328,16 @@ class CSRFProtectionTests(TestCase):
     def _login_session(self):
         """Log the test user in via the normal login endpoint (requires CSRF)."""
         token = self._get_csrf_token()
-        self.csrf_client.post(
+        resp = self.csrf_client.post(
             reverse("api_login"),
             data=json.dumps({"email": "csrf@nyu.edu", "password": "StrongPass!1"}),
             content_type="application/json",
             HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(
+            resp.status_code,
+            200,
+            f"CSRF login precondition failed (status {resp.status_code}): {resp.content!r}",
         )
 
     # --- api_me sets CSRF cookie (GET, no token needed) ---

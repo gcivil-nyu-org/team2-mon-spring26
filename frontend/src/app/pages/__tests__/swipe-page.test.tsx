@@ -127,7 +127,6 @@ describe('SwipePage Fixed Behaviors', () => {
       // And then navigated straight to Match page as configured
       expect(mockNavigate).toHaveBeenCalledWith('/match/event1');
     });
-
-    toastSpy.mockRestore();
+    // spy is restored automatically by vi.restoreAllMocks() in afterEach (setup.ts)
   });
 });
