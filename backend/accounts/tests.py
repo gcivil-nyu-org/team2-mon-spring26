@@ -1323,7 +1323,9 @@ class CSRFProtectionTests(TestCase):
     def _get_csrf_token(self):
         """Hit api_me (ensure_csrf_cookie) to receive a CSRF cookie, then return it."""
         resp = self.csrf_client.get(reverse("api_me"))
-        return resp.cookies.get("csrftoken", "").value
+        cookie = resp.cookies.get("csrftoken")
+        self.assertIsNotNone(cookie, "api_me did not set a csrftoken cookie")
+        return cookie.value
 
     def _login_session(self):
         """Log the test user in via the normal login endpoint (requires CSRF)."""

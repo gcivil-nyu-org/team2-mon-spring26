@@ -114,6 +114,7 @@ export function AdminVenueEditPage() {
   const [dietaryTags, setDietaryTags] = useState<string[]>([]);
   const [foodTypeTags, setFoodTypeTags] = useState<string[]>([]);
   const [showRemoveManagerDialog, setShowRemoveManagerDialog] = useState(false);
+  const [removingManager, setRemovingManager] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -240,6 +241,8 @@ export function AdminVenueEditPage() {
   ]);
 
   const handleRemoveManager = async () => {
+    setShowRemoveManagerDialog(false);
+    setRemovingManager(true);
     try {
       const csrftoken = getCsrf();
       const res = await fetch(apiUrl(`/api/venues/admin/venues/${venueId}/`), {
@@ -260,6 +263,8 @@ export function AdminVenueEditPage() {
     } catch (err) {
       console.error(err);
       toast.error('An error occurred.');
+    } finally {
+      setRemovingManager(false);
     }
   };
 
@@ -671,9 +676,10 @@ export function AdminVenueEditPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={removingManager}
               onClick={handleRemoveManager}
             >
-              Remove Manager
+              {removingManager ? 'Removing…' : 'Remove Manager'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

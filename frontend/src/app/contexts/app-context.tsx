@@ -481,7 +481,7 @@ function AppInner({ children }: { children: ReactNode }) {
 
   const deleteGroup = async (groupId: string): Promise<void> => {
     if (!currentUser) return;
-    const res = await fetch(apiUrl(`/api/groups/${groupId}/`), {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}/delete/`), {
       method: 'DELETE',
       credentials: 'include',
       headers: { 'X-CSRFToken': getCsrf() },
