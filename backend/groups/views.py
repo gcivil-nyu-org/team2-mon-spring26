@@ -111,6 +111,7 @@ def _group_to_json(group):
                 "id": m.user.id,
                 "email": m.user.email,
                 "name": f"{m.user.first_name} {m.user.last_name}".strip(),
+                "photoUrl": getattr(m.user, "photo_url", "") or "",
                 "role": m.role,
                 "join_date": m.join_date.isoformat(),
             }
@@ -894,6 +895,8 @@ def _venue_to_swipe_json(venue):
         "isReservable": venue.is_reservable,
         "googleMapsUrl": venue.google_maps_url or "",
         "hours": venue.hours or {},
+        "phone": venue.phone or "",
+        "website": venue.website or "",
     }
 
 

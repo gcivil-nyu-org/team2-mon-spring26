@@ -37,6 +37,8 @@ export interface Restaurant {
   isReservable?: boolean;
   googleMapsUrl?: string;
   hours?: Record<string, string>;
+  phone?: string;
+  website?: string;
 }
 
 export const mockRestaurants: Restaurant[] = [

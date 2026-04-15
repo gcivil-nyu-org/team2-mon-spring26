@@ -38,6 +38,11 @@ def _message_to_json(message, is_admin=False):
                 else None
             )
         ),
+        "userPhotoUrl": (
+            message.sender.photo_url
+            if message.sender and getattr(message.sender, "photo_url", None)
+            else None
+        ),
         "message": msg_body,
         "timestamp": message.created_at.isoformat().replace("+00:00", "Z"),
         "message_type": message.message_type,

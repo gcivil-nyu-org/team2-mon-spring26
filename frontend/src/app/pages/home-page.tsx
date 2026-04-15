@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router';
 import { useApp } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
+import { UserAvatar } from '@/app/components/user-avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Users, Settings, Hash } from 'lucide-react';
 import { JoinGroupModal } from '@/app/components/join-group-modal';
@@ -101,10 +102,14 @@ export function HomePage() {
                       {group.members.slice(0, 5).map((member) => (
                         <div
                           key={member.userId}
-                          className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 border-2 border-white flex items-center justify-center text-white text-xs"
                           title={member.userName}
+                          className="border-2 border-white rounded-full"
                         >
-                          {member.userName.charAt(0)}
+                          <UserAvatar
+                            photoUrl={member.userPhotoUrl}
+                            name={member.userName}
+                            size={32}
+                          />
                         </div>
                       ))}
                       {group.members.length > 5 && (

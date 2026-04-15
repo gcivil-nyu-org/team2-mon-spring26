@@ -14,6 +14,7 @@ export interface User {
   name: string;
   email: string;
   role?: 'student' | 'venue_manager' | 'admin';
+  photoUrl?: string;
   preferences: {
     cuisines: string[];
     dietary: string[];
@@ -30,6 +31,7 @@ export function normalizeApiUser(apiUser: {
   email: string;
   name: string;
   role?: 'student' | 'venue_manager' | 'admin';
+  photoUrl?: string;
   preferences?: {
     dietary?: string[];
     cuisines?: string[];
@@ -45,6 +47,7 @@ export function normalizeApiUser(apiUser: {
     email: apiUser.email,
     name: apiUser.name,
     role: apiUser.role,
+    photoUrl: apiUser.photoUrl ?? '',
     preferences: {
       cuisines: Array.isArray(prefs.cuisines)
         ? prefs.cuisines
@@ -64,6 +67,7 @@ export function normalizeApiUser(apiUser: {
 export interface GroupMember {
   userId: string;
   userName: string;
+  userPhotoUrl?: string;
   hasFinishedSwiping: boolean;
   isLeader: boolean;
 }
@@ -108,6 +112,7 @@ export interface ChatMessage {
   type: 'user' | 'system';
   userId?: string;
   userName?: string;
+  userPhotoUrl?: string;
   message: string;
   timestamp: string;
 }
@@ -155,6 +160,7 @@ interface BackendMember {
   id: number | string;
   name: string;
   role: string;
+  photoUrl?: string;
 }
 
 interface BackendGroup {
@@ -599,7 +605,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           name: g.name,
           members: g.members.map((m: BackendMember) => ({
             userId: String(m.id),
-            userName: m.name,
+            userName: m.name, userPhotoUrl: m.photoUrl ?? "",
             hasFinishedSwiping: false, // UI abstraction
             isLeader: m.role === 'leader',
           })),
@@ -1009,7 +1015,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       name: newGroupBackend.name,
       members: newGroupBackend.members.map((m: BackendMember) => ({
         userId: String(m.id),
-        userName: m.name,
+        userName: m.name, userPhotoUrl: m.photoUrl ?? "",
         hasFinishedSwiping: false, // UI abstraction
         isLeader: m.role === 'leader',
       })),
@@ -1049,7 +1055,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           name: g.name,
           members: g.members.map((m: BackendMember) => ({
             userId: String(m.id),
-            userName: m.name,
+            userName: m.name, userPhotoUrl: m.photoUrl ?? "",
             hasFinishedSwiping: false,
             isLeader: m.role === 'leader',
           })),

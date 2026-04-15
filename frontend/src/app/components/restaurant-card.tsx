@@ -4,7 +4,7 @@ import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/app/components/ui/dialog';
-import { X, Heart, Info, MapPin, Calendar, AlertTriangle, ExternalLink, Star, Users, Ticket, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { X, Heart, Info, MapPin, Calendar, AlertTriangle, ExternalLink, Star, Users, Ticket, ChevronLeft, ChevronRight, AlertCircle, Phone, Globe, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '@/app/contexts/app-context';
 import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
@@ -537,6 +537,55 @@ export function RestaurantCard({ restaurant, onSwipe, isReadonly = false }: Rest
                 </p>
               </div>
             </div>
+
+            {/* Contact & Hours */}
+            {(restaurant.phone || restaurant.website || (restaurant.hours && Object.keys(restaurant.hours).length > 0)) && (
+              <div>
+                <h3 className="font-semibold mb-2">Contact & Hours</h3>
+                <div className="space-y-2">
+                  {restaurant.phone && (
+                    <p className="text-sm flex items-center gap-2">
+                      <Phone className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                      <a
+                        href={`tel:${restaurant.phone.replace(/\s+/g, '')}`}
+                        className="text-blue-600 hover:underline"
+                      >
+                        {restaurant.phone}
+                      </a>
+                    </p>
+                  )}
+                  {restaurant.website && (
+                    <p className="text-sm flex items-center gap-2">
+                      <Globe className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                      <a
+                        href={restaurant.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline truncate"
+                      >
+                        {restaurant.website.replace(/^https?:\/\//, '')}
+                      </a>
+                    </p>
+                  )}
+                  {restaurant.hours && Object.keys(restaurant.hours).length > 0 && (
+                    <div className="text-sm flex items-start gap-2">
+                      <Clock className="w-4 h-4 flex-shrink-0 text-muted-foreground mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-medium mb-1">Operating Hours</p>
+                        <ul className="space-y-0.5 text-muted-foreground">
+                          {Object.entries(restaurant.hours).map(([day, time]) => (
+                            <li key={day} className="flex justify-between gap-4">
+                              <span className="capitalize">{day}</span>
+                              <span>{time}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Other Features */}
             {restaurant.badges.filter(badge => 
