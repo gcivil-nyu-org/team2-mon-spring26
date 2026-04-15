@@ -3,6 +3,16 @@ from . import views
 
 urlpatterns = [
     path("register/", views.api_register, name="api_register"),
+    path(
+        "admin/users/",
+        views.api_admin_users_list,
+        name="api_admin_users_list",
+    ),
+    path(
+        "admin/users/<int:user_id>/",
+        views.api_admin_user_detail,
+        name="api_admin_user_detail",
+    ),
     path("venue-register/", views.api_venue_register, name="api_venue_register"),
     path("admin-register/", views.api_admin_register, name="api_admin_register"),
     path("login/", views.api_login, name="api_login"),

@@ -13,6 +13,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { ScrollArea } from '@/app/components/ui/scroll-area';
 import { useApp } from '@/app/contexts/app-context';
+import { UserAvatar } from '@/app/components/user-avatar';
 
 type ConversationType = 'group' | 'dm';
 
@@ -96,6 +97,7 @@ export function FloatingChat() {
       type: 'user',
       userId: currentUser.id,
       userName: currentUser.name,
+      userPhotoUrl: currentUser.photoUrl,
       message: newMessage.trim(),
       timestamp: new Date().toISOString()
     });
@@ -206,9 +208,12 @@ export function FloatingChat() {
                             onClick={() => handleStartDM(user.id)}
                             className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
                           >
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-medium">
-                              {user.name.charAt(0)}
-                            </div>
+                            <UserAvatar
+                              photoUrl={user.photoUrl}
+                              name={user.name}
+                              email={user.email}
+                              size={40}
+                            />
                             <div>
                               <p className="font-medium">{user.name}</p>
                               <p className="text-xs text-muted-foreground">{user.email}</p>
@@ -331,52 +336,52 @@ export function FloatingChat() {
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} group/msg relative w-full`}
+                        className={`flex gap-2 ${isCurrentUser ? 'flex-row-reverse' : 'flex-row'} group/msg relative w-full`}
                       >
-                        {!isCurrentUser && (
-                          <span className="text-xs text-muted-foreground mb-1 px-1">
-                            {msg.userName}
-                          </span>
-                        )}
-                        <div className="flex items-center gap-2 w-full justify-end max-w-full">
-                          {!isCurrentUser ? (
-                            <div className="flex items-center gap-2 w-full justify-start">
-                              <div className={`max-w-[75%] rounded-2xl px-4 py-2 bg-muted text-foreground ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
-                                <p className="text-sm break-words">{msg.message}</p>
-                              </div>
-                              {isLeader && msg.message !== '[This message has been deleted]' && selectedChatId && (
-                                <button
-                                  onClick={() => deleteChatMessage(selectedChatId, msg.id)}
-                                  className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
-                                  title="Delete message"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 w-full justify-end">
-                              {isLeader && msg.message !== '[This message has been deleted]' && selectedChatId && (
-                                <button
-                                  onClick={() => deleteChatMessage(selectedChatId, msg.id)}
-                                  className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
-                                  title="Delete message"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                              <div className={`max-w-[75%] rounded-2xl px-4 py-2 bg-purple-600 text-white ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
-                                <p className="text-sm break-words">{msg.message}</p>
-                              </div>
-                            </div>
+                        <UserAvatar
+                          photoUrl={msg.userPhotoUrl}
+                          name={msg.userName}
+                          size={32}
+                          className="flex-shrink-0 mt-5"
+                        />
+                        <div className={`flex-1 min-w-0 flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}>
+                          {!isCurrentUser && (
+                            <span className="text-xs text-muted-foreground mb-1 px-1">
+                              {msg.userName}
+                            </span>
                           )}
+                          <div className="flex items-center gap-2 max-w-full">
+                            {isLeader && msg.message !== '[This message has been deleted]' && selectedChatId && isCurrentUser && (
+                              <button
+                                onClick={() => deleteChatMessage(selectedChatId, msg.id)}
+                                className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                                title="Delete message"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                            <div className={`inline-block rounded-2xl px-4 py-2 max-w-full break-words ${
+                              isCurrentUser ? 'bg-purple-600 text-white' : 'bg-muted text-foreground'
+                            } ${msg.message === '[This message has been deleted]' ? 'italic opacity-60' : ''}`}>
+                              <p className="text-sm">{msg.message}</p>
+                            </div>
+                            {isLeader && msg.message !== '[This message has been deleted]' && selectedChatId && !isCurrentUser && (
+                              <button
+                                onClick={() => deleteChatMessage(selectedChatId, msg.id)}
+                                className="opacity-0 group-hover/msg:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded transition-opacity"
+                                title="Delete message"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground mt-1 px-1">
+                            {new Date(msg.timestamp).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
                         </div>
-                        <span className="text-xs text-muted-foreground mt-1 px-1">
-                          {new Date(msg.timestamp).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </span>
                       </div>
                     );
                   })

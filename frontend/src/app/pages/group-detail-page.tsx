@@ -42,6 +42,7 @@ import {
   MicOff,
 } from "lucide-react";
 import { ChatSidebar } from "@/app/components/chat-sidebar";
+import { UserAvatar } from "@/app/components/user-avatar";
 import { useState, useEffect } from "react";
 
 export function GroupDetailPage() {
@@ -350,9 +351,12 @@ export function GroupDetailPage() {
                         className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white text-sm">
-                            {user.name.charAt(0)}
-                          </div>
+                          <UserAvatar
+                            photoUrl={user.photoUrl}
+                            name={user.name}
+                            email={user.email}
+                            size={40}
+                          />
                           <div>
                             <p className="font-medium text-sm">{user.name}</p>
                             <p className="text-xs text-muted-foreground">{user.email}</p>
@@ -405,9 +409,11 @@ export function GroupDetailPage() {
                   key={member.userId}
                   className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
                 >
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white">
-                    {member.userName.charAt(0)}
-                  </div>
+                  <UserAvatar
+                    photoUrl={member.userPhotoUrl}
+                    name={member.userName}
+                    size={40}
+                  />
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">

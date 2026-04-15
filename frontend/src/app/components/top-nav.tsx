@@ -5,6 +5,7 @@ import { UtensilsCrossed, LogOut, Bell, Check, X, ArrowLeft } from 'lucide-react
 import { Badge } from '@/app/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
 import { ScrollArea } from '@/app/components/ui/scroll-area';
+import { UserAvatar } from '@/app/components/user-avatar';
 
 export function TopNav() {
   const { currentUser, groups, swipeEvents, logout, invitations, acceptInvitation, declineInvitation, swipeNotifications, markSwipeNotificationRead } = useApp();
@@ -95,6 +96,12 @@ export function TopNav() {
             <p className="text-sm font-medium">{currentUser?.name}</p>
             <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
           </div>
+          <UserAvatar
+            photoUrl={currentUser?.photoUrl}
+            name={currentUser?.name}
+            email={currentUser?.email}
+            size={40}
+          />
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="icon" className="relative">

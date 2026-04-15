@@ -28,6 +28,7 @@ export interface VenueManager {
   email: string;
   name: string;
   role: 'venue_manager';
+  photoUrl?: string;
   businessName: string;
   businessEmail: string;
   businessPhone: string;
@@ -379,6 +380,7 @@ function _apiUserToManager(apiUser: {
   email: string;
   name: string;
   role: string;
+  photoUrl?: string;
   venueManager?: {
     businessName: string;
     businessEmail: string;
@@ -391,6 +393,7 @@ function _apiUserToManager(apiUser: {
     email: apiUser.email,
     name: apiUser.name,
     role: 'venue_manager',
+    photoUrl: apiUser.photoUrl ?? '',
     businessName: apiUser.venueManager?.businessName ?? '',
     businessEmail: apiUser.venueManager?.businessEmail ?? '',
     businessPhone: apiUser.venueManager?.businessPhone ?? '',

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '@/app/contexts/app-context';
 import { Button } from '@/app/components/ui/button';
+import { UserAvatar } from '@/app/components/user-avatar';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
@@ -222,9 +223,13 @@ export function CreateGroupPage() {
                             onClick={() => handleAddMember(user.email)}
                             className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors text-left"
                           >
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white text-sm flex-shrink-0">
-                              {user.name.charAt(0)}
-                            </div>
+                            <UserAvatar
+                              photoUrl={user.photoUrl}
+                              name={user.name}
+                              email={user.email}
+                              size={32}
+                              className="flex-shrink-0"
+                            />
                             <div className="min-w-0 flex-1">
                               <p className="font-medium text-sm truncate">{user.name}</p>
                               <p className="text-xs text-muted-foreground truncate">{user.email}</p>
