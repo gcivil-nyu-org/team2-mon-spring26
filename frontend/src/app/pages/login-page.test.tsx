@@ -1,14 +1,6 @@
 /**
  * Login page tests.
- * Cache invalidation comment
- *
  * Run: npm run test:run (from frontend/)
- *
- * Note: Under Vite 8 beta + Vitest, loading app code can trigger SSR-like transform
- * and cause __vite_ssr_exportName__ or undefined component errors. This is an
- * environment/configuration issue, not a bug in this test or app code. To run
- * these tests: use Vite 5 for tests (set "vite": "^5.4.11" in devDependencies) or
- * configure Vitest to disable SSR transform for tests. See docs/TEST_RESULTS.md.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@/test/test-utils';

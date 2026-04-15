@@ -1,11 +1,6 @@
 /**
  * Register page tests.
- *
  * Run: npm run test:run (from frontend/)
- *
- * Note: Under Vite 8 beta + Vitest, component tests may fail due to environment
- * (SSR-like transform), not due to this code. Use Vite 5 for tests or fix config;
- * see docs/TEST_RESULTS.md.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@/test/test-utils';

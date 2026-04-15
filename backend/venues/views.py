@@ -3,7 +3,6 @@ import logging
 import math
 
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
 from django.utils import timezone
 
@@ -98,7 +97,6 @@ def _discount_to_json(discount):
     }
 
 
-@csrf_exempt
 def api_venue_search(request):
     """
     GET /api/venues/search/?q=&borough=
@@ -174,7 +172,6 @@ def api_venue_search(request):
     return JsonResponse({"results": results})
 
 
-@csrf_exempt
 def api_venue_claim(request, venue_id):
     """
     POST /api/venues/<id>/claim/
@@ -224,7 +221,6 @@ def api_venue_claim(request, venue_id):
     return JsonResponse({"success": True, "venue": _venue_to_json(venue)}, status=201)
 
 
-@csrf_exempt
 def api_my_venues(request):
     """
     GET /api/venues/my-venues/
@@ -247,7 +243,6 @@ def api_my_venues(request):
     return JsonResponse({"venues": [_venue_to_json(v) for v in venues]})
 
 
-@csrf_exempt
 def api_venue_detail(request, venue_id):
     """
     GET /api/venues/<id>/
@@ -272,7 +267,6 @@ def api_venue_detail(request, venue_id):
     return JsonResponse({"venue": _venue_to_json(venue)})
 
 
-@csrf_exempt
 def api_venue_discounts(request, venue_id):
     """
     GET  /api/venues/<id>/discounts/  — list discounts
@@ -320,7 +314,6 @@ def api_venue_discounts(request, venue_id):
     return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
-@csrf_exempt
 def api_venue_discount_detail(request, venue_id, discount_id):
     """
     PATCH  /api/venues/<venue_id>/discounts/<discount_id>/  — update
@@ -403,7 +396,6 @@ def _require_admin(request):
     return None
 
 
-@csrf_exempt
 def api_admin_venue_claims(request):
     """
     GET /api/venues/admin/claims/?status=pending&page=1
@@ -484,7 +476,6 @@ def api_admin_venue_claims(request):
     )
 
 
-@csrf_exempt
 def api_admin_venue_claim_action(request, claim_id):
     """
     POST /api/venues/admin/claims/<claim_id>/
@@ -608,7 +599,6 @@ def _admin_venue_to_json(venue):
     }
 
 
-@csrf_exempt
 def api_admin_venue_options(request):
     """
     GET /api/venues/admin/options/
@@ -635,7 +625,6 @@ def api_admin_venue_options(request):
     )
 
 
-@csrf_exempt
 def api_admin_venues(request):
     """
     GET /api/venues/admin/venues/?q=&borough=&page=1
@@ -697,7 +686,6 @@ def api_admin_venues(request):
     )
 
 
-@csrf_exempt
 def api_admin_venue_detail(request, venue_id):
     """
     GET   /api/venues/admin/venues/<id>/  — full venue detail
