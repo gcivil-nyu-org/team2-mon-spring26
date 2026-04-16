@@ -20,6 +20,7 @@ from .forms import UserCreationForm
 from .email_service import send_password_reset_email
 from .models import (
     SANITATION_GRADE_CHOICES,
+    PRICE_RANGE_CHOICES,
     UserPreference,
     VenueManagerProfile,
     DietaryTag,
@@ -31,6 +32,7 @@ from django.utils.text import slugify
 logger = logging.getLogger(__name__)
 
 VALID_SANITATION_GRADES = {choice[0] for choice in SANITATION_GRADE_CHOICES}
+VALID_PRICE_RANGES = {choice[0] for choice in PRICE_RANGE_CHOICES}
 User = get_user_model()
 
 
@@ -69,6 +71,7 @@ def _get_preferences_dict(user):
         "cuisines": list(pref.cuisine_types.values_list("name", flat=True)),
         "foodTypes": list(pref.food_type_tags.values_list("name", flat=True)),
         "minimum_sanitation_grade": pref.minimum_sanitation_grade or "",
+        "price_range": pref.price_range or "",
     }
 
 
@@ -120,10 +123,21 @@ def _set_preferences_from_payload(user, payload):
             )
             tags.append(tag)
         pref.food_type_tags.set(tags)
+    fields_to_save = []
     grade = payload.get("minimum_sanitation_grade")
     if grade is not None and grade in VALID_SANITATION_GRADES:
         pref.minimum_sanitation_grade = grade
-        pref.save(update_fields=["minimum_sanitation_grade", "updated_at"])
+        fields_to_save.append("minimum_sanitation_grade")
+    price_range = payload.get("price_range")
+    if price_range is None:
+        price_range = payload.get("priceRange")
+    if price_range is not None:
+        if price_range == "" or price_range in VALID_PRICE_RANGES:
+            pref.price_range = price_range
+            fields_to_save.append("price_range")
+    if fields_to_save:
+        fields_to_save.append("updated_at")
+        pref.save(update_fields=fields_to_save)
 
 
 def _user_to_json(user):

@@ -5,9 +5,12 @@ import math
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
+from django.db.models import F, prefetch_related_objects
 from django.utils import timezone
 
 from .models import Venue, StudentDiscount, VenueClaim
+from .filters import filter_venues_by_preferences
+from .google_places import bulk_prefetch_photos
 from accounts.models import VenueManagerProfile, CuisineType, DietaryTag, FoodTypeTag
 
 logger = logging.getLogger(__name__)
@@ -838,3 +841,150 @@ def api_admin_venue_detail(request, venue_id):
         return JsonResponse({"success": True, "venue": _admin_venue_to_json(venue)})
 
     return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+# ---------------------------------------------------------------------------
+# Preference preview API
+# ---------------------------------------------------------------------------
+
+
+def _resolve_cuisine_ids(names):
+    if not names:
+        return set()
+    clean = [n.strip() for n in names if isinstance(n, str) and n.strip()]
+    if not clean:
+        return set()
+    return set(
+        CuisineType.objects.filter(name__in=clean).values_list("id", flat=True)
+    )
+
+
+@csrf_exempt
+def api_venue_preview(request):
+    """
+    POST /api/venues/preview/
+
+    Returns the count and (optionally) a page of venues matching the supplied
+    filters. Used by the preference-preview UI in registration and the
+    individual preferences page so users can see how many restaurants their
+    current selection will yield in a swipe session.
+
+    Body:
+        cuisines: list[str]
+        minimumSanitationGrade: str  ("A"|"B"|...)
+        priceRange: str              ("$"|"$$"|...)
+        borough, neighborhood: str   (optional)
+        limit: int = 20
+        offset: int = 0
+        countOnly: bool              (skip list, return count only)
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        data = json.loads(request.body or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    cuisine_ids = _resolve_cuisine_ids(data.get("cuisines") or [])
+    # If user picked cuisines none of which exist in the DB, there are zero
+    # matches — short-circuit to avoid returning everything.
+    cuisines_input = [
+        c for c in (data.get("cuisines") or []) if isinstance(c, str) and c.strip()
+    ]
+    if cuisines_input and not cuisine_ids:
+        return JsonResponse({"success": True, "count": 0, "venues": []})
+
+    min_grade = data.get("minimumSanitationGrade") or None
+    price_range = data.get("priceRange") or ""
+    borough = (data.get("borough") or "").strip() or None
+    neighborhood = (data.get("neighborhood") or "").strip() or None
+    dietary_tag_names = [
+        d for d in (data.get("dietary") or []) if isinstance(d, str) and d.strip()
+    ]
+    food_type_tag_names = [
+        f for f in (data.get("foodTypes") or []) if isinstance(f, str) and f.strip()
+    ]
+
+    qs = filter_venues_by_preferences(
+        cuisine_ids=cuisine_ids,
+        min_grade=min_grade,
+        price_range=price_range or None,
+        borough=borough,
+        neighborhood=neighborhood,
+        dietary_tag_names=dietary_tag_names or None,
+        food_type_tag_names=food_type_tag_names or None,
+        require_photos=False,
+    )
+
+    count = qs.count()
+
+    if data.get("countOnly"):
+        return JsonResponse({"success": True, "count": count, "venues": []})
+
+    try:
+        limit = int(data.get("limit", 20))
+    except (TypeError, ValueError):
+        limit = 20
+    try:
+        offset = int(data.get("offset", 0))
+    except (TypeError, ValueError):
+        offset = 0
+    limit = max(1, min(limit, 50))
+    offset = max(0, offset)
+
+    from groups.views import _venue_to_swipe_json  # avoid circular import at module load
+
+    venues_qs = (
+        qs.select_related("cuisine_type")
+        .prefetch_related(
+            "photos", "dietary_tags", "food_type_tags", "inspections", "discounts"
+        )
+        .order_by(F("google_rating").desc(nulls_last=True))[offset : offset + limit]
+    )
+
+    venues_list = list(venues_qs)
+    venues_data = [_venue_to_swipe_json(v) for v in venues_list]
+    return JsonResponse(
+        {"success": True, "count": count, "venues": venues_data}
+    )
+
+
+@csrf_exempt
+def api_venue_preview_detail(request, venue_id):
+    """
+    GET /api/venues/<id>/preview-detail/
+
+    Returns a single venue serialized in the swipe-card shape, lazily
+    fetching its Google Places photo if not yet cached. Called when the user
+    selects a restaurant from the preview list.
+    """
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        venue = (
+            Venue.objects.select_related("cuisine_type")
+            .prefetch_related(
+                "photos",
+                "dietary_tags",
+                "food_type_tags",
+                "inspections",
+                "discounts",
+            )
+            .get(pk=venue_id, is_active=True)
+        )
+    except Venue.DoesNotExist:
+        return JsonResponse({"error": "Venue not found"}, status=404)
+
+    bulk_prefetch_photos([venue])
+    getattr(venue, "_prefetched_objects_cache", {}).pop("photos", None)
+    prefetch_related_objects([venue], "photos")
+
+    from groups.views import _venue_to_swipe_json
+
+    return JsonResponse({"success": True, "venue": _venue_to_swipe_json(venue)})

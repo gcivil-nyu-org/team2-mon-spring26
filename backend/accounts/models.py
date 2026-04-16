@@ -145,6 +145,14 @@ class FoodTypeTag(models.Model):
         return self.name
 
 
+PRICE_RANGE_CHOICES = [
+    ("$", "$"),
+    ("$$", "$$"),
+    ("$$$", "$$$"),
+    ("$$$$", "$$$$"),
+]
+
+
 class UserPreference(models.Model):
     """Stores personalized restaurant matching filters. One-to-one with User; M2M with DietaryTag, CuisineType, FoodTypeTag."""
 
@@ -157,6 +165,11 @@ class UserPreference(models.Model):
         max_length=10,
         choices=SANITATION_GRADE_CHOICES,
         default="A",
+        blank=True,
+    )
+    price_range = models.CharField(
+        max_length=4,
+        choices=PRICE_RANGE_CHOICES,
         blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)

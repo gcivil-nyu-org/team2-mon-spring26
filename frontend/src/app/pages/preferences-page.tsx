@@ -21,6 +21,7 @@ import {
 import { useApp } from '@/app/contexts/app-context';
 import preferenceOptions from '@/app/data/preference-options.json';
 import { formatSanitationGradeLabel } from '@/app/utils/sanitation-grade';
+import { PreferencePreviewTrigger } from '@/app/components/preference-preview';
 
 const SANITATION_OPTIONS = (preferenceOptions.minimumSanitationGrades ?? []).map(
   (grade) => ({ value: grade, label: formatSanitationGradeLabel(grade) })
@@ -35,12 +36,14 @@ export function PreferencesPage() {
   const [cuisines, setCuisines] = useState<string[]>([]);
   const [foodTypes, setFoodTypes] = useState<string[]>([]);
   const [minimumSanitationGrade, setMinimumSanitationGrade] = useState<string>('A');
+  const [priceRange, setPriceRange] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dietaryList: string[] = preferenceOptions.dietary ?? [];
   const cuisinesList: string[] = preferenceOptions.cuisines ?? [];
   const foodTypesList: string[] = preferenceOptions.foodTypes ?? [];
+  const priceRangeList: string[] = preferenceOptions.priceRanges ?? [];
 
   useEffect(() => {
     if (currentUser?.preferences) {
@@ -48,6 +51,7 @@ export function PreferencesPage() {
       setCuisines(currentUser.preferences.cuisines ?? []);
       setFoodTypes(currentUser.preferences.foodTypes ?? []);
       setMinimumSanitationGrade(currentUser.preferences.minimumSanitationGrade ?? 'A');
+      setPriceRange(currentUser.preferences.priceRange ?? '');
     }
   }, [currentUser]);
 
@@ -76,6 +80,7 @@ export function PreferencesPage() {
         cuisines,
         foodTypes,
         minimumSanitationGrade,
+        priceRange,
       });
       toast.success('Preferences saved.');
     } catch (e) {
@@ -217,11 +222,46 @@ export function PreferencesPage() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Maximum Price Range</CardTitle>
+            <CardDescription>
+              Only show restaurants at or below this price point
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Label htmlFor="priceRange" className="sr-only">
+              Maximum price range
+            </Label>
+            <Select
+              value={priceRange || 'any'}
+              onValueChange={(value) => setPriceRange(value === 'any' ? '' : value)}
+            >
+              <SelectTrigger id="priceRange" className="h-11 max-w-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any price</SelectItem>
+                {priceRangeList.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {p}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+
         {error && (
           <p className="text-sm text-destructive" role="alert">
             {error}
           </p>
         )}
+
+        <PreferencePreviewTrigger
+          mode="user"
+          filters={{ cuisines, dietary, foodTypes, minimumSanitationGrade, priceRange }}
+        />
 
         <div className="grid grid-cols-1 gap-4">
           <Button onClick={handleSave} disabled={saving} className="w-full">

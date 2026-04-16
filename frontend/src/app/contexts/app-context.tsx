@@ -7,6 +7,7 @@ const DEFAULT_PREFERENCES = {
   dietary: [] as string[],
   foodTypes: [] as string[],
   minimumSanitationGrade: 'A' as string,
+  priceRange: '' as string,
 };
 
 export interface User {
@@ -19,6 +20,7 @@ export interface User {
     dietary: string[];
     foodTypes: string[];
     minimumSanitationGrade?: string;
+    priceRange?: string;
   };
   is_invited?: boolean;
 }
@@ -35,6 +37,7 @@ export function normalizeApiUser(apiUser: {
     cuisines?: string[];
     foodTypes?: string[];
     minimum_sanitation_grade?: string;
+    price_range?: string;
   };
   is_invited?: boolean;
 }): User {
@@ -56,6 +59,7 @@ export function normalizeApiUser(apiUser: {
         ? prefs.foodTypes
         : DEFAULT_PREFERENCES.foodTypes,
       minimumSanitationGrade: grade,
+      priceRange: prefs.price_range ?? '',
     },
     is_invited: apiUser.is_invited,
   };
@@ -74,6 +78,16 @@ export interface GroupConstraints {
   foodTypes?: string[];
   minimumSanitationGrade?: string;
   priceRange?: string;
+}
+
+export interface PreviewFilters {
+  cuisines?: string[];
+  dietary?: string[];
+  foodTypes?: string[];
+  minimumSanitationGrade?: string;
+  priceRange?: string;
+  borough?: string;
+  neighborhood?: string;
 }
 
 export interface Group {
@@ -148,6 +162,7 @@ interface RegisterData {
     dietary?: string[];
     foodTypes?: string[];
     minimum_sanitation_grade?: string;
+    price_range?: string;
   };
 }
 
@@ -190,6 +205,7 @@ interface AppContextType {
     cuisines?: string[];
     foodTypes?: string[];
     minimumSanitationGrade?: string;
+    priceRange?: string;
   }) => Promise<void>;
   groups: Group[];
   createGroup: (
@@ -203,10 +219,16 @@ interface AppContextType {
   regenerateJoinCode: (groupId: string) => Promise<string>;
   leaveGroup: (groupId: string) => Promise<void>;
   deleteGroup: (groupId: string) => Promise<void>;
-  updateGroupConstraints: (
+  fetchGroupEffectiveConstraints: (groupId: string) => Promise<GroupConstraints>;
+  fetchGroupPreviewVenues: (
     groupId: string,
-    constraints: GroupConstraints
-  ) => Promise<void>;
+    options?: { countOnly?: boolean; limit?: number; offset?: number; signal?: AbortSignal }
+  ) => Promise<{ count: number; venues: Restaurant[] }>;
+  fetchPreviewVenues: (
+    filters: PreviewFilters,
+    options?: { countOnly?: boolean; limit?: number; offset?: number; signal?: AbortSignal }
+  ) => Promise<{ count: number; venues: Restaurant[] }>;
+  fetchVenuePreviewDetail: (venueId: string) => Promise<Restaurant>;
   removeMember: (groupId: string, userId: string) => Promise<void>;
   makeLeader: (groupId: string, userId: string) => Promise<void>;
   inviteMember: (groupId: string, userEmail: string) => Promise<void>;
@@ -792,6 +814,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     cuisines?: string[];
     foodTypes?: string[];
     minimumSanitationGrade?: string;
+    priceRange?: string;
   }) => {
     const csrftoken = getCookie('csrftoken') || '';
     const body: Record<string, unknown> = {};
@@ -800,6 +823,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (preferences.foodTypes !== undefined) body.foodTypes = preferences.foodTypes;
     if (preferences.minimumSanitationGrade !== undefined) {
       body.minimum_sanitation_grade = preferences.minimumSanitationGrade;
+    }
+    if (preferences.priceRange !== undefined) {
+      body.price_range = preferences.priceRange;
     }
     const response = await fetch(apiUrl('/api/auth/preferences/'), {
       method: 'PATCH',
@@ -1239,44 +1265,121 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateGroupConstraints = async (
-    groupId: string,
-    constraints: GroupConstraints
-  ) => {
-    const csrftoken = getCookie('csrftoken') || '';
-    const body: Record<string, unknown> = {};
-    if (constraints.dietary !== undefined) body.dietary = constraints.dietary;
-    if (constraints.cuisines !== undefined) body.cuisines = constraints.cuisines;
-    if (constraints.foodTypes !== undefined) body.foodTypes = constraints.foodTypes;
-    if (constraints.minimumSanitationGrade !== undefined) {
-      body.minimumSanitationGrade = constraints.minimumSanitationGrade;
-    }
-    const response = await fetch(apiUrl(`/api/groups/${groupId}/constraints/`), {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': csrftoken,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to update constraints');
-    }
-    const data = await response.json();
-    const updatedBg = data.group as BackendGroup;
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === String(updatedBg.id) ? { ...g, constraints: updatedBg.constraints } : g
-      )
-    );
-    if (currentGroup?.id === String(updatedBg.id)) {
-      setCurrentGroup((prev) =>
-        prev ? { ...prev, constraints: updatedBg.constraints } : null
+  const fetchGroupEffectiveConstraints = useCallback(
+    async (groupId: string): Promise<GroupConstraints> => {
+      const response = await fetch(
+        apiUrl(`/api/groups/${groupId}/effective-constraints/`),
+        { credentials: 'include' }
       );
-    }
-  };
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch group constraints');
+      }
+      const data = await response.json();
+      return data.constraints as GroupConstraints;
+    },
+    []
+  );
+
+  const fetchGroupPreviewVenues = useCallback(
+    async (
+      groupId: string,
+      options: {
+        countOnly?: boolean;
+        limit?: number;
+        offset?: number;
+        signal?: AbortSignal;
+      } = {}
+    ): Promise<{ count: number; venues: Restaurant[] }> => {
+      const params = new URLSearchParams();
+      if (options.countOnly) params.set('countOnly', '1');
+      if (options.limit !== undefined) params.set('limit', String(options.limit));
+      if (options.offset !== undefined) params.set('offset', String(options.offset));
+      const qs = params.toString();
+      const url = apiUrl(
+        `/api/groups/${groupId}/preview-venues/${qs ? `?${qs}` : ''}`
+      );
+      const response = await fetch(url, {
+        credentials: 'include',
+        signal: options.signal,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch preview venues');
+      }
+      const data = await response.json();
+      return {
+        count: data.count as number,
+        venues: data.venues as Restaurant[],
+      };
+    },
+    []
+  );
+
+  const fetchPreviewVenues = useCallback(
+    async (
+      filters: PreviewFilters,
+      options: {
+        countOnly?: boolean;
+        limit?: number;
+        offset?: number;
+        signal?: AbortSignal;
+      } = {}
+    ): Promise<{ count: number; venues: Restaurant[] }> => {
+      const csrftoken = getCookie('csrftoken') || '';
+      const body: Record<string, unknown> = {
+        cuisines: filters.cuisines ?? [],
+        dietary: filters.dietary ?? [],
+        foodTypes: filters.foodTypes ?? [],
+      };
+      if (filters.minimumSanitationGrade) {
+        body.minimumSanitationGrade = filters.minimumSanitationGrade;
+      }
+      if (filters.priceRange) body.priceRange = filters.priceRange;
+      if (filters.borough) body.borough = filters.borough;
+      if (filters.neighborhood) body.neighborhood = filters.neighborhood;
+      if (options.countOnly) body.countOnly = true;
+      if (options.limit !== undefined) body.limit = options.limit;
+      if (options.offset !== undefined) body.offset = options.offset;
+
+      const response = await fetch(apiUrl('/api/venues/preview/'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch preview venues');
+      }
+      const data = await response.json();
+      return {
+        count: data.count as number,
+        venues: data.venues as Restaurant[],
+      };
+    },
+    []
+  );
+
+  const fetchVenuePreviewDetail = useCallback(
+    async (venueId: string): Promise<Restaurant> => {
+      const response = await fetch(
+        apiUrl(`/api/venues/${venueId}/preview-detail/`),
+        { credentials: 'include' }
+      );
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch venue detail');
+      }
+      const data = await response.json();
+      return data.venue as Restaurant;
+    },
+    []
+  );
 
   const makeLeader = async (groupId: string, userId: string): Promise<void> => {
     if (!currentUser) return;
@@ -1674,7 +1777,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         regenerateJoinCode,
         leaveGroup,
         deleteGroup,
-        updateGroupConstraints,
+        fetchGroupEffectiveConstraints,
+        fetchGroupPreviewVenues,
+        fetchPreviewVenues,
+        fetchVenuePreviewDetail,
         removeMember,
         makeLeader,
         inviteMember,

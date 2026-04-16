@@ -1515,3 +1515,109 @@ class ReviewCommentTests(TestCase):
         comments = list(self.review.comments.all())
         self.assertEqual(comments[0].content, "First")
         self.assertEqual(comments[1].content, "Second")
+
+
+class StrictPreferenceFilterTest(TestCase):
+    """Covers the STRICT_PREFERENCE_FILTERS toggle in filter_venues_by_preferences.
+
+    Dietary and food-type tags are inclusive-OR: a venue passes if it matches
+    at least one selected tag in each list. Both filters are applied only when
+    the settings flag is True; otherwise the arguments are ignored.
+    """
+
+    def setUp(self):
+        self.vegetarian = DietaryTag.objects.create(name="Vegetarian")
+        self.halal = DietaryTag.objects.create(name="Halal")
+        self.kosher = DietaryTag.objects.create(name="Kosher")
+
+        self.pizza = FoodTypeTag.objects.create(name="Pizza")
+        self.burgers = FoodTypeTag.objects.create(name="Burgers")
+        self.salads = FoodTypeTag.objects.create(name="Salads")
+
+        # All venues get a google_place_id so the default require_photos
+        # filter doesn't strip them out.
+        def make_venue(name):
+            return Venue.objects.create(
+                name=name,
+                is_active=True,
+                google_place_id=f"place-{name.lower().replace(' ', '-')}",
+            )
+
+        self.veg_venue = make_venue("Veg Place")
+        self.veg_venue.dietary_tags.add(self.vegetarian)
+
+        self.halal_venue = make_venue("Halal Place")
+        self.halal_venue.dietary_tags.add(self.halal)
+
+        self.kosher_venue = make_venue("Kosher Place")
+        self.kosher_venue.dietary_tags.add(self.kosher)
+
+        self.pizza_venue = make_venue("Pizza Place")
+        self.pizza_venue.food_type_tags.add(self.pizza)
+
+        self.burger_venue = make_venue("Burger Place")
+        self.burger_venue.food_type_tags.add(self.burgers)
+
+        self.salad_venue = make_venue("Salad Place")
+        self.salad_venue.food_type_tags.add(self.salads)
+
+        self.veg_pizza_venue = make_venue("Veg Pizza Place")
+        self.veg_pizza_venue.dietary_tags.add(self.vegetarian)
+        self.veg_pizza_venue.food_type_tags.add(self.pizza)
+
+    @override_settings(STRICT_PREFERENCE_FILTERS=True)
+    def test_dietary_filter_is_inclusive_or(self):
+        from venues.filters import filter_venues_by_preferences
+
+        qs = filter_venues_by_preferences(
+            dietary_tag_names=["Vegetarian", "Halal"],
+            require_photos=False,
+        )
+        names = set(qs.values_list("name", flat=True))
+        self.assertIn("Veg Place", names)
+        self.assertIn("Halal Place", names)
+        self.assertIn("Veg Pizza Place", names)
+        self.assertNotIn("Kosher Place", names)
+
+    @override_settings(STRICT_PREFERENCE_FILTERS=True)
+    def test_food_type_filter_is_inclusive_or(self):
+        from venues.filters import filter_venues_by_preferences
+
+        qs = filter_venues_by_preferences(
+            food_type_tag_names=["Pizza", "Burgers"],
+            require_photos=False,
+        )
+        names = set(qs.values_list("name", flat=True))
+        self.assertIn("Pizza Place", names)
+        self.assertIn("Burger Place", names)
+        self.assertIn("Veg Pizza Place", names)
+        self.assertNotIn("Salad Place", names)
+
+    @override_settings(STRICT_PREFERENCE_FILTERS=True)
+    def test_dietary_and_food_type_filters_combine(self):
+        from venues.filters import filter_venues_by_preferences
+
+        qs = filter_venues_by_preferences(
+            dietary_tag_names=["Vegetarian"],
+            food_type_tag_names=["Pizza"],
+            require_photos=False,
+        )
+        names = set(qs.values_list("name", flat=True))
+        # Veg Pizza Place is the only venue tagged both Vegetarian AND Pizza;
+        # Veg Place passes dietary but is not a Pizza venue; Pizza Place is
+        # Pizza but has no dietary tag.
+        self.assertEqual(names, {"Veg Pizza Place"})
+
+    @override_settings(STRICT_PREFERENCE_FILTERS=False)
+    def test_flag_off_ignores_tag_filters(self):
+        from venues.filters import filter_venues_by_preferences
+
+        qs = filter_venues_by_preferences(
+            dietary_tag_names=["Nonexistent"],
+            food_type_tag_names=["Nonexistent"],
+            require_photos=False,
+        )
+        # With the flag off, the tag args are ignored entirely — all active
+        # venues with a google_place_id come back.
+        names = set(qs.values_list("name", flat=True))
+        self.assertEqual(len(names), 7)

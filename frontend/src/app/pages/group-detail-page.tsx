@@ -20,14 +20,6 @@ import { Input } from "@/app/components/ui/input";
 import { Badge } from "@/app/components/ui/badge";
 import { Label } from "@/app/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/app/components/ui/select";
-import preferenceOptions from '@/app/data/preference-options.json';
-import {
   Plus,
   Users,
   History,
@@ -40,9 +32,12 @@ import {
   Settings2,
   Mic,
   MicOff,
+  Copy,
+  Check,
 } from "lucide-react";
 import { ChatSidebar } from "@/app/components/chat-sidebar";
-import { useState, useEffect } from "react";
+import { PreferencePreviewTrigger } from "@/app/components/preference-preview";
+import { useState, useEffect, useRef } from "react";
 
 export function GroupDetailPage() {
   const { groupId } = useParams();
@@ -63,7 +58,7 @@ export function GroupDetailPage() {
     deleteGroup,
     removeMember,
     makeLeader,
-    updateGroupConstraints,
+    fetchGroupEffectiveConstraints,
     chatMutedParticipants,
     toggleMuteChatMember,
     openUserDM,
@@ -75,13 +70,16 @@ export function GroupDetailPage() {
   const [pendingInvites, setPendingInvites] = useState<Set<string>>(new Set());
   const [inviteSuccessMsg, setInviteSuccessMsg] = useState<string | null>(null);
   const [regeneratingCode, setRegeneratingCode] = useState(false);
+  const [copiedJoinCode, setCopiedJoinCode] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const [dietary, setDietary] = useState<string[]>([]);
   const [cuisines, setCuisines] = useState<string[]>([]);
   const [foodTypes, setFoodTypes] = useState<string[]>([]);
   const [minimumSanitationGrade, setMinimumSanitationGrade] = useState<string>('A');
-  const [priceRange, setPriceRange] = useState<string>('any');
-  const [savingConstraints, setSavingConstraints] = useState(false);
+  const [priceRange, setPriceRange] = useState<string>('');
+  const [constraintsLoading, setConstraintsLoading] = useState(false);
+  const [constraintsError, setConstraintsError] = useState<string | null>(null);
 
   const group = groups.find((g) => g.id === groupId);
   const groupEvents = swipeEvents.filter(
@@ -96,20 +94,30 @@ export function GroupDetailPage() {
   }, [groupId, fetchSwipeEvents]);
 
   useEffect(() => {
-    if (showConstraintsDialog && group?.constraints) {
-      setDietary(group.constraints.dietary ?? []);
-      setCuisines(group.constraints.cuisines ?? []);
-      setFoodTypes(group.constraints.foodTypes ?? []);
-      setMinimumSanitationGrade(group.constraints.minimumSanitationGrade ?? 'A');
-      setPriceRange(group.constraints.priceRange || 'any');
-    } else if (showConstraintsDialog) {
-      setDietary([]);
-      setCuisines([]);
-      setFoodTypes([]);
-      setMinimumSanitationGrade('A');
-      setPriceRange('any');
-    }
-  }, [showConstraintsDialog, group]);
+    if (!showConstraintsDialog || !group) return;
+    let cancelled = false;
+    setConstraintsLoading(true);
+    setConstraintsError(null);
+    fetchGroupEffectiveConstraints(group.id)
+      .then((c) => {
+        if (cancelled) return;
+        setDietary(c.dietary ?? []);
+        setCuisines(c.cuisines ?? []);
+        setFoodTypes(c.foodTypes ?? []);
+        setMinimumSanitationGrade(c.minimumSanitationGrade ?? 'A');
+        setPriceRange(c.priceRange ?? '');
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setConstraintsError((e as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setConstraintsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showConstraintsDialog, group, fetchGroupEffectiveConstraints]);
 
   // Check if current user is a leader
   const isLeader = group?.members.find(m => m.userId === currentUser?.id)?.isLeader || false;
@@ -123,6 +131,12 @@ export function GroupDetailPage() {
       return () => clearTimeout(timer);
     }
   }, [searchEmail, showInviteDialog, group, fetchAvailableUsers]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   // Get all available users to invite (excluding current members)
   const availableUsers = getAllUsers().filter(
@@ -158,6 +172,18 @@ export function GroupDetailPage() {
     navigate(`/group/${group.id}/plan`);
   };
 
+  const handleCopyJoinCode = async () => {
+    if (!group?.joinCode) return;
+    try {
+      await navigator.clipboard.writeText(group.joinCode);
+      setCopiedJoinCode(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopiedJoinCode(false), 1500);
+    } catch {
+      // clipboard API unavailable (insecure context / old browser) — no-op
+    }
+  };
+
   const handleRegenerateCode = async () => {
     if (!group) return;
     setRegeneratingCode(true);
@@ -167,21 +193,6 @@ export function GroupDetailPage() {
       alert("Failed to regenerate code: " + (e instanceof Error ? e.message : "Unknown error"));
     } finally {
       setRegeneratingCode(false);
-    }
-  };
-
-  const handleSaveConstraints = async () => {
-    if (!group) return;
-    setSavingConstraints(true);
-    try {
-      await updateGroupConstraints(group.id, {
-        dietary, cuisines, foodTypes, minimumSanitationGrade, priceRange: priceRange === 'any' ? '' : priceRange
-      });
-      setShowConstraintsDialog(false);
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setSavingConstraints(false);
     }
   };
 
@@ -300,10 +311,27 @@ export function GroupDetailPage() {
                                 {group.joinCode || "------"}
                             </span>
                         </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-12 px-3 shadow-sm"
+                            onClick={handleCopyJoinCode}
+                            disabled={!group.joinCode}
+                            aria-label={copiedJoinCode ? "Copied" : "Copy join code"}
+                        >
+                            {copiedJoinCode ? (
+                                <Check className="w-4 h-4" />
+                            ) : (
+                                <Copy className="w-4 h-4" />
+                            )}
+                            <span className="sr-only">
+                                {copiedJoinCode ? "Copied" : "Copy join code"}
+                            </span>
+                        </Button>
                         {isLeader && (
-                            <Button 
-                                variant="outline" 
-                                className="h-12 px-4 shadow-sm" 
+                            <Button
+                                variant="outline"
+                                className="h-12 px-4 shadow-sm"
                                 onClick={handleRegenerateCode}
                                 disabled={regeneratingCode}
                             >
@@ -561,7 +589,7 @@ export function GroupDetailPage() {
                   </div>
                   <CardTitle className="mb-2">Dietary Settings</CardTitle>
                   <CardDescription className="text-emerald-100">
-                    {isLeader ? "Manage group food filters" : "View group food filters"}
+                    View combined group food filters
                   </CardDescription>
                 </CardHeader>
               </Card>
@@ -570,130 +598,106 @@ export function GroupDetailPage() {
               <DialogHeader>
                 <DialogTitle>Group Dietary Constraints</DialogTitle>
                 <DialogDescription>
-                  {isLeader ? "As a leader, you can set restrictions for the whole group matching algorithm." : "These are the constraints set by the group leaders."}
+                  These are derived from every member&rsquo;s individual preferences. To
+                  change them, members should update their own preferences.
                 </DialogDescription>
               </DialogHeader>
+              {constraintsError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {constraintsError}
+                </p>
+              )}
               <div className="grid gap-6 py-4">
                 {/* cuisines */}
                 <div className="space-y-3">
-                  <Label>Cuisines</Label>
+                  <Label>Cuisines (union of members)</Label>
                   <div className="flex flex-wrap gap-2">
-                    {preferenceOptions.cuisines.map(c => {
-                      const isSelected = cuisines.includes(c);
-                      return (
+                    {cuisines.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        {constraintsLoading ? 'Loading…' : 'No cuisine preferences set.'}
+                      </p>
+                    ) : (
+                      cuisines.map((c) => (
                         <Badge
-                          asChild
                           key={c}
-                          variant={isSelected ? "default" : "secondary"}
-                          className={`text-sm py-1.5 px-4 transition-colors ${isSelected ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
+                          variant="default"
+                          className="text-sm py-1.5 px-4 bg-zinc-950 text-zinc-50 border-transparent"
                         >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!isLeader) return;
-                              setCuisines(prev =>
-                                prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c],
-                              );
-                            }}
-                            disabled={!isLeader}
-                            aria-disabled={!isLeader}
-                            aria-pressed={isSelected}
-                          >
-                            {c}
-                          </button>
+                          {c}
                         </Badge>
-                      );
-                    })}
+                      ))
+                    )}
                   </div>
                 </div>
                 {/* dietary */}
                 <div className="space-y-3">
-                  <Label>Dietary Restrictions</Label>
+                  <Label>Dietary Restrictions (union of members)</Label>
                   <div className="flex flex-wrap gap-2">
-                    {preferenceOptions.dietary.map(d => {
-                      const isSelected = dietary.includes(d);
-                      return (
+                    {dietary.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        {constraintsLoading ? 'Loading…' : 'No dietary restrictions.'}
+                      </p>
+                    ) : (
+                      dietary.map((d) => (
                         <Badge
-                          asChild
                           key={d}
-                          variant={isSelected ? "default" : "secondary"}
-                          className={`text-sm py-1.5 px-4 transition-colors ${isSelected ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
+                          variant="default"
+                          className="text-sm py-1.5 px-4 bg-zinc-950 text-zinc-50 border-transparent"
                         >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!isLeader) return;
-                              setDietary(prev =>
-                                prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d],
-                              );
-                            }}
-                            disabled={!isLeader}
-                            aria-disabled={!isLeader}
-                            aria-pressed={isSelected}
-                          >
-                            {d}
-                          </button>
+                          {d}
                         </Badge>
-                      );
-                    })}
+                      ))
+                    )}
                   </div>
                 </div>
                 {/* foodTypes */}
                 <div className="space-y-3">
-                  <Label>Food Types</Label>
+                  <Label>Food Types (union of members)</Label>
                   <div className="flex flex-wrap gap-2">
-                    {preferenceOptions.foodTypes.map(ft => (
-                      <Badge 
-                        key={ft}
-                        variant={foodTypes.includes(ft) ? "default" : "secondary"}
-                        className={`text-sm py-1.5 px-4 transition-colors ${foodTypes.includes(ft) ? 'bg-zinc-950 text-zinc-50 border-transparent shadow-sm' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} ${isLeader ? 'cursor-pointer hover:opacity-80' : ''}`}
-                        onClick={() => {
-                          if (!isLeader) return;
-                          setFoodTypes(prev => prev.includes(ft) ? prev.filter(x => x !== ft) : [...prev, ft])
-                        }}
-                      >
-                        {ft}
-                      </Badge>
-                    ))}
+                    {foodTypes.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        {constraintsLoading ? 'Loading…' : 'No food type preferences set.'}
+                      </p>
+                    ) : (
+                      foodTypes.map((ft) => (
+                        <Badge
+                          key={ft}
+                          variant="default"
+                          className="text-sm py-1.5 px-4 bg-zinc-950 text-zinc-50 border-transparent"
+                        >
+                          {ft}
+                        </Badge>
+                      ))
+                    )}
                   </div>
                 </div>
                 {/* sanitation */}
                 <div className="space-y-3">
-                  <Label>Minimum Sanitation Grade</Label>
-                  <Select disabled={!isLeader} value={minimumSanitationGrade} onValueChange={setMinimumSanitationGrade}>
-                    <SelectTrigger className="max-w-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {preferenceOptions.minimumSanitationGrades.map(sg => (
-                        <SelectItem key={sg} value={sg}>{sg}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Minimum Sanitation Grade (strictest member wins)</Label>
+                  <p className="text-sm font-medium">{minimumSanitationGrade}</p>
                 </div>
                 {/* priceRange */}
                 <div className="space-y-3">
-                  <Label>Maximum Price Range</Label>
-                  <Select disabled={!isLeader} value={priceRange} onValueChange={setPriceRange}>
-                    <SelectTrigger className="max-w-xs">
-                      <SelectValue placeholder="Any Price" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="any">Any Price</SelectItem>
-                      {preferenceOptions.priceRanges.map(pr => (
-                        <SelectItem key={pr} value={pr}>{pr}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Maximum Price Range (tightest budget wins)</Label>
+                  <p className="text-sm font-medium">
+                    {priceRange || 'Any price'}
+                  </p>
                 </div>
+
+                {group && (
+                  <PreferencePreviewTrigger
+                    mode="group"
+                    groupId={group.id}
+                    filters={{
+                      cuisines,
+                      dietary,
+                      foodTypes,
+                      minimumSanitationGrade,
+                      priceRange,
+                    }}
+                  />
+                )}
               </div>
-              {isLeader && (
-                <div className="flex justify-end pt-4 mt-auto">
-                  <Button disabled={savingConstraints} onClick={handleSaveConstraints}>
-                    {savingConstraints ? 'Saving...' : 'Save Constraints'}
-                  </Button>
-                </div>
-              )}
             </DialogContent>
           </Dialog>
         </div>

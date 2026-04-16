@@ -27,6 +27,7 @@ const dietaryCatalog: string[] = preferenceOptions.dietary ?? [];
 const cuisineCatalog: string[] = preferenceOptions.cuisines ?? [];
 const foodTypeCatalog: string[] = preferenceOptions.foodTypes ?? [];
 const sanitationCatalog: string[] = preferenceOptions.minimumSanitationGrades ?? [];
+const priceRangeCatalog: string[] = preferenceOptions.priceRanges ?? [];
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -43,6 +44,7 @@ export function RegisterPage() {
   const [step, setStep] = useState<'account' | 'preferences'>('account');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [minimumSanitationGrade, setMinimumSanitationGrade] = useState<string>('A');
+  const [selectedPriceRange, setSelectedPriceRange] = useState<string>('');
 
   const toggleDietary = (option: string) => {
     setSelectedDietary((prev) =>
@@ -110,6 +112,7 @@ export function RegisterPage() {
           dietary: selectedDietary,
           foodTypes: selectedFoodTypes,
           minimum_sanitation_grade: minimumSanitationGrade,
+          price_range: selectedPriceRange,
         },
       });
       navigate('/home');
@@ -319,6 +322,37 @@ export function RegisterPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="priceRange">Maximum Price Range</Label>
+                <p className="text-xs text-muted-foreground">
+                  Only show restaurants at or below this price point
+                </p>
+                <Select
+                  value={selectedPriceRange || 'any'}
+                  onValueChange={(value) =>
+                    setSelectedPriceRange(value === 'any' ? '' : value)
+                  }
+                >
+                  <SelectTrigger id="priceRange" className="h-11 max-w-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any price</SelectItem>
+                    {priceRangeCatalog.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50/60 p-4 text-sm text-zinc-700">
+                After you finish signing up, you can preview the exact
+                restaurants that match your preferences from the Preferences
+                page.
               </div>
 
               <div className="flex gap-3">

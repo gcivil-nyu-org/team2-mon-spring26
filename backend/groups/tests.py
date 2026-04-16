@@ -124,33 +124,14 @@ class GroupAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("only leader", response.json()["error"])
 
-    def test_update_group_constraints_as_leader(self):
-        group = Group.objects.create(name="Constraint Club", created_by=self.user1)
-        GroupMembership.objects.create(
-            user=self.user1, group=group, role=GroupMembership.Role.LEADER
+    def test_effective_constraints_aggregates_from_members(self):
+        from accounts.models import (
+            UserPreference,
+            CuisineType,
+            DietaryTag,
+            FoodTypeTag,
         )
-        self.client.login(email="alice@example.com", password="password123")
-        response = self.client.patch(
-            f"/api/groups/{group.id}/constraints/",
-            json.dumps(
-                {
-                    "dietary": ["Vegetarian"],
-                    "cuisines": ["Italian"],
-                    "foodTypes": ["Breakfast"],
-                    "minimumSanitationGrade": "B",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        group.refresh_from_db()
-        self.assertEqual(group.constraints.minimum_sanitation_grade, "B")
-        self.assertTrue(
-            group.constraints.dietary_tags.filter(name="Vegetarian").exists()
-        )
-        self.assertTrue(group.constraints.cuisine_types.filter(name="Italian").exists())
 
-    def test_update_group_constraints_as_member_fails(self):
         group = Group.objects.create(name="Constraint Club", created_by=self.user1)
         GroupMembership.objects.create(
             user=self.user1, group=group, role=GroupMembership.Role.LEADER
@@ -158,32 +139,50 @@ class GroupAPITests(TestCase):
         GroupMembership.objects.create(
             user=self.user2, group=group, role=GroupMembership.Role.MEMBER
         )
-        self.client.login(email="bob@example.com", password="password123")
-        response = self.client.patch(
-            f"/api/groups/{group.id}/constraints/",
-            json.dumps({"minimumSanitationGrade": "A"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 403)
 
-    def test_update_group_constraints_invalid_grade_ignored(self):
-        group = Group.objects.create(name="Constraint Club", created_by=self.user1)
+        italian = CuisineType.objects.create(name="Italian", slug="italian")
+        thai = CuisineType.objects.create(name="Thai", slug="thai")
+        vegetarian = DietaryTag.objects.create(name="Vegetarian", slug="vegetarian")
+        breakfast = FoodTypeTag.objects.create(name="Breakfast", slug="breakfast")
+
+        pref1, _ = UserPreference.objects.get_or_create(user=self.user1)
+        pref1.minimum_sanitation_grade = "B"
+        pref1.price_range = "$$"
+        pref1.save()
+        pref1.cuisine_types.add(italian)
+        pref1.dietary_tags.add(vegetarian)
+
+        pref2, _ = UserPreference.objects.get_or_create(user=self.user2)
+        pref2.minimum_sanitation_grade = "A"
+        pref2.price_range = "$"
+        pref2.save()
+        pref2.cuisine_types.add(thai)
+        pref2.food_type_tags.add(breakfast)
+
+        self.client.login(email="alice@example.com", password="password123")
+        response = self.client.get(
+            f"/api/groups/{group.id}/effective-constraints/"
+        )
+        self.assertEqual(response.status_code, 200)
+        constraints = response.json()["constraints"]
+        # Strictest grade across members wins
+        self.assertEqual(constraints["minimumSanitationGrade"], "A")
+        # Tightest budget wins
+        self.assertEqual(constraints["priceRange"], "$")
+        self.assertEqual(set(constraints["cuisines"]), {"Italian", "Thai"})
+        self.assertEqual(constraints["dietary"], ["Vegetarian"])
+        self.assertEqual(constraints["foodTypes"], ["Breakfast"])
+
+    def test_effective_constraints_requires_membership(self):
+        group = Group.objects.create(name="Private Club", created_by=self.user1)
         GroupMembership.objects.create(
             user=self.user1, group=group, role=GroupMembership.Role.LEADER
         )
-        from .models import GroupConstraint
-
-        GroupConstraint.objects.create(group=group, minimum_sanitation_grade="A")
-
-        self.client.login(email="alice@example.com", password="password123")
-        response = self.client.patch(
-            f"/api/groups/{group.id}/constraints/",
-            json.dumps({"minimumSanitationGrade": "INVALID"}),
-            content_type="application/json",
+        self.client.login(email="bob@example.com", password="password123")
+        response = self.client.get(
+            f"/api/groups/{group.id}/effective-constraints/"
         )
-        self.assertEqual(response.status_code, 200)
-        group.refresh_from_db()
-        self.assertEqual(group.constraints.minimum_sanitation_grade, "A")
+        self.assertEqual(response.status_code, 403)
 
 
 class GroupModelTest(TestCase):
