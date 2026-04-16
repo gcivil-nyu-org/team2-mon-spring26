@@ -21,6 +21,8 @@ import { AdminDashboardPage } from '@/app/pages/admin-dashboard-page';
 import { AdminVenueVerificationPage } from '@/app/pages/admin-venue-verification-page';
 import { AdminVenuesPage } from '@/app/pages/admin-venues-page';
 import { AdminVenueEditPage } from '@/app/pages/admin-venue-edit-page';
+import { AdminUsersPage } from '@/app/pages/admin-users-page';
+import { AdminUserEditPage } from '@/app/pages/admin-user-edit-page';
 import { ResetPasswordPage } from '@/app/pages/reset-password-page';
 import { ProtectedRoute } from '@/app/components/protected-route';
 import { VenueProtectedRoute } from '@/app/components/venue-protected-route';
@@ -75,6 +77,14 @@ export const router = createBrowserRouter([
           {
             path: 'admin/venues/:venueId',
             Component: AdminVenueEditPage,
+          },
+          {
+            path: 'admin/users',
+            Component: AdminUsersPage,
+          },
+          {
+            path: 'admin/users/:userId',
+            Component: AdminUserEditPage,
           },
         ],
       },

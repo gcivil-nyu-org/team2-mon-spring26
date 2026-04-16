@@ -83,6 +83,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         default="student",
     )
     phone = models.CharField(max_length=30, blank=True)
+    photo_url = models.URLField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
