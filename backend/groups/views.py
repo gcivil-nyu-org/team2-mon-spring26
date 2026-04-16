@@ -16,6 +16,7 @@ from venues.google_places import bulk_prefetch_photos
 from venues.filters import (
     filter_venues_by_preferences,
     aggregate_member_preferences,
+    aggregate_member_preferences_bulk,
 )
 from chat.models import Chat, ChatMember as ChatRoomMember, Message
 
@@ -77,15 +78,20 @@ def api_list_users(request):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-def _group_to_json(group):
+def _group_to_json(group, aggregated=None):
     """Serialize a Group instance and its memberships.
 
     Group constraints are derived from member ``UserPreference`` rows at read
     time so the displayed filters always reflect the current membership.
+
+    ``aggregated`` may be passed in precomputed (e.g. from
+    :func:`aggregate_member_preferences_bulk` in list endpoints) so callers
+    serializing many groups at once avoid N+1 queries.
     """
     memberships = group.memberships.select_related("user").all()
 
-    aggregated = aggregate_member_preferences(group)
+    if aggregated is None:
+        aggregated = aggregate_member_preferences(group)
     constraints_data = {
         "dietary": aggregated["dietary_names"],
         "cuisines": aggregated["cuisine_names"],
@@ -136,8 +142,17 @@ def api_groups_list_create(request):
                 user=request.user
             ).select_related("group")
             groups = [m.group for m in memberships]
+            # Bulk-aggregate preferences once so serializing N groups doesn't
+            # trigger N queries inside ``_group_to_json``.
+            aggregated_by_group = aggregate_member_preferences_bulk(groups)
             return JsonResponse(
-                {"success": True, "groups": [_group_to_json(g) for g in groups]}
+                {
+                    "success": True,
+                    "groups": [
+                        _group_to_json(g, aggregated=aggregated_by_group.get(g.id))
+                        for g in groups
+                    ],
+                }
             )
         except Exception as e:
             logger.error(f"Group fetch error: {str(e)}", exc_info=True)
@@ -963,9 +978,11 @@ def api_group_effective_constraints(request, group_id):
     """
     GET /api/groups/<id>/effective-constraints/
 
-    Returns the group's matching filters as derived from every member's
-    ``UserPreference``. Group constraints are view-only and computed at read
-    time so members always see an up-to-date intersection.
+    Returns the group's effective matching filters as derived from every
+    member's ``UserPreference``. Group constraints are view-only and computed
+    at read time so members always see up-to-date aggregated preferences:
+    unions for dietary, cuisines, and food types, plus the strictest minimum
+    sanitation grade and tightest price range.
     """
     if request.method != "GET":
         return JsonResponse({"error": "Method not allowed"}, status=405)
@@ -1222,13 +1239,20 @@ def api_public_groups_list(request):
         return JsonResponse({"error": "Authentication required"}, status=401)
 
     try:
-        public_groups = (
+        public_groups = list(
             Group.objects.filter(privacy=Group.PrivacyType.PUBLIC)
             .exclude(memberships__user=request.user)
             .order_by("-created_at")[:50]
         )
+        aggregated_by_group = aggregate_member_preferences_bulk(public_groups)
         return JsonResponse(
-            {"success": True, "groups": [_group_to_json(g) for g in public_groups]}
+            {
+                "success": True,
+                "groups": [
+                    _group_to_json(g, aggregated=aggregated_by_group.get(g.id))
+                    for g in public_groups
+                ],
+            }
         )
     except Exception as e:
         logger.error(f"Public group fetch error: {str(e)}", exc_info=True)

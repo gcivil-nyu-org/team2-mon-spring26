@@ -153,7 +153,6 @@ export interface AppContextType extends AuthContextType {
   regenerateJoinCode: (groupId: string) => Promise<string>;
   leaveGroup: (groupId: string) => Promise<void>;
   deleteGroup: (groupId: string) => Promise<void>;
-  updateGroupConstraints: (groupId: string, constraints: GroupConstraints) => Promise<void>;
   fetchGroupEffectiveConstraints: (groupId: string) => Promise<GroupConstraints>;
   fetchGroupPreviewVenues: (
     groupId: string,
@@ -516,34 +515,6 @@ function AppInner({ children }: { children: ReactNode }) {
     }
     setGroups((prev) => prev.filter((g) => g.id !== groupId));
     if (currentGroup?.id === groupId) setCurrentGroup(null);
-  };
-
-  const updateGroupConstraints = async (groupId: string, constraints: GroupConstraints) => {
-    const body: Record<string, unknown> = {};
-    if (constraints.dietary !== undefined) body.dietary = constraints.dietary;
-    if (constraints.cuisines !== undefined) body.cuisines = constraints.cuisines;
-    if (constraints.foodTypes !== undefined) body.foodTypes = constraints.foodTypes;
-    if (constraints.minimumSanitationGrade !== undefined) {
-      body.minimumSanitationGrade = constraints.minimumSanitationGrade;
-    }
-    const res = await fetch(apiUrl(`/api/groups/${groupId}/constraints/`), {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to update constraints');
-    }
-    const data = await res.json();
-    const updated = data.group as BackendGroup;
-    setGroups((prev) =>
-      prev.map((g) => (g.id === String(updated.id) ? { ...g, constraints: updated.constraints } : g))
-    );
-    if (currentGroup?.id === String(updated.id)) {
-      setCurrentGroup((prev) => (prev ? { ...prev, constraints: updated.constraints } : null));
-    }
   };
 
   const removeMember = async (groupId: string, userId: string): Promise<void> => {
@@ -966,7 +937,6 @@ function AppInner({ children }: { children: ReactNode }) {
         regenerateJoinCode,
         leaveGroup,
         deleteGroup,
-        updateGroupConstraints,
         fetchGroupEffectiveConstraints,
         fetchGroupPreviewVenues,
         fetchPreviewVenues,

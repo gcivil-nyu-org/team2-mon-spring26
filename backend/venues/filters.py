@@ -99,25 +99,12 @@ def _strictest_grade(grades):
     return best
 
 
-def aggregate_member_preferences(group):
-    """Compute effective filters for a group from its members' UserPreference rows.
+def _aggregate_from_preferences(preferences):
+    """Core aggregation logic given already-loaded ``UserPreference`` rows.
 
-    Returns ``(min_grade, cuisine_ids, price_range, dietary_names,
-    cuisine_names, food_type_names)``. Cuisine/dietary/food-type are returned
-    as the union across members so callers can display the aggregated chips.
-    Price range is the *tightest* budget (shortest non-empty dollar string).
+    Extracted so callers can fan-out over many groups in a constant number of
+    queries (see :func:`aggregate_member_preferences_bulk`).
     """
-    from accounts.models import UserPreference
-
-    member_user_ids = list(
-        group.memberships.values_list("user_id", flat=True)
-    )
-    preferences = UserPreference.objects.filter(
-        user_id__in=member_user_ids
-    ).prefetch_related(
-        "dietary_tags", "cuisine_types", "food_type_tags"
-    )
-
     grades = [p.minimum_sanitation_grade or "P" for p in preferences]
     min_grade = _strictest_grade(grades) if grades else None
 
@@ -149,3 +136,72 @@ def aggregate_member_preferences(group):
         "cuisine_names": sorted(cuisine_names),
         "food_type_names": sorted(food_type_names),
     }
+
+
+def aggregate_member_preferences(group):
+    """Compute effective filters for a group from its members' UserPreference rows.
+
+    Cuisine/dietary/food-type are returned as the union across members so
+    callers can display the aggregated chips. Price range is the *tightest*
+    budget (shortest non-empty dollar string). Minimum sanitation grade is
+    the *strictest* grade across members.
+
+    For serializing many groups at once, prefer
+    :func:`aggregate_member_preferences_bulk` to avoid N+1 queries.
+    """
+    from accounts.models import UserPreference
+
+    member_user_ids = list(
+        group.memberships.values_list("user_id", flat=True)
+    )
+    preferences = UserPreference.objects.filter(
+        user_id__in=member_user_ids
+    ).prefetch_related(
+        "dietary_tags", "cuisine_types", "food_type_tags"
+    )
+    return _aggregate_from_preferences(preferences)
+
+
+def aggregate_member_preferences_bulk(groups):
+    """Compute :func:`aggregate_member_preferences` for many groups in constant queries.
+
+    Returns ``{group_id: aggregated_dict}`` using a fixed number of queries
+    regardless of how many groups are passed in (one for memberships, one for
+    preferences, plus the usual m2m prefetches). Groups with no members map to
+    the empty-aggregation result, matching the single-group helper's behavior.
+    """
+    from accounts.models import UserPreference
+    from groups.models import GroupMembership
+
+    groups = list(groups)
+    if not groups:
+        return {}
+
+    group_ids = [g.id for g in groups]
+
+    memberships = list(
+        GroupMembership.objects.filter(group_id__in=group_ids)
+        .values_list("group_id", "user_id")
+    )
+    user_ids_by_group: dict = {}
+    all_user_ids = set()
+    for gid, uid in memberships:
+        user_ids_by_group.setdefault(gid, []).append(uid)
+        all_user_ids.add(uid)
+
+    prefs_by_user = {
+        p.user_id: p
+        for p in UserPreference.objects.filter(
+            user_id__in=list(all_user_ids)
+        ).prefetch_related("dietary_tags", "cuisine_types", "food_type_tags")
+    }
+
+    result = {}
+    for group in groups:
+        prefs = [
+            prefs_by_user[uid]
+            for uid in user_ids_by_group.get(group.id, [])
+            if uid in prefs_by_user
+        ]
+        result[group.id] = _aggregate_from_preferences(prefs)
+    return result

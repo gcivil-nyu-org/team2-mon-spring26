@@ -6,14 +6,12 @@ from accounts.models import (
     FoodTypeTag,
     VenueManagerProfile,
     SANITATION_GRADE_CHOICES,
+    PRICE_RANGE_CHOICES,
 )
 
-PRICE_RANGE_CHOICES = [
-    ("$", "$"),
-    ("$$", "$$"),
-    ("$$$", "$$$"),
-    ("$$$$", "$$$$"),
-]
+# ``PRICE_RANGE_CHOICES`` is defined once in ``accounts.models`` and re-exported
+# here so existing callers (``from venues.models import PRICE_RANGE_CHOICES``)
+# keep working without duplicating the enum in two apps.
 
 BOROUGH_CHOICES = [
     ("Manhattan", "Manhattan"),
