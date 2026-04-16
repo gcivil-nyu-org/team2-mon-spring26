@@ -1302,6 +1302,550 @@ class VenueManagerProfileTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Admin user management endpoints (Issues #153 and #84) and safely_delete_user
+# ---------------------------------------------------------------------------
+
+
+class AdminUsersEndpointTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = User.objects.create_user(
+            email="admin@test.local",
+            password="x",
+            role="admin",
+            first_name="Ad",
+            last_name="Min",
+            is_staff=True,
+        )
+        cls.student1 = User.objects.create_user(
+            email="alice@test.local",
+            password="x",
+            role="student",
+            first_name="Alice",
+            last_name="Smith",
+        )
+        cls.student2 = User.objects.create_user(
+            email="bob@test.local",
+            password="x",
+            role="student",
+            first_name="Bob",
+            last_name="Jones",
+            is_active=False,
+        )
+        cls.manager = User.objects.create_user(
+            email="manager@test.local",
+            password="x",
+            role="venue_manager",
+            first_name="Ven",
+        )
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+
+    # ---- list ----
+
+    def test_admin_users_list_requires_auth(self):
+        self.client.logout()
+        res = self.client.get("/api/auth/admin/users/")
+        self.assertEqual(res.status_code, 401)
+
+    def test_admin_users_list_requires_admin_role(self):
+        self.client.force_login(self.student1)
+        res = self.client.get("/api/auth/admin/users/")
+        self.assertEqual(res.status_code, 403)
+
+    def test_admin_users_list_returns_all_users(self):
+        res = self.client.get("/api/auth/admin/users/")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["totalCount"], 4)
+        emails = {u["email"] for u in data["users"]}
+        self.assertEqual(
+            emails,
+            {
+                "admin@test.local",
+                "alice@test.local",
+                "bob@test.local",
+                "manager@test.local",
+            },
+        )
+
+    def test_admin_users_search_by_email(self):
+        res = self.client.get("/api/auth/admin/users/?q=alice")
+        data = res.json()
+        self.assertEqual(data["totalCount"], 1)
+        self.assertEqual(data["users"][0]["email"], "alice@test.local")
+
+    def test_admin_users_search_by_name(self):
+        res = self.client.get("/api/auth/admin/users/?q=Jones")
+        data = res.json()
+        self.assertEqual(data["totalCount"], 1)
+        self.assertEqual(data["users"][0]["lastName"], "Jones")
+
+    def test_admin_users_filter_by_role(self):
+        res = self.client.get("/api/auth/admin/users/?role=student")
+        data = res.json()
+        self.assertEqual(data["totalCount"], 2)
+        for u in data["users"]:
+            self.assertEqual(u["role"], "student")
+
+    def test_admin_users_filter_by_active_status(self):
+        res = self.client.get("/api/auth/admin/users/?status=active")
+        self.assertEqual(res.json()["totalCount"], 3)
+        res = self.client.get("/api/auth/admin/users/?status=inactive")
+        data = res.json()
+        self.assertEqual(data["totalCount"], 1)
+        self.assertEqual(data["users"][0]["email"], "bob@test.local")
+
+    def test_admin_users_list_response_shape(self):
+        res = self.client.get("/api/auth/admin/users/?q=alice")
+        u = res.json()["users"][0]
+        for key in (
+            "id",
+            "email",
+            "firstName",
+            "lastName",
+            "name",
+            "role",
+            "phone",
+            "photoUrl",
+            "isActive",
+            "createdAt",
+        ):
+            self.assertIn(key, u)
+
+    # ---- detail ----
+
+    def test_admin_user_detail_returns_full_user(self):
+        res = self.client.get(f"/api/auth/admin/users/{self.student1.id}/")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()["user"]
+        self.assertEqual(data["email"], "alice@test.local")
+        self.assertIn("preferences", data)
+        self.assertIn("memberships", data)
+        self.assertIn("chats", data)
+        self.assertIsNone(data["venueManager"])
+
+    def test_admin_user_detail_404_for_missing(self):
+        res = self.client.get("/api/auth/admin/users/99999/")
+        self.assertEqual(res.status_code, 404)
+
+    # ---- patch ----
+
+    def test_admin_user_patch_updates_basic_fields(self):
+        res = self.client.patch(
+            f"/api/auth/admin/users/{self.student1.id}/",
+            data=json.dumps(
+                {
+                    "firstName": "Alicia",
+                    "lastName": "Smythe",
+                    "phone": "555-1111",
+                    "photoUrl": "https://cdn.test/a.jpg",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.student1.refresh_from_db()
+        self.assertEqual(self.student1.first_name, "Alicia")
+        self.assertEqual(self.student1.last_name, "Smythe")
+        self.assertEqual(self.student1.phone, "555-1111")
+        self.assertEqual(self.student1.photo_url, "https://cdn.test/a.jpg")
+
+    def test_admin_user_patch_clears_photo(self):
+        self.student1.photo_url = "https://cdn.test/a.jpg"
+        self.student1.save()
+        res = self.client.patch(
+            f"/api/auth/admin/users/{self.student1.id}/",
+            data=json.dumps({"photoUrl": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.student1.refresh_from_db()
+        self.assertEqual(self.student1.photo_url, "")
+
+    def test_admin_user_patch_changes_role(self):
+        res = self.client.patch(
+            f"/api/auth/admin/users/{self.student1.id}/",
+            data=json.dumps({"role": "venue_manager"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.student1.refresh_from_db()
+        self.assertEqual(self.student1.role, "venue_manager")
+
+    def test_admin_user_patch_rejects_self_role_demotion(self):
+        res = self.client.patch(
+            f"/api/auth/admin/users/{self.admin.id}/",
+            data=json.dumps({"role": "student"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_admin_user_patch_rejects_self_deactivation(self):
+        res = self.client.patch(
+            f"/api/auth/admin/users/{self.admin.id}/",
+            data=json.dumps({"isActive": False}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_admin_user_patch_rejects_duplicate_email(self):
+        res = self.client.patch(
+            f"/api/auth/admin/users/{self.student1.id}/",
+            data=json.dumps({"email": "bob@test.local"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_admin_user_patch_invalid_json_returns_400(self):
+        res = self.client.patch(
+            f"/api/auth/admin/users/{self.student1.id}/",
+            data="not json",
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    # ---- delete ----
+
+    def test_admin_user_delete_rejects_self(self):
+        res = self.client.delete(f"/api/auth/admin/users/{self.admin.id}/")
+        self.assertEqual(res.status_code, 400)
+        self.assertTrue(User.objects.filter(pk=self.admin.pk).exists())
+
+    def test_admin_user_delete_removes_user(self):
+        target_id = self.student2.id
+        res = self.client.delete(f"/api/auth/admin/users/{target_id}/")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(User.objects.filter(pk=target_id).exists())
+
+    def test_admin_user_delete_blocked_by_sole_leader(self):
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="BlockGrp", created_by=self.student1)
+        GroupMembership.objects.create(
+            user=self.student1, group=group, role="leader"
+        )
+        GroupMembership.objects.create(
+            user=self.student2, group=group, role="member"
+        )
+        res = self.client.delete(f"/api/auth/admin/users/{self.student1.id}/")
+        self.assertEqual(res.status_code, 400)
+        data = res.json()
+        self.assertEqual(data["code"], "sole_leader")
+        self.assertIn("BlockGrp", data["groups"])
+        self.assertTrue(User.objects.filter(pk=self.student1.pk).exists())
+
+
+class SafelyDeleteUserTests(TestCase):
+    """Issue #84 — verify chat/group cleanup semantics."""
+
+    def setUp(self):
+        from chat.models import Chat, ChatMember, Message  # noqa: F401
+        from groups.models import Group, GroupMembership, SwipeEvent  # noqa: F401
+
+        self.admin = User.objects.create_user(
+            email="admin2@test.local", password="x", role="admin"
+        )
+        self.victim = User.objects.create_user(
+            email="victim@test.local", password="x", first_name="Vic"
+        )
+        self.peer = User.objects.create_user(
+            email="peer@test.local", password="x", first_name="Peer"
+        )
+
+    def test_sole_leader_of_multi_member_group_blocks_deletion(self):
+        from accounts.views import SoleLeaderError, safely_delete_user
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="G1", created_by=self.victim)
+        GroupMembership.objects.create(user=self.victim, group=group, role="leader")
+        GroupMembership.objects.create(user=self.peer, group=group, role="member")
+
+        with self.assertRaises(SoleLeaderError) as ctx:
+            safely_delete_user(self.victim)
+
+        self.assertIn(group, ctx.exception.groups)
+        # user should NOT have been deleted
+        self.assertTrue(User.objects.filter(pk=self.victim.pk).exists())
+
+    def test_multi_leader_group_allows_deletion(self):
+        from accounts.views import safely_delete_user
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="G1b", created_by=self.victim)
+        GroupMembership.objects.create(user=self.victim, group=group, role="leader")
+        GroupMembership.objects.create(user=self.peer, group=group, role="leader")
+
+        safely_delete_user(self.victim)
+
+        self.assertTrue(Group.objects.filter(pk=group.pk).exists())
+        self.assertEqual(GroupMembership.objects.filter(group=group).count(), 1)
+        group.refresh_from_db()
+        self.assertIsNone(group.created_by)
+
+    def test_last_member_group_is_deleted(self):
+        from accounts.views import safely_delete_user
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="G-solo", created_by=self.victim)
+        GroupMembership.objects.create(user=self.victim, group=group, role="leader")
+
+        safely_delete_user(self.victim)
+
+        self.assertFalse(Group.objects.filter(pk=group.pk).exists())
+
+    def test_swipe_event_survives_user_deletion(self):
+        from accounts.views import safely_delete_user
+        from groups.models import Group, GroupMembership, SwipeEvent
+
+        group = Group.objects.create(name="G2", created_by=self.peer)
+        GroupMembership.objects.create(user=self.peer, group=group, role="leader")
+        GroupMembership.objects.create(user=self.victim, group=group, role="member")
+        event = SwipeEvent.objects.create(
+            group=group, name="E1", created_by=self.victim
+        )
+
+        safely_delete_user(self.victim)
+
+        self.assertTrue(SwipeEvent.objects.filter(pk=event.pk).exists())
+        event.refresh_from_db()
+        self.assertIsNone(event.created_by)
+
+    def test_chat_ownership_reassigned_to_another_member(self):
+        from accounts.views import safely_delete_user
+        from chat.models import Chat, ChatMember
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="G3", created_by=self.peer)
+        GroupMembership.objects.create(user=self.peer, group=group, role="leader")
+        GroupMembership.objects.create(user=self.victim, group=group, role="member")
+        chat = Chat.objects.create(
+            type="group", name="C1", group=group, created_by=self.peer
+        )
+        ChatMember.objects.create(chat=chat, user=self.peer, role="admin")
+        ChatMember.objects.create(chat=chat, user=self.victim, role="member")
+
+        safely_delete_user(self.victim)
+
+        chat.refresh_from_db()
+        self.assertEqual(chat.created_by, self.peer)
+        members = list(ChatMember.objects.filter(chat=chat))
+        self.assertEqual(len(members), 1)
+        self.assertEqual(members[0].user, self.peer)
+
+    def test_chat_with_no_remaining_members_is_deleted(self):
+        from accounts.views import safely_delete_user
+        from chat.models import Chat, ChatMember
+
+        chat = Chat.objects.create(type="group", created_by=self.victim)
+        ChatMember.objects.create(chat=chat, user=self.victim, role="admin")
+
+        safely_delete_user(self.victim)
+
+        self.assertFalse(Chat.objects.filter(pk=chat.pk).exists())
+
+    def test_chat_reassigned_to_fallback_when_no_other_members(self):
+        from accounts.views import safely_delete_user
+        from chat.models import Chat, ChatMember
+
+        chat = Chat.objects.create(type="group", created_by=self.victim)
+        ChatMember.objects.create(chat=chat, user=self.victim, role="admin")
+
+        safely_delete_user(self.victim, fallback_creator=self.admin)
+
+        self.assertTrue(Chat.objects.filter(pk=chat.pk).exists())
+        chat.refresh_from_db()
+        self.assertEqual(chat.created_by, self.admin)
+
+    def test_message_sender_nulled_preserving_history(self):
+        from accounts.views import safely_delete_user
+        from chat.models import Chat, ChatMember, Message
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="G4", created_by=self.peer)
+        GroupMembership.objects.create(user=self.peer, group=group, role="leader")
+        GroupMembership.objects.create(user=self.victim, group=group, role="member")
+        chat = Chat.objects.create(type="group", group=group, created_by=self.peer)
+        ChatMember.objects.create(chat=chat, user=self.peer, role="admin")
+        ChatMember.objects.create(chat=chat, user=self.victim, role="member")
+        msg = Message.objects.create(chat=chat, sender=self.victim, body="hi")
+
+        safely_delete_user(self.victim)
+
+        msg.refresh_from_db()
+        self.assertIsNone(msg.sender)
+        self.assertEqual(msg.body, "hi")
+
+    def test_prefers_chat_admin_member_as_replacement(self):
+        from accounts.views import safely_delete_user
+        from chat.models import Chat, ChatMember
+
+        peer_admin = User.objects.create_user(
+            email="p2@test.local", password="x", first_name="Admin2"
+        )
+        chat = Chat.objects.create(type="group", created_by=self.victim)
+        ChatMember.objects.create(chat=chat, user=self.victim, role="admin")
+        ChatMember.objects.create(chat=chat, user=self.peer, role="member")
+        ChatMember.objects.create(chat=chat, user=peer_admin, role="admin")
+
+        safely_delete_user(self.victim)
+
+        chat.refresh_from_db()
+        self.assertEqual(chat.created_by, peer_admin)
+
+
+class NullCreatorSerializationTests(TestCase):
+    """Verify that null created_by on Group/SwipeEvent doesn't break API serialization."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="ser@test.local", password="x", role="student"
+        )
+        self.peer = User.objects.create_user(
+            email="ser-peer@test.local", password="x", role="student"
+        )
+
+    def test_group_with_null_creator_serializes(self):
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="NullCreator", created_by=None)
+        GroupMembership.objects.create(user=self.user, group=group, role="leader")
+
+        self.client.force_login(self.user)
+        res = self.client.get("/api/groups/")
+        self.assertEqual(res.status_code, 200)
+        g = next(g for g in res.json()["groups"] if g["name"] == "NullCreator")
+        self.assertIsNone(g["created_by"])
+
+    def test_swipe_event_with_null_creator_serializes(self):
+        from groups.models import Group, GroupMembership, SwipeEvent
+
+        group = Group.objects.create(name="NullEvt", created_by=self.user)
+        GroupMembership.objects.create(user=self.user, group=group, role="leader")
+        SwipeEvent.objects.create(
+            group=group, name="E-null", created_by=None
+        )
+
+        self.client.force_login(self.user)
+        res = self.client.get(f"/api/groups/{group.id}/events/")
+        self.assertEqual(res.status_code, 200)
+        events = res.json()["events"]
+        evt = next(e for e in events if e["name"] == "E-null")
+        self.assertIsNone(evt["created_by"])
+
+
+class PhotoUrlInMeTests(TestCase):
+    """photoUrl should flow through _user_to_json on api_me."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="photo@test.local",
+            password="x",
+            role="student",
+            photo_url="https://cdn.test/p.jpg",
+        )
+
+    def test_me_returns_photo_url(self):
+        self.client.force_login(self.user)
+        res = self.client.get(reverse("api_me"))
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["user"]["photoUrl"], "https://cdn.test/p.jpg")
+
+
+class AdminUsersEdgeCaseTests(TestCase):
+    """Extra coverage for admin user endpoints (error branches, method checks,
+    less-common PATCH paths)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = User.objects.create_user(
+            email="edge-admin@test.local", password="x", role="admin"
+        )
+        cls.target = User.objects.create_user(
+            email="edge-target@test.local",
+            password="x",
+            role="student",
+            first_name="Ed",
+            last_name="Ge",
+        )
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+
+    def test_list_rejects_non_get(self):
+        res = self.client.post("/api/auth/admin/users/")
+        self.assertEqual(res.status_code, 405)
+
+    def test_list_invalid_page_param_defaults_to_one(self):
+        res = self.client.get("/api/auth/admin/users/?page=abc")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["page"], 1)
+
+    def test_detail_requires_admin_role(self):
+        self.client.force_login(self.target)
+        res = self.client.get(f"/api/auth/admin/users/{self.admin.id}/")
+        self.assertEqual(res.status_code, 403)
+
+    def test_detail_rejects_unknown_method(self):
+        res = self.client.put(f"/api/auth/admin/users/{self.target.id}/")
+        self.assertEqual(res.status_code, 405)
+
+    def test_patch_changes_email_successfully(self):
+        res = self.client.patch(
+            f"/api/auth/admin/users/{self.target.id}/",
+            data=json.dumps({"email": "renamed@test.local"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.email, "renamed@test.local")
+
+    def test_patch_toggles_is_active(self):
+        res = self.client.patch(
+            f"/api/auth/admin/users/{self.target.id}/",
+            data=json.dumps({"isActive": False}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.target.refresh_from_db()
+        self.assertFalse(self.target.is_active)
+
+    def test_detail_exposes_preferences_and_venue_manager(self):
+        manager = User.objects.create_user(
+            email="vmx@test.local",
+            password="x",
+            role="venue_manager",
+            first_name="VM",
+        )
+        VenueManagerProfile.objects.create(
+            user=manager,
+            business_name="Biz",
+            business_email="biz@test.local",
+            business_phone="555",
+            is_verified=True,
+        )
+        pref, _ = UserPreference.objects.get_or_create(
+            user=manager, defaults={"minimum_sanitation_grade": "B"}
+        )
+        pref.dietary_tags.add(DietaryTag.objects.create(name="Vegan", slug="vegan"))
+
+        res = self.client.get(f"/api/auth/admin/users/{manager.id}/")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()["user"]
+        self.assertEqual(data["venueManager"]["businessName"], "Biz")
+        self.assertTrue(data["venueManager"]["isVerified"])
+        self.assertIn("Vegan", data["preferences"]["dietary"])
+
+    @patch("accounts.views.safely_delete_user")
+    def test_delete_returns_500_on_exception(self, mock_delete):
+        mock_delete.side_effect = Exception("boom")
+        res = self.client.delete(f"/api/auth/admin/users/{self.target.id}/")
+        self.assertEqual(res.status_code, 500)
+
+
+# ---------------------------------------------------------------------------
 # CSRF protection tests
 # ---------------------------------------------------------------------------
 
@@ -1349,7 +1893,7 @@ class CSRFProtectionTests(TestCase):
         resp = self.csrf_client.get(reverse("api_me"))
         self.assertIn("csrftoken", resp.cookies)
 
-    # --- Login: POST without token → 403 ---
+    # --- Login: POST without token -> 403 ---
 
     def test_login_without_csrf_token_is_rejected(self):
         self._get_csrf_token()  # ensure cookie is set
@@ -1372,7 +1916,7 @@ class CSRFProtectionTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
 
-    # --- Register: POST without token → 403 ---
+    # --- Register: POST without token -> 403 ---
 
     def test_register_without_csrf_token_is_rejected(self):
         self._get_csrf_token()
@@ -1406,7 +1950,7 @@ class CSRFProtectionTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
 
-    # --- Logout: POST without token → 403 ---
+    # --- Logout: POST without token -> 403 ---
 
     def test_logout_without_csrf_token_is_rejected(self):
         self._login_session()
@@ -1424,7 +1968,7 @@ class CSRFProtectionTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
 
-    # --- Preferences: PATCH without token → 403 ---
+    # --- Preferences: PATCH without token -> 403 ---
 
     def test_preferences_update_without_csrf_token_is_rejected(self):
         self._login_session()
@@ -1446,7 +1990,7 @@ class CSRFProtectionTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
-    # --- Password reset request: POST without token → 403 ---
+    # --- Password reset request: POST without token -> 403 ---
 
     def test_password_reset_request_without_csrf_token_is_rejected(self):
         self._get_csrf_token()

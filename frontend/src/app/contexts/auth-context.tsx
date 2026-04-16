@@ -11,6 +11,7 @@ export interface User {
   name: string;
   email: string;
   role?: 'student' | 'venue_manager' | 'admin';
+  photoUrl?: string;
   preferences: {
     cuisines: string[];
     dietary: string[];
@@ -67,6 +68,7 @@ export function normalizeApiUser(apiUser: {
   email: string;
   name: string;
   role?: 'student' | 'venue_manager' | 'admin';
+  photoUrl?: string;
   preferences?: {
     dietary?: string[];
     cuisines?: string[];
@@ -82,6 +84,7 @@ export function normalizeApiUser(apiUser: {
     email: apiUser.email,
     name: apiUser.name,
     role: apiUser.role,
+    photoUrl: apiUser.photoUrl ?? '',
     preferences: {
       cuisines: Array.isArray(prefs.cuisines) ? prefs.cuisines : DEFAULT_PREFERENCES.cuisines,
       dietary: Array.isArray(prefs.dietary) ? prefs.dietary : DEFAULT_PREFERENCES.dietary,

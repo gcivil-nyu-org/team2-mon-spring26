@@ -6,6 +6,7 @@ export interface AdminUser {
   email: string;
   name: string;
   role: 'admin';
+  photoUrl?: string;
 }
 
 interface AdminContextType {
@@ -48,6 +49,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
             email: data.user.email,
             name: data.user.name,
             role: 'admin',
+            photoUrl: data.user.photoUrl ?? '',
           });
         }
       } catch {
@@ -76,6 +78,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       email: data.user.email,
       name: data.user.name,
       role: 'admin',
+      photoUrl: data.user.photoUrl ?? '',
     });
   };
 

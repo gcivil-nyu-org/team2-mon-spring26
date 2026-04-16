@@ -565,3 +565,64 @@ class ChatMuteMemberTests(TestCase):
         self.client.force_login(self.leader)
         resp = self.client.post(self._url(self.group.id, self.member.id))
         self.assertEqual(resp.status_code, 500)
+
+
+class MessagePhotoUrlTests(TestCase):
+    """Chat messages include the sender's photoUrl in the serialized payload."""
+
+    def setUp(self):
+        self.sender = User.objects.create_user(
+            email="photo-sender@test.local",
+            password="x",
+            first_name="Send",
+            last_name="Er",
+            photo_url="https://cdn.test/sender.jpg",
+        )
+        self.plain = User.objects.create_user(
+            email="plain@test.local",
+            password="x",
+            first_name="Plain",
+        )
+        self.group = Group.objects.create(name="PhotoG", created_by=self.sender)
+        GroupMembership.objects.create(
+            user=self.sender, group=self.group, role="leader"
+        )
+        self.chat = Chat.objects.create(
+            type="group", group=self.group, created_by=self.sender
+        )
+        ChatMember.objects.create(chat=self.chat, user=self.sender, role="admin")
+
+    def test_message_includes_user_photo_url(self):
+        from chat.views import _message_to_json
+
+        msg = Message.objects.create(chat=self.chat, sender=self.sender, body="hi")
+        payload = _message_to_json(msg)
+        self.assertEqual(payload["userPhotoUrl"], "https://cdn.test/sender.jpg")
+        self.assertEqual(payload["userId"], str(self.sender.id))
+
+    def test_message_photo_url_none_when_sender_has_no_photo(self):
+        from chat.views import _message_to_json
+
+        msg = Message.objects.create(chat=self.chat, sender=self.plain, body="hi")
+        payload = _message_to_json(msg)
+        self.assertIsNone(payload["userPhotoUrl"])
+
+    def test_message_photo_url_none_when_sender_nulled(self):
+        from chat.views import _message_to_json
+
+        msg = Message.objects.create(chat=self.chat, sender=self.sender, body="hi")
+        msg.sender = None
+        msg.save(update_fields=["sender"])
+        payload = _message_to_json(msg)
+        self.assertIsNone(payload["userPhotoUrl"])
+
+    def test_chat_api_response_messages_include_photo(self):
+        Message.objects.create(chat=self.chat, sender=self.sender, body="hello")
+        self.client.force_login(self.sender)
+        res = self.client.get("/api/chat/")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        chat_entry = next(c for c in data["chats"] if c["type"] == "group")
+        self.assertGreaterEqual(len(chat_entry["messages"]), 1)
+        msg0 = chat_entry["messages"][-1]
+        self.assertEqual(msg0["userPhotoUrl"], "https://cdn.test/sender.jpg")

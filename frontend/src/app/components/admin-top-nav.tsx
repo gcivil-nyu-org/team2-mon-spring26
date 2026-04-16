@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router';
 import { useAdmin } from '@/app/contexts/admin-context';
 import { Button } from '@/app/components/ui/button';
+import { UserAvatar } from '@/app/components/user-avatar';
 import { ShieldCheck, LogOut, ArrowLeft } from 'lucide-react';
 
 export function AdminTopNav() {
@@ -37,6 +38,15 @@ export function AdminTopNav() {
     backLink = '/admin/venues';
     contextTitle = 'Edit Venue';
     contextSubtitle = 'Update venue details';
+  } else if (path === '/admin/users') {
+    isDynamic = true;
+    contextTitle = 'User Management';
+    contextSubtitle = 'Search, edit, and remove user profiles';
+  } else if (/^\/admin\/users\/\d+$/.test(path)) {
+    isDynamic = true;
+    backLink = '/admin/users';
+    contextTitle = 'Edit User';
+    contextSubtitle = 'Update user profile';
   }
 
   return (
@@ -82,6 +92,12 @@ export function AdminTopNav() {
               <p className="text-xs text-muted-foreground">{currentAdmin.email}</p>
             )}
           </div>
+          <UserAvatar
+            name={currentAdmin?.name}
+            email={currentAdmin?.email}
+            role="admin"
+            size={40}
+          />
           <Button
             variant="ghost"
             size="icon"
