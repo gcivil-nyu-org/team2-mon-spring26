@@ -842,9 +842,7 @@ def _resolve_cuisine_ids(names):
     clean = [n.strip() for n in names if isinstance(n, str) and n.strip()]
     if not clean:
         return set()
-    return set(
-        CuisineType.objects.filter(name__in=clean).values_list("id", flat=True)
-    )
+    return set(CuisineType.objects.filter(name__in=clean).values_list("id", flat=True))
 
 
 def api_venue_preview(request):
@@ -922,7 +920,9 @@ def api_venue_preview(request):
     limit = max(1, min(limit, 50))
     offset = max(0, offset)
 
-    from groups.views import _venue_to_swipe_json  # avoid circular import at module load
+    from groups.views import (
+        _venue_to_swipe_json,
+    )  # avoid circular import at module load
 
     venues_qs = (
         qs.select_related("cuisine_type")
@@ -934,9 +934,7 @@ def api_venue_preview(request):
 
     venues_list = list(venues_qs)
     venues_data = [_venue_to_swipe_json(v) for v in venues_list]
-    return JsonResponse(
-        {"success": True, "count": count, "venues": venues_data}
-    )
+    return JsonResponse({"success": True, "count": count, "venues": venues_data})
 
 
 def api_venue_preview_detail(request, venue_id):

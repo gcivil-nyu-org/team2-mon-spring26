@@ -15,7 +15,6 @@ exists (fresh DB), it is a no-op.
 
 from django.db import migrations
 
-
 LEGACY_NAME = "Jewish/Kosher"
 CANONICAL_NAME = "Kosher"
 

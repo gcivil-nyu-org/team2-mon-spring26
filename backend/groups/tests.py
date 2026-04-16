@@ -160,9 +160,7 @@ class GroupAPITests(TestCase):
         pref2.food_type_tags.add(breakfast)
 
         self.client.login(email="alice@example.com", password="password123")
-        response = self.client.get(
-            f"/api/groups/{group.id}/effective-constraints/"
-        )
+        response = self.client.get(f"/api/groups/{group.id}/effective-constraints/")
         self.assertEqual(response.status_code, 200)
         constraints = response.json()["constraints"]
         # Strictest grade across members wins
@@ -179,9 +177,7 @@ class GroupAPITests(TestCase):
             user=self.user1, group=group, role=GroupMembership.Role.LEADER
         )
         self.client.login(email="bob@example.com", password="password123")
-        response = self.client.get(
-            f"/api/groups/{group.id}/effective-constraints/"
-        )
+        response = self.client.get(f"/api/groups/{group.id}/effective-constraints/")
         self.assertEqual(response.status_code, 403)
 
 

@@ -10,8 +10,7 @@ from django.core.validators import validate_email
 from django.utils import timezone
 
 from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
-from accounts.models import UserPreference
-from venues.models import Venue, VenuePhoto
+from venues.models import Venue
 from venues.google_places import bulk_prefetch_photos
 from venues.filters import (
     filter_venues_by_preferences,
@@ -1056,9 +1055,7 @@ def api_group_preview_venues(request, group_id):
         ]
     )
     venues_data = [_venue_to_swipe_json(v) for v in venues_qs]
-    return JsonResponse(
-        {"success": True, "count": count, "venues": venues_data}
-    )
+    return JsonResponse({"success": True, "count": count, "venues": venues_data})
 
 
 def api_submit_swipe(request, group_id, event_id):

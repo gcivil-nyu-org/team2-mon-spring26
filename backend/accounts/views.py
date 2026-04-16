@@ -906,7 +906,7 @@ def safely_delete_user(user, fallback_creator=None):
       - If the user is the last member of a group, delete the group.
       - Otherwise hand off chat ownership and delete the user.
     """
-    from groups.models import Group, GroupMembership
+    from groups.models import GroupMembership
 
     try:
         from chat.models import Chat, ChatMember, Message

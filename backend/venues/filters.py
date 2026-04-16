@@ -61,15 +61,12 @@ def filter_venues_by_preferences(
         max_len = len(price_range)
         allowed_prices = [p for p in _VALID_PRICE_RANGES if len(p) <= max_len]
         qs = qs.filter(
-            models.Q(price_range__in=allowed_prices)
-            | models.Q(price_range__exact="")
+            models.Q(price_range__in=allowed_prices) | models.Q(price_range__exact="")
         )
 
     if getattr(settings, "STRICT_PREFERENCE_FILTERS", False):
         if dietary_tag_names:
-            qs = qs.filter(
-                dietary_tags__name__in=list(dietary_tag_names)
-            ).distinct()
+            qs = qs.filter(dietary_tags__name__in=list(dietary_tag_names)).distinct()
         if food_type_tag_names:
             qs = qs.filter(
                 food_type_tags__name__in=list(food_type_tag_names)
@@ -151,14 +148,10 @@ def aggregate_member_preferences(group):
     """
     from accounts.models import UserPreference
 
-    member_user_ids = list(
-        group.memberships.values_list("user_id", flat=True)
-    )
+    member_user_ids = list(group.memberships.values_list("user_id", flat=True))
     preferences = UserPreference.objects.filter(
         user_id__in=member_user_ids
-    ).prefetch_related(
-        "dietary_tags", "cuisine_types", "food_type_tags"
-    )
+    ).prefetch_related("dietary_tags", "cuisine_types", "food_type_tags")
     return _aggregate_from_preferences(preferences)
 
 
@@ -180,8 +173,9 @@ def aggregate_member_preferences_bulk(groups):
     group_ids = [g.id for g in groups]
 
     memberships = list(
-        GroupMembership.objects.filter(group_id__in=group_ids)
-        .values_list("group_id", "user_id")
+        GroupMembership.objects.filter(group_id__in=group_ids).values_list(
+            "group_id", "user_id"
+        )
     )
     user_ids_by_group: dict = {}
     all_user_ids = set()
