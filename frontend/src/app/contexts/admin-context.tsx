@@ -1,18 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
-
-function apiUrl(path: string) {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${normalizedPath}`;
-}
-
-function getCookie(name: string): string {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(';').shift() ?? '';
-  return '';
-}
+import { apiUrl, getCsrf } from '@/app/lib/api';
 
 export interface AdminUser {
   id: string;
@@ -73,7 +60,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loginAdmin = async (email: string, password: string) => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl('/api/auth/admin-login/'), {
       method: 'POST',
       credentials: 'include',
@@ -98,7 +85,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     firstName: string;
     lastName: string;
   }) => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl('/api/auth/admin-register/'), {
       method: 'POST',
       credentials: 'include',
@@ -114,7 +101,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   };
 
   const logoutAdmin = async () => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     await fetch(apiUrl('/api/auth/logout/'), {
       method: 'POST',
       credentials: 'include',
@@ -124,7 +111,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   };
 
   const requestAdminPasswordReset = async (email: string) => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl('/api/auth/admin-request-password-reset/'), {
       method: 'POST',
       credentials: 'include',
@@ -138,7 +125,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   };
 
   const validateAdminPasswordResetToken = async (uid: string, token: string) => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl('/api/auth/validate-password-reset-token/'), {
       method: 'POST',
       credentials: 'include',
@@ -156,7 +143,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     token: string,
     newPassword: string
   ) => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl('/api/auth/confirm-password-reset/'), {
       method: 'POST',
       credentials: 'include',

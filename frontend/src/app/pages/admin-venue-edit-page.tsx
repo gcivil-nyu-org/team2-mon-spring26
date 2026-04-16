@@ -2,6 +2,16 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/app/components/ui/alert-dialog';
 import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
 import { Label } from '@/app/components/ui/label';
@@ -22,18 +32,11 @@ import {
 } from '@/app/components/ui/select';
 import { Save, UserX } from 'lucide-react';
 import preferenceOptions from '@/app/data/preference-options.json';
+import { apiUrl, getCsrf } from '@/app/lib/api';
 
-const API = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'];
 const PRICE_RANGES = ['$', '$$', '$$$', '$$$$'];
 const SANITATION_GRADES = ['A', 'B', 'C', 'N', 'Z', 'P'];
-
-function getCookie(name: string): string {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(';').shift() ?? '';
-  return '';
-}
 
 interface VenueDetail {
   id: number;
@@ -110,16 +113,18 @@ export function AdminVenueEditPage() {
   const [isActive, setIsActive] = useState(true);
   const [dietaryTags, setDietaryTags] = useState<string[]>([]);
   const [foodTypeTags, setFoodTypeTags] = useState<string[]>([]);
+  const [showRemoveManagerDialog, setShowRemoveManagerDialog] = useState(false);
+  const [removingManager, setRemovingManager] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
         const [venueRes, optionsRes] = await Promise.all([
-          fetch(`${API}/api/venues/admin/venues/${venueId}/`, {
+          fetch(apiUrl(`/api/venues/admin/venues/${venueId}/`), {
             credentials: 'include',
           }),
-          fetch(`${API}/api/venues/admin/options/`, { credentials: 'include' }),
+          fetch(apiUrl('/api/venues/admin/options/'), { credentials: 'include' }),
         ]);
         if (venueRes.ok) {
           const vData = await venueRes.json();
@@ -166,7 +171,7 @@ export function AdminVenueEditPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const csrftoken = getCookie('csrftoken') || '';
+      const csrftoken = getCsrf();
       const body = {
         name,
         streetAddress,
@@ -190,7 +195,7 @@ export function AdminVenueEditPage() {
         dietaryTags,
         foodTypeTags,
       };
-      const res = await fetch(`${API}/api/venues/admin/venues/${venueId}/`, {
+      const res = await fetch(apiUrl(`/api/venues/admin/venues/${venueId}/`), {
         method: 'PATCH',
         credentials: 'include',
         headers: {
@@ -234,6 +239,34 @@ export function AdminVenueEditPage() {
     ...(preferenceOptions.foodTypes as string[]),
     ...foodTypeTags,
   ]);
+
+  const handleRemoveManager = async () => {
+    setShowRemoveManagerDialog(false);
+    setRemovingManager(true);
+    try {
+      const csrftoken = getCsrf();
+      const res = await fetch(apiUrl(`/api/venues/admin/venues/${venueId}/`), {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ removeManager: true }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setVenue(data.venue);
+        setIsVerified(false);
+        toast.success('Venue manager removed successfully.');
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to remove manager.');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('An error occurred.');
+    } finally {
+      setRemovingManager(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -562,41 +595,7 @@ export function AdminVenueEditPage() {
                 <Button
                   variant="outline"
                   className="text-red-700 border-red-200 hover:bg-red-50 w-full"
-                  onClick={async () => {
-                    if (
-                      !window.confirm(
-                        `Remove ${venue.manager?.userName || venue.manager?.userEmail} as venue manager?\n\nThis will revoke their verification and all associated claims will be rejected. The venue will become available for a new manager to claim.`
-                      )
-                    )
-                      return;
-                    try {
-                      const csrftoken = getCookie('csrftoken') || '';
-                      const res = await fetch(
-                        `${API}/api/venues/admin/venues/${venueId}/`,
-                        {
-                          method: 'PATCH',
-                          credentials: 'include',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrftoken,
-                          },
-                          body: JSON.stringify({ removeManager: true }),
-                        }
-                      );
-                      if (res.ok) {
-                        const data = await res.json();
-                        setVenue(data.venue);
-                        setIsVerified(false);
-                        toast.success('Venue manager removed successfully.');
-                      } else {
-                        const data = await res.json();
-                        toast.error(data.error || 'Failed to remove manager.');
-                      }
-                    } catch (err) {
-                      console.error(err);
-                      toast.error('An error occurred.');
-                    }
-                  }}
+                  onClick={() => setShowRemoveManagerDialog(true)}
                 >
                   <UserX className="w-4 h-4 mr-1.5" />
                   Remove Venue Manager
@@ -662,6 +661,29 @@ export function AdminVenueEditPage() {
           Cancel
         </Button>
       </div>
+
+      <AlertDialog open={showRemoveManagerDialog} onOpenChange={setShowRemoveManagerDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove venue manager?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove {venue.manager?.userName || venue.manager?.userEmail} as venue manager?
+              This will revoke their verification and all associated claims will be rejected.
+              The venue will become available for a new manager to claim.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={removingManager}
+              onClick={handleRemoveManager}
+            >
+              {removingManager ? 'Removing…' : 'Remove Manager'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -35,9 +35,20 @@ import {
   Copy,
   Check,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
 import { ChatSidebar } from "@/app/components/chat-sidebar";
 import { PreferencePreviewTrigger } from "@/app/components/preference-preview";
 import { useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 
 export function GroupDetailPage() {
   const { groupId } = useParams();
@@ -80,6 +91,13 @@ export function GroupDetailPage() {
   const [priceRange, setPriceRange] = useState<string>('');
   const [constraintsLoading, setConstraintsLoading] = useState(false);
   const [constraintsError, setConstraintsError] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => Promise<void>;
+  }>({ open: false, title: '', description: '', onConfirm: async () => {} });
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const group = groups.find((g) => g.id === groupId);
   const groupEvents = swipeEvents.filter(
@@ -190,7 +208,7 @@ export function GroupDetailPage() {
     try {
       await regenerateJoinCode(group.id);
     } catch (e: unknown) {
-      alert("Failed to regenerate code: " + (e instanceof Error ? e.message : "Unknown error"));
+      toast.error("Failed to regenerate code: " + (e instanceof Error ? e.message : "Unknown error"));
     } finally {
       setRegeneratingCode(false);
     }
@@ -256,16 +274,19 @@ export function GroupDetailPage() {
                 <Button
                   variant="outline"
                   className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-100 flex items-center gap-2"
-                  onClick={async () => {
-                    if (window.confirm("Are you sure you want to leave this group?")) {
+                  onClick={() => setConfirmDialog({
+                    open: true,
+                    title: "Leave group?",
+                    description: "Are you sure you want to leave this group?",
+                    onConfirm: async () => {
                       try {
                         await leaveGroup(group.id);
                         navigate("/home");
                       } catch (e) {
-                        alert((e as Error).message);
+                        toast.error((e as Error).message);
                       }
-                    }
-                  }}
+                    },
+                  })}
                 >
                   <span className="hidden sm:inline">Leave Group</span>
                   <span className="sm:hidden">Leave</span>
@@ -274,16 +295,19 @@ export function GroupDetailPage() {
                   <Button
                     variant="outline"
                     className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-100 flex items-center gap-2"
-                    onClick={async () => {
-                      if (window.confirm("Are you sure you want to delete this group?")) {
+                    onClick={() => setConfirmDialog({
+                      open: true,
+                      title: "Delete group?",
+                      description: "Are you sure you want to delete this group? This cannot be undone.",
+                      onConfirm: async () => {
                         try {
                           await deleteGroup(group.id);
                           navigate("/home");
                         } catch (e) {
-                          alert((e as Error).message);
+                          toast.error((e as Error).message);
                         }
-                      }
-                    }}
+                      },
+                    })}
                   >
                     <span className="hidden sm:inline">Delete Group</span>
                     <span className="sm:hidden">Delete</span>
@@ -494,15 +518,18 @@ export function GroupDetailPage() {
                                   variant="ghost" 
                                   size="sm" 
                                   className="h-8 px-2 text-xs"
-                                  onClick={async () => {
-                                    if (window.confirm(`Make ${member.userName} a leader?`)) {
+                                  onClick={() => setConfirmDialog({
+                                    open: true,
+                                    title: `Promote ${member.userName}?`,
+                                    description: `Make ${member.userName} a leader of this group?`,
+                                    onConfirm: async () => {
                                       try {
                                         await makeLeader(group.id, member.userId);
                                       } catch (e) {
-                                        alert((e as Error).message);
+                                        toast.error((e as Error).message);
                                       }
-                                    }
-                                  }}
+                                    },
+                                  })}
                                 >
                                   <Crown className="w-3 h-3 mr-1" />
                                   Promote
@@ -512,15 +539,18 @@ export function GroupDetailPage() {
                                 variant="ghost" 
                                 size="sm" 
                                 className="h-8 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                                onClick={async () => {
-                                  if (window.confirm(`Remove ${member.userName} from the group?`)) {
+                                onClick={() => setConfirmDialog({
+                                  open: true,
+                                  title: `Remove ${member.userName}?`,
+                                  description: `Remove ${member.userName} from this group?`,
+                                  onConfirm: async () => {
                                     try {
                                       await removeMember(group.id, member.userId);
                                     } catch (e) {
-                                      alert((e as Error).message);
+                                      toast.error((e as Error).message);
                                     }
-                                  }
-                                }}
+                                  },
+                                })}
                               >
                                 <X className="w-3 h-3 mr-1" />
                                 Remove
@@ -773,6 +803,38 @@ export function GroupDetailPage() {
           onClose={() => setShowChat(false)}
         />
       )}
+
+      <AlertDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => !open && setConfirmDialog((d) => ({ ...d, open: false }))}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={isConfirming}
+              onClick={async () => {
+                setIsConfirming(true);
+                setConfirmDialog((d) => ({ ...d, open: false }));
+                try {
+                  await confirmDialog.onConfirm();
+                } catch (e) {
+                  toast.error((e as Error).message);
+                } finally {
+                  setIsConfirming(false);
+                }
+              }}
+            >
+              {isConfirming ? 'Confirming…' : 'Confirm'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

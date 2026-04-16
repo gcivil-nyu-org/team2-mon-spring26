@@ -62,7 +62,6 @@ describe('GroupDetailPage Synchronization', () => {
       fetchAvailableUsers: vi.fn(),
       getAllUsers: vi.fn().mockReturnValue([]),
       createSwipeEvent: vi.fn(),
-      swipes: {},
       addChatMessage: vi.fn(),
       deleteChatMessage: vi.fn(),
       availableUsers: []

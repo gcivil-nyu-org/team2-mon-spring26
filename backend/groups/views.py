@@ -2,7 +2,6 @@ import json
 import logging
 import math
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
 from django.db import transaction, models
 from django.db.models import Count, prefetch_related_objects
@@ -24,7 +23,6 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-@csrf_exempt
 def api_list_users(request):
     """
     GET /api/groups/users/
@@ -123,7 +121,6 @@ def _group_to_json(group):
     }
 
 
-@csrf_exempt
 def api_groups_list_create(request):
     """
     GET /api/groups/ - List all groups the user is a member of
@@ -194,7 +191,6 @@ def api_groups_list_create(request):
     return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
-@csrf_exempt
 def api_edit_group(request, group_id):
     """
     PATCH|PUT /api/groups/<id>/
@@ -249,7 +245,6 @@ def api_edit_group(request, group_id):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_delete_group(request, group_id):
     """
     DELETE /api/groups/<id>/
@@ -281,7 +276,6 @@ def api_delete_group(request, group_id):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_invite_to_group(request, group_id):
     """
     POST /api/groups/<id>/invite/
@@ -348,7 +342,6 @@ def api_invite_to_group(request, group_id):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_invitations_list(request):
     """
     GET /api/groups/invitations/
@@ -415,7 +408,6 @@ def api_invitations_list(request):
     )
 
 
-@csrf_exempt
 def api_mark_swipe_notification_read(request, notification_id):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
@@ -438,7 +430,6 @@ def api_mark_swipe_notification_read(request, notification_id):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_invitation_action(request, invitation_id, action):
     """
     POST /api/groups/invitations/<invitation_id>/<action>/
@@ -509,7 +500,6 @@ def api_invitation_action(request, invitation_id, action):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_remove_from_group(request, group_id, user_id):
     """
     DELETE /api/groups/<id>/members/<user_id>/
@@ -573,7 +563,6 @@ def api_remove_from_group(request, group_id, user_id):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_make_leader(request, group_id, user_id):
     """
     PATCH /api/groups/<id>/members/<user_id>/role/
@@ -632,7 +621,6 @@ def api_make_leader(request, group_id, user_id):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_leave_group(request, group_id):
     """
     POST /api/groups/<id>/leave/
@@ -802,7 +790,6 @@ def _venue_to_swipe_json(venue):
     }
 
 
-@csrf_exempt
 def api_swipe_events(request, group_id):
     """
     GET  /api/groups/<id>/events/ - List swipe events for a group
@@ -879,7 +866,6 @@ def api_swipe_events(request, group_id):
         return JsonResponse({"error": "An unexpected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_swipe_event_venues(request, group_id, event_id):
     """
     GET /api/groups/<id>/events/<event_id>/venues/
@@ -970,7 +956,6 @@ def _require_group_membership(request, group_id):
     return group, None
 
 
-@csrf_exempt
 def api_group_effective_constraints(request, group_id):
     """
     GET /api/groups/<id>/effective-constraints/
@@ -1000,7 +985,6 @@ def api_group_effective_constraints(request, group_id):
     )
 
 
-@csrf_exempt
 def api_group_preview_venues(request, group_id):
     """
     GET /api/groups/<id>/preview-venues/?countOnly=1&limit=20&offset=0
@@ -1057,7 +1041,6 @@ def api_group_preview_venues(request, group_id):
     )
 
 
-@csrf_exempt
 def api_submit_swipe(request, group_id, event_id):
     """
     POST /api/groups/<id>/events/<event_id>/swipes/
@@ -1126,7 +1109,6 @@ def api_submit_swipe(request, group_id, event_id):
         return JsonResponse({"error": "An unexpected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_swipe_event_results(request, group_id, event_id):
     """
     GET /api/groups/<id>/events/<event_id>/results/
@@ -1230,7 +1212,6 @@ def api_swipe_event_results(request, group_id, event_id):
         return JsonResponse({"error": "An unexpected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_public_groups_list(request):
     if request.method != "GET":
         return JsonResponse({"error": "Method not allowed"}, status=405)
@@ -1251,7 +1232,6 @@ def api_public_groups_list(request):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_join_group_by_code(request, join_code):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
@@ -1302,7 +1282,6 @@ def api_join_group_by_code(request, join_code):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_regenerate_join_code(request, group_id):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
