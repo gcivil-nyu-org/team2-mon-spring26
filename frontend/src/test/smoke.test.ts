@@ -1,6 +1,5 @@
 /**
- * Minimal smoke test: Vitest and jsdom run; expect extensions work.
- * This passes even when full component tests hit Vite 8 beta SSR transform issues.
+ * Smoke test: confirms Vitest and jsdom are correctly configured.
  */
 import { describe, it, expect } from 'vitest';
 

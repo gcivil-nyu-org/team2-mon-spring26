@@ -319,7 +319,7 @@ Keep tests close to feature work and treat them as part of every PR.
 - Prefer queries users rely on (`getByRole`, `getByText`) over brittle selectors.
 - Cover loading, empty, error, and success UI states where applicable.
 - Keep tests isolated and avoid shared mutable state between test cases.
-- _Note:_ Frontend test setup (Vitest + React Testing Library) is in place, but tests may not pass under Vite 8 beta without version/config alignment; see `docs/TEST_RESULTS.md` for current status and recommendations.
+- See `docs/TEST_RESULTS.md` for current test status and how to run the test suites.
 
 #### Team Expectations
 
@@ -329,17 +329,25 @@ Keep tests close to feature work and treat them as part of every PR.
 
 ### ✨ Running backend tests locally
 
-From the `backend/` directory (with `config.settings`):
+From the `backend/` directory:
 
 ```sh
-python manage.py test                              # run everything
-python manage.py test tests.test_auth_integration -v 2   # auth suite only
+# Recommended: use test_settings for faster runs (MD5 hasher, in-memory email)
+python manage.py test --settings=config.test_settings
 
-# Run a single test method (use `tests.` as the module prefix, not `backend.tests.`):
-python manage.py test tests.test_auth_integration.AuthIntegrationTests.test_login_success -v 2
+# Keep the test database between runs (avoids recreating it each time)
+python manage.py test --settings=config.test_settings --keepdb
+
+# Run a specific app or test class
+python manage.py test accounts --settings=config.test_settings --keepdb
+python manage.py test accounts.tests.CSRFProtectionTests --settings=config.test_settings --keepdb
+
+# Run a single test method
+python manage.py test accounts.tests.AuthIntegrationTests.test_login_success --settings=config.test_settings -v 2
 ```
 
-Use the module path **`tests.test_auth_integration`** (not `backend.tests...`). Django treats the first segment as an app name; we have no app called `backend`, so `backend.tests.test_auth_integration` raises `ModuleNotFoundError`.
+**Why `--settings=config.test_settings`?**
+`config/test_settings.py` overrides `PASSWORD_HASHERS` to use `MD5PasswordHasher` instead of PBKDF2-SHA256 (260k rounds). With ~57 password-hashing calls across the full suite this saves significant time. It also silences console email output. Production settings are unaffected.
 
 ### 8.2 Feature Test Suites (Progress & Coverage)
 

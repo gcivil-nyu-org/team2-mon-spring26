@@ -34,7 +34,7 @@ script:
   - (cd frontend && npm run lint)
 
   # 2. Backend Tests & Coverage
-  - (cd backend && coverage run --rcfile=../.coveragerc --source=. manage.py test)
+  - (cd backend && coverage run --rcfile=../.coveragerc --source=. manage.py test --settings=config.test_settings)
 
   # 3. Frontend Build
   - (cd frontend && npm run build)

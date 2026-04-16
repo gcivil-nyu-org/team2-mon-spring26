@@ -1,7 +1,6 @@
 import json
 import logging
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
@@ -97,7 +96,6 @@ def _chat_to_json(chat, request_user=None):
     }
 
 
-@csrf_exempt
 def api_chat_list_create(request):
     """
     GET /api/chat/ - List all chats the user is a member of (Groups and DMs)
@@ -202,7 +200,6 @@ def api_chat_list_create(request):
     return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
-@csrf_exempt
 def api_chat_messages(request, chat_id):
     """
     GET /api/chat/<id>/messages/
@@ -321,7 +318,6 @@ def api_chat_messages(request, chat_id):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_chat_message_detail(request, chat_id, message_id):
     """
     DELETE /api/chat/<chat_id>/messages/<message_id>/
@@ -379,7 +375,6 @@ def api_chat_message_detail(request, chat_id, message_id):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
-@csrf_exempt
 def api_chat_member_mute(request, chat_id, user_id):
     """
     POST /api/chat/<chat_id>/members/<user_id>/mute/

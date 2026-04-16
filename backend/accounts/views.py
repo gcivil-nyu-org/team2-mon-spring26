@@ -15,7 +15,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.core.cache import cache
-from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 
@@ -153,7 +153,6 @@ def _user_to_json(user):
     return payload
 
 
-@csrf_exempt
 def api_venue_register(request):
     """
     POST /api/auth/venue-register/
@@ -217,7 +216,6 @@ def api_venue_register(request):
         )
 
 
-@csrf_exempt
 def api_admin_register(request):
     """
     POST /api/auth/admin-register/
@@ -296,7 +294,6 @@ signup = SignUpView.as_view()
 # --- JSON API Views for React Frontend ---
 
 
-@csrf_exempt
 def api_register(request):
     if request.method == "POST":
         try:
@@ -333,7 +330,6 @@ def api_register(request):
     return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
-@csrf_exempt
 def api_login(request):
     if request.method == "POST":
         # basic brute force mitigation: limit by IP and email
@@ -376,7 +372,6 @@ def api_login(request):
     return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
-@csrf_exempt
 def api_admin_login(request):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
@@ -410,7 +405,6 @@ def api_admin_login(request):
         )
 
 
-@csrf_exempt
 def api_logout(request):
     if request.method == "POST":
         logout(request)
@@ -430,7 +424,6 @@ def api_me(request):
     return JsonResponse({"authenticated": False}, status=401)
 
 
-@csrf_exempt
 def api_preferences_update(request):
     if request.method not in ("PATCH", "PUT"):
         return JsonResponse({"error": "Method not allowed"}, status=405)
@@ -448,7 +441,6 @@ def api_preferences_update(request):
         )
 
 
-@csrf_exempt
 def api_request_password_reset(request):
     if request.method == "POST":
         try:
@@ -516,7 +508,6 @@ def api_request_password_reset(request):
     return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
-@csrf_exempt
 def api_request_admin_password_reset(request):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
@@ -579,7 +570,6 @@ def api_request_admin_password_reset(request):
         )
 
 
-@csrf_exempt
 def api_validate_password_reset_token(request):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
@@ -617,7 +607,6 @@ def api_validate_password_reset_token(request):
     return JsonResponse({"success": True, "valid": True})
 
 
-@csrf_exempt
 def api_confirm_password_reset(request):
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
