@@ -51,6 +51,14 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "True") == "True"
 
+# When True, dietary_tags and food_type_tags from user preferences are
+# applied as hard filters on venue querysets (swipe + preview). Default
+# off because tag coverage in seeded data is sparse — enabling without
+# running populate_tags on fully-ingested venues can return zero matches.
+STRICT_PREFERENCE_FILTERS = (
+    os.environ.get("STRICT_PREFERENCE_FILTERS", "False") == "True"
+)
+
 _allowed_hosts_env = os.getenv("ALLOWED_HOSTS", "")
 ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts_env.split(",") if host.strip()]
 if not ALLOWED_HOSTS:

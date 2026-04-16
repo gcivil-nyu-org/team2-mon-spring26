@@ -124,33 +124,14 @@ class GroupAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("only leader", response.json()["error"])
 
-    def test_update_group_constraints_as_leader(self):
-        group = Group.objects.create(name="Constraint Club", created_by=self.user1)
-        GroupMembership.objects.create(
-            user=self.user1, group=group, role=GroupMembership.Role.LEADER
+    def test_effective_constraints_aggregates_from_members(self):
+        from accounts.models import (
+            UserPreference,
+            CuisineType,
+            DietaryTag,
+            FoodTypeTag,
         )
-        self.client.login(email="alice@example.com", password="password123")
-        response = self.client.patch(
-            f"/api/groups/{group.id}/constraints/",
-            json.dumps(
-                {
-                    "dietary": ["Vegetarian"],
-                    "cuisines": ["Italian"],
-                    "foodTypes": ["Breakfast"],
-                    "minimumSanitationGrade": "B",
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        group.refresh_from_db()
-        self.assertEqual(group.constraints.minimum_sanitation_grade, "B")
-        self.assertTrue(
-            group.constraints.dietary_tags.filter(name="Vegetarian").exists()
-        )
-        self.assertTrue(group.constraints.cuisine_types.filter(name="Italian").exists())
 
-    def test_update_group_constraints_as_member_fails(self):
         group = Group.objects.create(name="Constraint Club", created_by=self.user1)
         GroupMembership.objects.create(
             user=self.user1, group=group, role=GroupMembership.Role.LEADER
@@ -158,32 +139,46 @@ class GroupAPITests(TestCase):
         GroupMembership.objects.create(
             user=self.user2, group=group, role=GroupMembership.Role.MEMBER
         )
-        self.client.login(email="bob@example.com", password="password123")
-        response = self.client.patch(
-            f"/api/groups/{group.id}/constraints/",
-            json.dumps({"minimumSanitationGrade": "A"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 403)
 
-    def test_update_group_constraints_invalid_grade_ignored(self):
-        group = Group.objects.create(name="Constraint Club", created_by=self.user1)
+        italian = CuisineType.objects.create(name="Italian", slug="italian")
+        thai = CuisineType.objects.create(name="Thai", slug="thai")
+        vegetarian = DietaryTag.objects.create(name="Vegetarian", slug="vegetarian")
+        breakfast = FoodTypeTag.objects.create(name="Breakfast", slug="breakfast")
+
+        pref1, _ = UserPreference.objects.get_or_create(user=self.user1)
+        pref1.minimum_sanitation_grade = "B"
+        pref1.price_range = "$$"
+        pref1.save()
+        pref1.cuisine_types.add(italian)
+        pref1.dietary_tags.add(vegetarian)
+
+        pref2, _ = UserPreference.objects.get_or_create(user=self.user2)
+        pref2.minimum_sanitation_grade = "A"
+        pref2.price_range = "$"
+        pref2.save()
+        pref2.cuisine_types.add(thai)
+        pref2.food_type_tags.add(breakfast)
+
+        self.client.login(email="alice@example.com", password="password123")
+        response = self.client.get(f"/api/groups/{group.id}/effective-constraints/")
+        self.assertEqual(response.status_code, 200)
+        constraints = response.json()["constraints"]
+        # Strictest grade across members wins
+        self.assertEqual(constraints["minimumSanitationGrade"], "A")
+        # Tightest budget wins
+        self.assertEqual(constraints["priceRange"], "$")
+        self.assertEqual(set(constraints["cuisines"]), {"Italian", "Thai"})
+        self.assertEqual(constraints["dietary"], ["Vegetarian"])
+        self.assertEqual(constraints["foodTypes"], ["Breakfast"])
+
+    def test_effective_constraints_requires_membership(self):
+        group = Group.objects.create(name="Private Club", created_by=self.user1)
         GroupMembership.objects.create(
             user=self.user1, group=group, role=GroupMembership.Role.LEADER
         )
-        from .models import GroupConstraint
-
-        GroupConstraint.objects.create(group=group, minimum_sanitation_grade="A")
-
-        self.client.login(email="alice@example.com", password="password123")
-        response = self.client.patch(
-            f"/api/groups/{group.id}/constraints/",
-            json.dumps({"minimumSanitationGrade": "INVALID"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        group.refresh_from_db()
-        self.assertEqual(group.constraints.minimum_sanitation_grade, "A")
+        self.client.login(email="bob@example.com", password="password123")
+        response = self.client.get(f"/api/groups/{group.id}/effective-constraints/")
+        self.assertEqual(response.status_code, 403)
 
 
 class GroupModelTest(TestCase):
@@ -1614,3 +1609,130 @@ class RegenerateJoinCodeTests(TestCase):
             mock_objects.get.side_effect = Exception("boom")
             resp = self.client.post(self._url(self.group.id))
             self.assertEqual(resp.status_code, 500)
+
+
+# ---------------------------------------------------------------------------
+# /api/groups/<id>/preview-venues/  +  /api/groups/<id>/effective-constraints/
+# ---------------------------------------------------------------------------
+
+
+class GroupPreviewVenuesTests(TestCase):
+    """Covers the group preference-preview endpoints added alongside the
+    preference-preview UI: auth/membership enforcement, countOnly behavior,
+    pagination bounds, and aggregation wiring via UserPreference.
+    """
+
+    @staticmethod
+    def _preview_url(group_id):
+        return f"/api/groups/{group_id}/preview-venues/"
+
+    @staticmethod
+    def _constraints_url(group_id):
+        return f"/api/groups/{group_id}/effective-constraints/"
+
+    def setUp(self):
+        self.member = _make_user("member@example.com")
+        self.other = _make_user("other@example.com")
+
+        self.group = Group.objects.create(name="Previewers", created_by=self.member)
+        GroupMembership.objects.create(
+            user=self.member, group=self.group, role=GroupMembership.Role.LEADER
+        )
+
+        # Seed more than one page of venues so pagination is meaningful.
+        self.venues = []
+        for i in range(3):
+            v = Venue.objects.create(
+                name=f"Preview Venue {i}",
+                is_active=True,
+                google_place_id=f"place-{i}",
+                google_rating=4.5 - (i * 0.1),
+            )
+            VenuePhoto.objects.create(venue=v, image_url=f"https://cdn/p{i}.jpg")
+            self.venues.append(v)
+
+    # --- auth & membership --------------------------------------------------
+
+    def test_preview_requires_auth(self):
+        resp = self.client.get(self._preview_url(self.group.id))
+        self.assertEqual(resp.status_code, 401)
+
+    def test_preview_rejects_non_members(self):
+        self.client.force_login(self.other)
+        resp = self.client.get(self._preview_url(self.group.id))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_preview_rejects_wrong_method(self):
+        self.client.force_login(self.member)
+        resp = self.client.post(self._preview_url(self.group.id))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_preview_returns_404_when_group_missing(self):
+        self.client.force_login(self.member)
+        resp = self.client.get(self._preview_url(99999))
+        self.assertEqual(resp.status_code, 404)
+
+    # --- countOnly + pagination --------------------------------------------
+
+    def test_preview_count_only_omits_venues(self):
+        self.client.force_login(self.member)
+        resp = self.client.get(self._preview_url(self.group.id) + "?countOnly=1")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["count"], len(self.venues))
+        self.assertEqual(data["venues"], [])
+
+    def test_preview_returns_list_and_paginates(self):
+        self.client.force_login(self.member)
+        resp = self.client.get(self._preview_url(self.group.id) + "?limit=2&offset=0")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], len(self.venues))
+        self.assertEqual(len(data["venues"]), 2)
+
+        resp_page2 = self.client.get(
+            self._preview_url(self.group.id) + "?limit=2&offset=2"
+        )
+        self.assertEqual(resp_page2.status_code, 200)
+        self.assertEqual(len(resp_page2.json()["venues"]), 1)
+
+    def test_preview_clamps_invalid_pagination(self):
+        # limit > 50 → clamped to 50; negative offset → clamped to 0;
+        # non-int strings → default fallback. Endpoint should not 500.
+        self.client.force_login(self.member)
+        resp = self.client.get(
+            self._preview_url(self.group.id) + "?limit=9999&offset=-5"
+        )
+        self.assertEqual(resp.status_code, 200)
+        resp_bad = self.client.get(
+            self._preview_url(self.group.id) + "?limit=abc&offset=xyz"
+        )
+        self.assertEqual(resp_bad.status_code, 200)
+
+    # --- aggregation wiring -------------------------------------------------
+
+    def test_effective_constraints_aggregates_member_preferences(self):
+        # Member picks a sanitation grade + price range; endpoint should
+        # reflect them as the strictest/tightest values.
+        pref, _ = UserPreference.objects.get_or_create(user=self.member)
+        pref.minimum_sanitation_grade = "B"
+        pref.price_range = "$$"
+        pref.save()
+
+        self.client.force_login(self.member)
+        resp = self.client.get(self._constraints_url(self.group.id))
+        self.assertEqual(resp.status_code, 200)
+        constraints = resp.json()["constraints"]
+        self.assertEqual(constraints["minimumSanitationGrade"], "B")
+        self.assertEqual(constraints["priceRange"], "$$")
+
+    def test_effective_constraints_requires_membership(self):
+        self.client.force_login(self.other)
+        resp = self.client.get(self._constraints_url(self.group.id))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_effective_constraints_rejects_wrong_method(self):
+        self.client.force_login(self.member)
+        resp = self.client.post(self._constraints_url(self.group.id))
+        self.assertEqual(resp.status_code, 405)

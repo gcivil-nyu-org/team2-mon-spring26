@@ -17,6 +17,7 @@ export interface User {
     dietary: string[];
     foodTypes: string[];
     minimumSanitationGrade?: string;
+    priceRange?: string;
   };
   is_invited?: boolean;
 }
@@ -31,6 +32,7 @@ interface RegisterData {
     dietary?: string[];
     foodTypes?: string[];
     minimum_sanitation_grade?: string;
+    price_range?: string;
   };
 }
 
@@ -45,6 +47,7 @@ export interface AuthContextType {
     cuisines?: string[];
     foodTypes?: string[];
     minimumSanitationGrade?: string;
+    priceRange?: string;
   }) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   validatePasswordResetToken: (uid: string, token: string) => Promise<void>;
@@ -74,6 +77,7 @@ export function normalizeApiUser(apiUser: {
     cuisines?: string[];
     foodTypes?: string[];
     minimum_sanitation_grade?: string;
+    price_range?: string;
   };
   is_invited?: boolean;
 }): User {
@@ -90,6 +94,7 @@ export function normalizeApiUser(apiUser: {
       dietary: Array.isArray(prefs.dietary) ? prefs.dietary : DEFAULT_PREFERENCES.dietary,
       foodTypes: Array.isArray(prefs.foodTypes) ? prefs.foodTypes : DEFAULT_PREFERENCES.foodTypes,
       minimumSanitationGrade: grade,
+      priceRange: prefs.price_range ?? '',
     },
     is_invited: apiUser.is_invited,
   };
@@ -186,6 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     cuisines?: string[];
     foodTypes?: string[];
     minimumSanitationGrade?: string;
+    priceRange?: string;
   }) => {
     const csrftoken = getCsrf();
     const body: Record<string, unknown> = {};
@@ -194,6 +200,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (preferences.foodTypes !== undefined) body.foodTypes = preferences.foodTypes;
     if (preferences.minimumSanitationGrade !== undefined) {
       body.minimum_sanitation_grade = preferences.minimumSanitationGrade;
+    }
+    if (preferences.priceRange !== undefined) {
+      body.price_range = preferences.priceRange;
     }
     const response = await fetch(apiUrl('/api/auth/preferences/'), {
       method: 'PATCH',

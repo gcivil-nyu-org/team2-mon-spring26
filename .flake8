@@ -13,4 +13,5 @@ exclude =
     env,
     .tox,
     build,
-    dist
+    dist,
+    backend/aws-elastic-beanstalk-cli-setup

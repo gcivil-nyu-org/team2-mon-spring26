@@ -44,6 +44,16 @@ export interface GroupConstraints {
   priceRange?: string;
 }
 
+export interface PreviewFilters {
+  cuisines?: string[];
+  dietary?: string[];
+  foodTypes?: string[];
+  minimumSanitationGrade?: string;
+  priceRange?: string;
+  borough?: string;
+  neighborhood?: string;
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -143,7 +153,16 @@ export interface AppContextType extends AuthContextType {
   regenerateJoinCode: (groupId: string) => Promise<string>;
   leaveGroup: (groupId: string) => Promise<void>;
   deleteGroup: (groupId: string) => Promise<void>;
-  updateGroupConstraints: (groupId: string, constraints: GroupConstraints) => Promise<void>;
+  fetchGroupEffectiveConstraints: (groupId: string) => Promise<GroupConstraints>;
+  fetchGroupPreviewVenues: (
+    groupId: string,
+    options?: { countOnly?: boolean; limit?: number; offset?: number; signal?: AbortSignal }
+  ) => Promise<{ count: number; venues: Restaurant[] }>;
+  fetchPreviewVenues: (
+    filters: PreviewFilters,
+    options?: { countOnly?: boolean; limit?: number; offset?: number; signal?: AbortSignal }
+  ) => Promise<{ count: number; venues: Restaurant[] }>;
+  fetchVenuePreviewDetail: (venueId: string) => Promise<Restaurant>;
   removeMember: (groupId: string, userId: string) => Promise<void>;
   makeLeader: (groupId: string, userId: string) => Promise<void>;
   inviteMember: (groupId: string, userEmail: string) => Promise<void>;
@@ -498,34 +517,6 @@ function AppInner({ children }: { children: ReactNode }) {
     if (currentGroup?.id === groupId) setCurrentGroup(null);
   };
 
-  const updateGroupConstraints = async (groupId: string, constraints: GroupConstraints) => {
-    const body: Record<string, unknown> = {};
-    if (constraints.dietary !== undefined) body.dietary = constraints.dietary;
-    if (constraints.cuisines !== undefined) body.cuisines = constraints.cuisines;
-    if (constraints.foodTypes !== undefined) body.foodTypes = constraints.foodTypes;
-    if (constraints.minimumSanitationGrade !== undefined) {
-      body.minimumSanitationGrade = constraints.minimumSanitationGrade;
-    }
-    const res = await fetch(apiUrl(`/api/groups/${groupId}/constraints/`), {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to update constraints');
-    }
-    const data = await res.json();
-    const updated = data.group as BackendGroup;
-    setGroups((prev) =>
-      prev.map((g) => (g.id === String(updated.id) ? { ...g, constraints: updated.constraints } : g))
-    );
-    if (currentGroup?.id === String(updated.id)) {
-      setCurrentGroup((prev) => (prev ? { ...prev, constraints: updated.constraints } : null));
-    }
-  };
-
   const removeMember = async (groupId: string, userId: string): Promise<void> => {
     if (!currentUser) return;
     const res = await fetch(apiUrl(`/api/groups/${groupId}/members/${userId}/`), {
@@ -543,6 +534,121 @@ function AppInner({ children }: { children: ReactNode }) {
       )
     );
   };
+
+  const fetchGroupEffectiveConstraints = useCallback(
+    async (groupId: string): Promise<GroupConstraints> => {
+      const response = await fetch(
+        apiUrl(`/api/groups/${groupId}/effective-constraints/`),
+        { credentials: 'include' }
+      );
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch group constraints');
+      }
+      const data = await response.json();
+      return data.constraints as GroupConstraints;
+    },
+    []
+  );
+
+  const fetchGroupPreviewVenues = useCallback(
+    async (
+      groupId: string,
+      options: {
+        countOnly?: boolean;
+        limit?: number;
+        offset?: number;
+        signal?: AbortSignal;
+      } = {}
+    ): Promise<{ count: number; venues: Restaurant[] }> => {
+      const params = new URLSearchParams();
+      if (options.countOnly) params.set('countOnly', '1');
+      if (options.limit !== undefined) params.set('limit', String(options.limit));
+      if (options.offset !== undefined) params.set('offset', String(options.offset));
+      const qs = params.toString();
+      const url = apiUrl(
+        `/api/groups/${groupId}/preview-venues/${qs ? `?${qs}` : ''}`
+      );
+      const response = await fetch(url, {
+        credentials: 'include',
+        signal: options.signal,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch preview venues');
+      }
+      const data = await response.json();
+      return {
+        count: data.count as number,
+        venues: data.venues as Restaurant[],
+      };
+    },
+    []
+  );
+
+  const fetchPreviewVenues = useCallback(
+    async (
+      filters: PreviewFilters,
+      options: {
+        countOnly?: boolean;
+        limit?: number;
+        offset?: number;
+        signal?: AbortSignal;
+      } = {}
+    ): Promise<{ count: number; venues: Restaurant[] }> => {
+      const body: Record<string, unknown> = {
+        cuisines: filters.cuisines ?? [],
+        dietary: filters.dietary ?? [],
+        foodTypes: filters.foodTypes ?? [],
+      };
+      if (filters.minimumSanitationGrade) {
+        body.minimumSanitationGrade = filters.minimumSanitationGrade;
+      }
+      if (filters.priceRange) body.priceRange = filters.priceRange;
+      if (filters.borough) body.borough = filters.borough;
+      if (filters.neighborhood) body.neighborhood = filters.neighborhood;
+      if (options.countOnly) body.countOnly = true;
+      if (options.limit !== undefined) body.limit = options.limit;
+      if (options.offset !== undefined) body.offset = options.offset;
+
+      const response = await fetch(apiUrl('/api/venues/preview/'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrf(),
+        },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch preview venues');
+      }
+      const data = await response.json();
+      return {
+        count: data.count as number,
+        venues: data.venues as Restaurant[],
+      };
+    },
+    []
+  );
+
+  const fetchVenuePreviewDetail = useCallback(
+    async (venueId: string): Promise<Restaurant> => {
+      const response = await fetch(
+        apiUrl(`/api/venues/${venueId}/preview-detail/`),
+        { credentials: 'include' }
+      );
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch venue detail');
+      }
+      const data = await response.json();
+      return data.venue as Restaurant;
+    },
+    []
+  );
 
   const makeLeader = async (groupId: string, userId: string): Promise<void> => {
     if (!currentUser) return;
@@ -831,7 +937,10 @@ function AppInner({ children }: { children: ReactNode }) {
         regenerateJoinCode,
         leaveGroup,
         deleteGroup,
-        updateGroupConstraints,
+        fetchGroupEffectiveConstraints,
+        fetchGroupPreviewVenues,
+        fetchPreviewVenues,
+        fetchVenuePreviewDetail,
         removeMember,
         makeLeader,
         inviteMember,

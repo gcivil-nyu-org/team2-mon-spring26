@@ -1523,12 +1523,8 @@ class AdminUsersEndpointTests(TestCase):
         from groups.models import Group, GroupMembership
 
         group = Group.objects.create(name="BlockGrp", created_by=self.student1)
-        GroupMembership.objects.create(
-            user=self.student1, group=group, role="leader"
-        )
-        GroupMembership.objects.create(
-            user=self.student2, group=group, role="member"
-        )
+        GroupMembership.objects.create(user=self.student1, group=group, role="leader")
+        GroupMembership.objects.create(user=self.student2, group=group, role="member")
         res = self.client.delete(f"/api/auth/admin/users/{self.student1.id}/")
         self.assertEqual(res.status_code, 400)
         data = res.json()
@@ -1723,9 +1719,7 @@ class NullCreatorSerializationTests(TestCase):
 
         group = Group.objects.create(name="NullEvt", created_by=self.user)
         GroupMembership.objects.create(user=self.user, group=group, role="leader")
-        SwipeEvent.objects.create(
-            group=group, name="E-null", created_by=None
-        )
+        SwipeEvent.objects.create(group=group, name="E-null", created_by=None)
 
         self.client.force_login(self.user)
         res = self.client.get(f"/api/groups/{group.id}/events/")

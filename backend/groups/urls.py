@@ -46,11 +46,16 @@ urlpatterns = [
         views.api_make_leader,
         name="api_make_leader",
     ),
-    # Constraints
+    # Constraints — derived view-only from member preferences
     path(
-        "<int:group_id>/constraints/",
-        views.api_update_group_constraints,
-        name="api_update_group_constraints",
+        "<int:group_id>/effective-constraints/",
+        views.api_group_effective_constraints,
+        name="api_group_effective_constraints",
+    ),
+    path(
+        "<int:group_id>/preview-venues/",
+        views.api_group_preview_venues,
+        name="api_group_preview_venues",
     ),
     path("<int:group_id>/leave/", views.api_leave_group, name="api_leave_group"),
     # Swipe Events
