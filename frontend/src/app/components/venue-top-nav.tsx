@@ -71,9 +71,9 @@ export function VenueTopNav() {
             <p className="text-xs text-muted-foreground">{currentManager?.email}</p>
           </div>
           <UserAvatar
-            photoUrl={currentManager?.photoUrl}
             name={currentManager?.businessName || currentManager?.name}
             email={currentManager?.email}
+            role="venue_manager"
             size={40}
           />
           <Button

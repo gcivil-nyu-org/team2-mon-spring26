@@ -1519,6 +1519,23 @@ class AdminUsersEndpointTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertFalse(User.objects.filter(pk=target_id).exists())
 
+    def test_admin_user_delete_blocked_by_sole_leader(self):
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="BlockGrp", created_by=self.student1)
+        GroupMembership.objects.create(
+            user=self.student1, group=group, role="leader"
+        )
+        GroupMembership.objects.create(
+            user=self.student2, group=group, role="member"
+        )
+        res = self.client.delete(f"/api/auth/admin/users/{self.student1.id}/")
+        self.assertEqual(res.status_code, 400)
+        data = res.json()
+        self.assertEqual(data["code"], "sole_leader")
+        self.assertIn("BlockGrp", data["groups"])
+        self.assertTrue(User.objects.filter(pk=self.student1.pk).exists())
+
 
 class SafelyDeleteUserTests(TestCase):
     """Issue #84 — verify chat/group cleanup semantics."""
@@ -1537,13 +1554,28 @@ class SafelyDeleteUserTests(TestCase):
             email="peer@test.local", password="x", first_name="Peer"
         )
 
-    def test_group_survives_user_deletion(self):
-        from accounts.views import safely_delete_user
+    def test_sole_leader_of_multi_member_group_blocks_deletion(self):
+        from accounts.views import SoleLeaderError, safely_delete_user
         from groups.models import Group, GroupMembership
 
         group = Group.objects.create(name="G1", created_by=self.victim)
         GroupMembership.objects.create(user=self.victim, group=group, role="leader")
         GroupMembership.objects.create(user=self.peer, group=group, role="member")
+
+        with self.assertRaises(SoleLeaderError) as ctx:
+            safely_delete_user(self.victim)
+
+        self.assertIn(group, ctx.exception.groups)
+        # user should NOT have been deleted
+        self.assertTrue(User.objects.filter(pk=self.victim.pk).exists())
+
+    def test_multi_leader_group_allows_deletion(self):
+        from accounts.views import safely_delete_user
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="G1b", created_by=self.victim)
+        GroupMembership.objects.create(user=self.victim, group=group, role="leader")
+        GroupMembership.objects.create(user=self.peer, group=group, role="leader")
 
         safely_delete_user(self.victim)
 
@@ -1551,6 +1583,17 @@ class SafelyDeleteUserTests(TestCase):
         self.assertEqual(GroupMembership.objects.filter(group=group).count(), 1)
         group.refresh_from_db()
         self.assertIsNone(group.created_by)
+
+    def test_last_member_group_is_deleted(self):
+        from accounts.views import safely_delete_user
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="G-solo", created_by=self.victim)
+        GroupMembership.objects.create(user=self.victim, group=group, role="leader")
+
+        safely_delete_user(self.victim)
+
+        self.assertFalse(Group.objects.filter(pk=group.pk).exists())
 
     def test_swipe_event_survives_user_deletion(self):
         from accounts.views import safely_delete_user
@@ -1574,14 +1617,14 @@ class SafelyDeleteUserTests(TestCase):
         from chat.models import Chat, ChatMember
         from groups.models import Group, GroupMembership
 
-        group = Group.objects.create(name="G3", created_by=self.victim)
-        GroupMembership.objects.create(user=self.victim, group=group, role="leader")
-        GroupMembership.objects.create(user=self.peer, group=group, role="member")
+        group = Group.objects.create(name="G3", created_by=self.peer)
+        GroupMembership.objects.create(user=self.peer, group=group, role="leader")
+        GroupMembership.objects.create(user=self.victim, group=group, role="member")
         chat = Chat.objects.create(
-            type="group", name="C1", group=group, created_by=self.victim
+            type="group", name="C1", group=group, created_by=self.peer
         )
-        ChatMember.objects.create(chat=chat, user=self.victim, role="admin")
-        ChatMember.objects.create(chat=chat, user=self.peer, role="member")
+        ChatMember.objects.create(chat=chat, user=self.peer, role="admin")
+        ChatMember.objects.create(chat=chat, user=self.victim, role="member")
 
         safely_delete_user(self.victim)
 
@@ -1650,6 +1693,46 @@ class SafelyDeleteUserTests(TestCase):
 
         chat.refresh_from_db()
         self.assertEqual(chat.created_by, peer_admin)
+
+
+class NullCreatorSerializationTests(TestCase):
+    """Verify that null created_by on Group/SwipeEvent doesn't break API serialization."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="ser@test.local", password="x", role="student"
+        )
+        self.peer = User.objects.create_user(
+            email="ser-peer@test.local", password="x", role="student"
+        )
+
+    def test_group_with_null_creator_serializes(self):
+        from groups.models import Group, GroupMembership
+
+        group = Group.objects.create(name="NullCreator", created_by=None)
+        GroupMembership.objects.create(user=self.user, group=group, role="leader")
+
+        self.client.force_login(self.user)
+        res = self.client.get("/api/groups/")
+        self.assertEqual(res.status_code, 200)
+        g = next(g for g in res.json()["groups"] if g["name"] == "NullCreator")
+        self.assertIsNone(g["created_by"])
+
+    def test_swipe_event_with_null_creator_serializes(self):
+        from groups.models import Group, GroupMembership, SwipeEvent
+
+        group = Group.objects.create(name="NullEvt", created_by=self.user)
+        GroupMembership.objects.create(user=self.user, group=group, role="leader")
+        SwipeEvent.objects.create(
+            group=group, name="E-null", created_by=None
+        )
+
+        self.client.force_login(self.user)
+        res = self.client.get(f"/api/groups/{group.id}/events/")
+        self.assertEqual(res.status_code, 200)
+        events = res.json()["events"]
+        evt = next(e for e in events if e["name"] == "E-null")
+        self.assertIsNone(evt["created_by"])
 
 
 class PhotoUrlInMeTests(TestCase):

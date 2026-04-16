@@ -15,7 +15,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.core.cache import cache
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 
@@ -745,11 +745,11 @@ def _admin_user_detail(user):
 @csrf_exempt
 def api_admin_users_list(request):
     """GET /api/auth/admin/users/?q=&role=&status=&page="""
-    if request.method != "GET":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
     guard = _require_admin(request)
     if guard:
         return guard
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
 
     q = (request.GET.get("q") or "").strip()
     role = (request.GET.get("role") or "").strip()
@@ -833,6 +833,7 @@ def _admin_update_user(request, user):
         fields_changed.append("photo_url")
     if "email" in data:
         new_email = (data.get("email") or "").strip()
+        # Duplicate check is case-insensitive (email__iexact).
         if new_email and new_email.lower() != user.email.lower():
             if (
                 User.objects.filter(email__iexact=new_email)
@@ -866,6 +867,18 @@ def _admin_update_user(request, user):
     return JsonResponse({"user": _admin_user_detail(user)})
 
 
+class SoleLeaderError(Exception):
+    """Raised when trying to delete a user who is the only leader of a group."""
+
+    def __init__(self, groups):
+        self.groups = groups
+        names = ", ".join(g.name for g in groups)
+        super().__init__(
+            f"User is the sole leader of group(s): {names}. "
+            "Please assign another leader before deleting this user."
+        )
+
+
 def safely_delete_user(user, fallback_creator=None):
     """Delete a user while preserving groups, swipe events and group chats.
 
@@ -873,23 +886,56 @@ def safely_delete_user(user, fallback_creator=None):
     group and chat they belong to, but the groups themselves, their swipe
     events, and their chats all stay intact.
 
-    Steps:
-      1. For each Chat the user created, hand it off to another active
-         member (admin role first, then earliest member). If no other
-         member exists, fall back to ``fallback_creator`` (typically the
-         admin performing the delete); otherwise delete the empty chat.
-      2. Null out Message.sender on the user's messages so chat history
-         survives (the field is already nullable).
-      3. user.delete() cascades GroupMembership / ChatMember / Swipe /
-         invitations / UserPreference. Group.created_by and
-         SwipeEvent.created_by are SET_NULL, so groups and events remain.
+    Rules (from team meeting 2026-04-15):
+      - If the user is the sole leader of a multi-member group, raise
+        ``SoleLeaderError`` so the admin can assign a new leader first.
+      - If the user is the last member of a group, delete the group.
+      - Otherwise hand off chat ownership and delete the user.
     """
+    from groups.models import Group, GroupMembership
+
     try:
         from chat.models import Chat, ChatMember, Message
     except ImportError:
         Chat = ChatMember = Message = None
 
+    # --- pre-flight: sole-leader check ---
+    leader_memberships = GroupMembership.objects.filter(
+        user=user, role=GroupMembership.Role.LEADER
+    ).select_related("group")
+
+    sole_leader_groups = []
+    for membership in leader_memberships:
+        group = membership.group
+        total_members = GroupMembership.objects.filter(group=group).count()
+        if total_members <= 1:
+            # last member — will delete the whole group, no problem
+            continue
+        other_leaders = (
+            GroupMembership.objects.filter(
+                group=group, role=GroupMembership.Role.LEADER
+            )
+            .exclude(user=user)
+            .count()
+        )
+        if other_leaders == 0:
+            sole_leader_groups.append(group)
+
+    if sole_leader_groups:
+        raise SoleLeaderError(sole_leader_groups)
+
     with transaction.atomic():
+        # --- delete groups where user is the last member ---
+        for membership in GroupMembership.objects.filter(user=user).select_related(
+            "group"
+        ):
+            total = GroupMembership.objects.filter(group=membership.group).count()
+            if total == 1:
+                membership.group.delete()
+
+        # --- hand off chat ownership ---
+        # Priority: admin-role members first, then earliest joined.
+        # ORDER BY role ASC puts "admin" before "member" alphabetically.
         if Chat is not None and ChatMember is not None:
             for chat in Chat.objects.filter(created_by=user):
                 replacement = (
@@ -919,6 +965,16 @@ def _admin_delete_user(request, user):
         return JsonResponse({"error": "You cannot delete your own account"}, status=400)
     try:
         safely_delete_user(user, fallback_creator=request.user)
+    except SoleLeaderError as exc:
+        group_names = [g.name for g in exc.groups]
+        return JsonResponse(
+            {
+                "error": str(exc),
+                "code": "sole_leader",
+                "groups": group_names,
+            },
+            status=400,
+        )
     except Exception as exc:
         logger.error("Failed to delete user %s: %s", user.id, exc, exc_info=True)
         return JsonResponse({"error": "Failed to delete user"}, status=500)

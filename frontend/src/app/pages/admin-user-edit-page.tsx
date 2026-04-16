@@ -235,9 +235,9 @@ export function AdminUserEditPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <UserAvatar
-            photoUrl={photoUrl}
             name={`${firstName} ${lastName}`.trim() || user.name}
             email={email}
+            role={role}
             size={64}
           />
           <div>
@@ -268,9 +268,9 @@ export function AdminUserEditPage() {
         <CardContent className="space-y-3">
           <div className="flex items-center gap-4">
             <UserAvatar
-              photoUrl={photoUrl}
               name={`${firstName} ${lastName}`.trim() || user.name}
               email={email}
+              role={role}
               size={72}
             />
             <div className="flex-1">

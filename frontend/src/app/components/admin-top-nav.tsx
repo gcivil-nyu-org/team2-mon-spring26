@@ -93,9 +93,9 @@ export function AdminTopNav() {
             )}
           </div>
           <UserAvatar
-            photoUrl={currentAdmin?.photoUrl}
             name={currentAdmin?.name}
             email={currentAdmin?.email}
+            role="admin"
             size={40}
           />
           <Button

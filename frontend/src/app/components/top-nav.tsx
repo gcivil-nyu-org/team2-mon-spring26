@@ -97,9 +97,9 @@ export function TopNav() {
             <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
           </div>
           <UserAvatar
-            photoUrl={currentUser?.photoUrl}
             name={currentUser?.name}
             email={currentUser?.email}
+            role="student"
             size={40}
           />
           <Popover>
