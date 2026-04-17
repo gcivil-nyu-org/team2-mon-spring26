@@ -52,6 +52,8 @@ describe('SwipePage Fixed Behaviors', () => {
         createdAt: "" 
       }],
       fetchSwipeVenues: vi.fn().mockResolvedValue([]),
+      fetchMySwipes: vi.fn().mockResolvedValue({ hasCompleted: false, swipes: [] }),
+      reswipeSession: vi.fn().mockResolvedValue(undefined),
       addSwipe: mockAddSwipe,
       addChatMessage: vi.fn()
     } as unknown as AppContextType);
@@ -102,6 +104,8 @@ describe('SwipePage Fixed Behaviors', () => {
         images: []
       }]),
       addSwipe: mockAddSwipe,
+      fetchMySwipes: vi.fn().mockResolvedValue({ hasCompleted: false, swipes: [] }),
+      reswipeSession: vi.fn().mockResolvedValue(undefined),
       addChatMessage: vi.fn()
     } as unknown as AppContextType);
 

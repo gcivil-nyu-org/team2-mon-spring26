@@ -73,6 +73,8 @@ export interface SwipeEvent {
   matchedRestaurantId?: string;
   borough?: string;
   neighborhood?: string;
+  totalParticipants?: number;
+  completedParticipantsCount?: number;
 }
 
 export interface Swipe {
@@ -172,7 +174,7 @@ export interface AppContextType extends AuthContextType {
   currentGroup: Group | null;
   setCurrentGroup: (group: Group | null) => void;
   swipeEvents: SwipeEvent[];
-  createSwipeEvent: (groupId: string, name: string, borough?: string, neighborhood?: string) => Promise<SwipeEvent>;
+  createSwipeEvent: (groupId: string, name: string, borough?: string, neighborhood?: string, venueLimit?: number) => Promise<SwipeEvent>;
   fetchSwipeEvents: (groupId: string, signal?: AbortSignal) => Promise<void>;
   currentSwipeEvent: SwipeEvent | null;
   setCurrentSwipeEvent: (event: SwipeEvent | null) => void;
@@ -194,6 +196,9 @@ export interface AppContextType extends AuthContextType {
   dmConversations: DMConversation[];
   createDMConversation: (participantId: string) => Promise<DMConversation>;
   updateSwipeEventStatus: (eventId: string, status: SwipeEvent['status'], matchedId?: string) => void;
+  finishSwiping: (groupId: string, eventId: string) => Promise<void>;
+  fetchMySwipes: (groupId: string, eventId: string) => Promise<{hasCompleted: boolean, swipes: { venue: Restaurant, direction: 'left' | 'right' }[]}>;
+  reswipeSession: (groupId: string, eventId: string) => Promise<void>;
   invitations: Invitation[];
   swipeNotifications: SwipeNotification[];
   fetchInvitations: () => Promise<void>;
@@ -329,16 +334,50 @@ function AppInner({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
 
-  // Short-poll for chat and notification updates while logged in.
+  // Long-poll for chat, short-poll for notifications (less frequent).
   useEffect(() => {
     if (!currentUser) return;
-    const interval = setInterval(() => {
+    let isActive = true;
+    let pollingTimeout: ReturnType<typeof setTimeout>;
+
+    const invInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        fetchUserChats();
         fetchInvitations();
       }
-    }, 10000);
-    return () => clearInterval(interval);
+    }, 60000); // 1 minute for invites
+
+    const pollChat = async (sinceTimestamp?: string) => {
+      if (!isActive) return;
+      try {
+        let url = '/api/chat/sync/';
+        if (sinceTimestamp) {
+          url += `?since=${encodeURIComponent(sinceTimestamp)}`;
+        }
+        const res = await fetch(apiUrl(url), { credentials: 'include' });
+        if (!isActive) return;
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.updates) {
+            await fetchUserChats();
+          }
+          pollingTimeout = setTimeout(() => pollChat(data.timestamp), 0);
+        } else {
+          throw new Error('Sync failed');
+        }
+      } catch (err) {
+        console.error('Long poll error:', err);
+        pollingTimeout = setTimeout(() => pollChat(sinceTimestamp), 10000);
+      }
+    };
+
+    pollChat();
+
+    return () => {
+      isActive = false;
+      clearInterval(invInterval);
+      clearTimeout(pollingTimeout);
+    };
   }, [currentUser, fetchUserChats, fetchInvitations]);
 
   // ---------------------------------------------------------------------------
@@ -720,13 +759,14 @@ function AppInner({ children }: { children: ReactNode }) {
     groupId: string,
     name: string,
     borough?: string,
-    neighborhood?: string
+    neighborhood?: string,
+    venueLimit?: number
   ): Promise<SwipeEvent> => {
     const res = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-      body: JSON.stringify({ name, borough, neighborhood }),
+      body: JSON.stringify({ name, borough, neighborhood, venue_limit: venueLimit || 10 }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to create event');
@@ -739,14 +779,10 @@ function AppInner({ children }: { children: ReactNode }) {
       matchedRestaurantId: data.event.matched_venue_id ? String(data.event.matched_venue_id) : undefined,
       borough: data.event.borough || '',
       neighborhood: data.event.neighborhood || '',
+      totalParticipants: data.event.total_participants,
+      completedParticipantsCount: data.event.completed_participants_count,
     };
     setSwipeEvents((prev) => [...prev, newEvent]);
-    addChatMessage(groupId, {
-      id: `msg-${Date.now()}`,
-      type: 'system',
-      message: `New swipe session started: ${name}`,
-      timestamp: new Date().toISOString(),
-    });
     return newEvent;
   };
 
@@ -762,6 +798,7 @@ function AppInner({ children }: { children: ReactNode }) {
           data.events.map((e: {
             id: number; group_id: number; name: string; status: string;
             created_at: string; matched_venue_id: number | null;
+            total_participants: number; completed_participants_count: number;
           }) => ({
             id: String(e.id),
             groupId: String(e.group_id),
@@ -769,6 +806,8 @@ function AppInner({ children }: { children: ReactNode }) {
             status: e.status as SwipeEvent['status'],
             createdAt: e.created_at,
             matchedRestaurantId: e.matched_venue_id ? String(e.matched_venue_id) : undefined,
+            totalParticipants: e.total_participants,
+            completedParticipantsCount: e.completed_participants_count,
           }))
         );
       }
@@ -794,6 +833,39 @@ function AppInner({ children }: { children: ReactNode }) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || `Failed to submit swipe (${res.status})`);
     }
+  };
+
+  const finishSwiping = async (groupId: string, eventId: string): Promise<void> => {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}/events/${eventId}/finish/`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRFToken': getCsrf() },
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      console.error("Failed to finish swiping", data);
+    } else {
+      setSwipeEvents(events => events.map(e => e.id === eventId ? { ...e, completedParticipantsCount: (e.completedParticipantsCount || 0) + 1 } : e));
+    }
+  };
+
+  const fetchMySwipes = useCallback(async (groupId: string, eventId: string) => {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}/events/${eventId}/my-swipes/`), {
+      credentials: 'include',
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error('Failed to fetch my swipes');
+    return { hasCompleted: data.has_completed as boolean, swipes: data.swipes as { venue: Restaurant, direction: 'left' | 'right' }[] };
+  }, []);
+
+  const reswipeSession = async (groupId: string, eventId: string): Promise<void> => {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}/events/${eventId}/reswipe/`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRFToken': getCsrf() },
+    });
+    if (!res.ok) throw new Error('Failed to reswipe');
+    setSwipeEvents(events => events.map(e => e.id === eventId ? { ...e, completedParticipantsCount: Math.max(0, (e.completedParticipantsCount || 0) - 1) } : e));
   };
 
   const fetchSwipeVenues = useCallback(async (groupId: string, eventId: string): Promise<Restaurant[]> => {
@@ -959,6 +1031,9 @@ function AppInner({ children }: { children: ReactNode }) {
         fetchSwipeVenues,
         fetchMatchResults,
         updateSwipeEventStatus,
+        finishSwiping,
+        fetchMySwipes,
+        reswipeSession,
         // Chat / DMs
         chatMessages,
         addChatMessage,

@@ -79,4 +79,19 @@ urlpatterns = [
         views.api_swipe_event_results,
         name="api_swipe_event_results",
     ),
+    path(
+        "<int:group_id>/events/<int:event_id>/finish/",
+        views.api_finish_swiping,
+        name="api_finish_swiping",
+    ),
+    path(
+        "<int:group_id>/events/<int:event_id>/my-swipes/",
+        views.api_my_swipes,
+        name="api_my_swipes",
+    ),
+    path(
+        "<int:group_id>/events/<int:event_id>/reswipe/",
+        views.api_reswipe,
+        name="api_reswipe",
+    ),
 ]
