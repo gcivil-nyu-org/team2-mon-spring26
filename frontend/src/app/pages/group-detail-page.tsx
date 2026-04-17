@@ -776,6 +776,11 @@ export function GroupDetailPage() {
                             hour: "2-digit",
                             minute: "2-digit",
                           })}
+                          {event.totalParticipants !== undefined && event.completedParticipantsCount !== undefined && (
+                            <span className="block mt-1 font-medium text-purple-600">
+                              {event.completedParticipantsCount} of {event.totalParticipants} members finished swiping
+                            </span>
+                          )}
                         </CardDescription>
                       </div>
                       <div className="flex items-center gap-2">

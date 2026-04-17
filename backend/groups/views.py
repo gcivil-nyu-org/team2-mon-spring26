@@ -10,7 +10,7 @@ from django.core.validators import validate_email
 from django.utils import timezone
 
 from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
-from venues.models import Venue
+from venues.models import Venue, VenuePhoto
 from venues.google_places import bulk_prefetch_photos
 from venues.filters import (
     filter_venues_by_preferences,
@@ -718,6 +718,8 @@ def _event_to_json(event):
         "borough": event.borough,
         "neighborhood": event.neighborhood,
         "created_at": event.created_at.isoformat(),
+        "total_participants": event.group.memberships.count(),
+        "completed_participants_count": event.completed_by.count(),
     }
 
 
@@ -851,7 +853,15 @@ def api_swipe_events(request, group_id):
                 created_by=request.user,
                 borough=(data.get("borough") or "").strip(),
                 neighborhood=(data.get("neighborhood") or "").strip(),
+                venue_limit=int(data.get("venue_limit", 10)),
             )
+
+            if hasattr(group, "chat"):
+                Message.objects.create(
+                    chat=group.chat,
+                    message_type=Message.MessageType.SYSTEM,
+                    body=f"New swipe session started: {name}",
+                )
 
             from .models import SwipeSessionNotification
 
@@ -925,13 +935,23 @@ def api_swipe_event_venues(request, group_id, event_id):
         ).values_list("venue_id", flat=True)
         venues_qs = venues_qs.exclude(id__in=swiped_venue_ids)
 
-        # Order by rating (best first), limit to 20
+        # Only show venues that have a photo already or a Google Place ID to fetch one from
+        has_place_id = models.Q(google_place_id__isnull=False) & ~models.Q(
+            google_place_id=""
+        )
+        has_photos = models.Exists(
+            VenuePhoto.objects.filter(venue=models.OuterRef("pk"))
+        )
+        venues_qs = venues_qs.filter(has_place_id | has_photos)
+
+        # Order by rating (best first), apply dynamic venue limit
+        limit_count = getattr(event, "venue_limit", 10)
         venues_qs = (
             venues_qs.select_related("cuisine_type")
             .prefetch_related(
                 "photos", "dietary_tags", "food_type_tags", "inspections", "discounts"
             )
-            .order_by(models.F("google_rating").desc(nulls_last=True))[:20]
+            .order_by(models.F("google_rating").desc(nulls_last=True))[:limit_count]
         )
 
         # Fetch missing Google Places photos in parallel (bulk_prefetch_photos) before
@@ -1284,12 +1304,10 @@ def api_join_group_by_code(request, join_code):
             )
 
             if hasattr(group, "chat"):
-                from chat.models import ChatMember, Message
-
-                ChatMember.objects.update_or_create(
+                ChatRoomMember.objects.update_or_create(
                     chat=group.chat,
                     user=request.user,
-                    defaults={"role": ChatMember.Role.MEMBER, "left_at": None},
+                    defaults={"role": ChatRoomMember.Role.MEMBER, "left_at": None},
                 )
                 username_display = (
                     request.user.first_name or request.user.email.split("@")[0]
@@ -1333,3 +1351,111 @@ def api_regenerate_join_code(request, group_id):
     except Exception as e:
         logger.error(f"Regenerate code error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "An expected error occurred"}, status=500)
+
+
+@transaction.atomic
+def api_finish_swiping(request, group_id, event_id):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        event = SwipeEvent.objects.get(id=event_id, group=group)
+
+        membership = GroupMembership.objects.filter(
+            group=group, user=request.user
+        ).exists()
+        if not membership:
+            return JsonResponse(
+                {"error": "You are not a member of this group"}, status=403
+            )
+
+        # Add to completed list
+        if not event.completed_by.filter(id=request.user.id).exists():
+            event.completed_by.add(request.user)
+
+            # Fire SYSTEM message securely from the backend
+            if hasattr(group, "chat"):
+                username_display = request.user.first_name
+                if request.user.last_name:
+                    username_display += f" {request.user.last_name}"
+                if not username_display:
+                    username_display = request.user.email.split("@")[0]
+
+                Message.objects.create(
+                    chat=group.chat,
+                    message_type=Message.MessageType.SYSTEM,
+                    body=f"{username_display} finished swiping",
+                )
+
+        return JsonResponse({"success": True})
+
+    except Group.DoesNotExist:
+        return JsonResponse({"error": "Group not found"}, status=404)
+    except SwipeEvent.DoesNotExist:
+        return JsonResponse({"error": "Event not found"}, status=404)
+    except Exception as e:
+        logger.error(f"Finish swiping error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An unexpected error occurred"}, status=500)
+
+
+def api_my_swipes(request, group_id, event_id):
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        event = SwipeEvent.objects.get(id=event_id, group=group)
+
+        swipes = Swipe.objects.filter(event=event, user=request.user).select_related(
+            "venue"
+        )
+
+        venues = [s.venue for s in swipes]
+        bulk_prefetch_photos(venues)
+
+        swipes_data = []
+        for s in swipes:
+            swipes_data.append(
+                {"direction": s.direction, "venue": _venue_to_swipe_json(s.venue)}
+            )
+
+        has_completed = event.completed_by.filter(id=request.user.id).exists()
+
+        return JsonResponse(
+            {"success": True, "swipes": swipes_data, "has_completed": has_completed}
+        )
+    except (Group.DoesNotExist, SwipeEvent.DoesNotExist):
+        return JsonResponse({"error": "Not found"}, status=404)
+    except Exception as e:
+        logger.error(f"My swipes fetch error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An unexpected error occurred"}, status=500)
+
+
+@transaction.atomic
+def api_reswipe(request, group_id, event_id):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        group = Group.objects.get(id=group_id)
+        event = SwipeEvent.objects.get(id=event_id, group=group)
+        if event.status != SwipeEvent.Status.ACTIVE:
+            return JsonResponse({"error": "This event is no longer active"}, status=400)
+
+        # Clear exact user swipes and revert completion flag
+        Swipe.objects.filter(event=event, user=request.user).delete()
+        event.completed_by.remove(request.user)
+
+        return JsonResponse({"success": True})
+    except (Group.DoesNotExist, SwipeEvent.DoesNotExist):
+        return JsonResponse({"error": "Not found"}, status=404)
+    except Exception as e:
+        logger.error(f"Reswipe error: {str(e)}", exc_info=True)
+        return JsonResponse({"error": "An unexpected error occurred"}, status=500)

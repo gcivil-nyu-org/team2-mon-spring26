@@ -1736,3 +1736,149 @@ class GroupPreviewVenuesTests(TestCase):
         self.client.force_login(self.member)
         resp = self.client.post(self._constraints_url(self.group.id))
         self.assertEqual(resp.status_code, 405)
+
+
+# ---------------------------------------------------------------------------
+# Swipe Completion Flow Tests
+# ---------------------------------------------------------------------------
+
+
+class SwipeCompletionAPITests(TestCase):
+    def setUp(self):
+        self.leader = _make_user("leader@swipes.local")
+        self.member = _make_user("member@swipes.local")
+        self.outsider = _make_user("outsider@swipes.local")
+
+        self.group = Group.objects.create(name="Swipe Group", created_by=self.leader)
+        GroupMembership.objects.create(
+            user=self.leader, group=self.group, role="leader"
+        )
+        GroupMembership.objects.create(
+            user=self.member, group=self.group, role="member"
+        )
+
+        self.chat = Chat.objects.create(
+            type="group", group=self.group, created_by=self.leader
+        )
+        ChatMember.objects.create(chat=self.chat, user=self.leader, role="admin")
+        ChatMember.objects.create(chat=self.chat, user=self.member, role="member")
+
+        self.event = SwipeEvent.objects.create(group=self.group, status="active")
+        self.venue = Venue.objects.create(name="Food Place", is_active=True)
+
+    def test_finish_swiping(self):
+        self.client.force_login(self.leader)
+        url = reverse("api_finish_swiping", args=[self.group.id, self.event.id])
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 200)
+        self.event.refresh_from_db()
+        self.assertTrue(self.event.completed_by.filter(id=self.leader.id).exists())
+
+        sys_msg = Message.objects.filter(chat=self.chat, message_type="system").first()
+        self.assertIsNotNone(sys_msg)
+        self.assertIn("finished swiping", sys_msg.body)
+
+    def test_my_swipes(self):
+        Swipe.objects.create(
+            event=self.event, user=self.leader, venue=self.venue, direction="right"
+        )
+        self.client.force_login(self.leader)
+        url = reverse("api_my_swipes", args=[self.group.id, self.event.id])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(len(data["swipes"]), 1)
+        self.assertEqual(data["swipes"][0]["direction"], "right")
+        self.assertEqual(str(data["swipes"][0]["venue"]["id"]), str(self.venue.id))
+        self.assertFalse(data["has_completed"])
+
+    def test_reswipe(self):
+        Swipe.objects.create(
+            event=self.event, user=self.leader, venue=self.venue, direction="right"
+        )
+        self.event.completed_by.add(self.leader)
+
+        self.client.force_login(self.leader)
+        url = reverse("api_reswipe", args=[self.group.id, self.event.id])
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 200)
+
+        self.event.refresh_from_db()
+        self.assertFalse(self.event.completed_by.filter(id=self.leader.id).exists())
+        self.assertEqual(
+            Swipe.objects.filter(event=self.event, user=self.leader).count(), 0
+        )
+
+    def test_auth_and_methods(self):
+        url_finish = reverse("api_finish_swiping", args=[self.group.id, self.event.id])
+        url_my = reverse("api_my_swipes", args=[self.group.id, self.event.id])
+        url_re = reverse("api_reswipe", args=[self.group.id, self.event.id])
+
+        self.assertEqual(self.client.post(url_finish).status_code, 401)
+        self.assertEqual(self.client.get(url_my).status_code, 401)
+        self.assertEqual(self.client.post(url_re).status_code, 401)
+
+        self.client.force_login(self.leader)
+        self.assertEqual(self.client.get(url_finish).status_code, 405)
+        self.assertEqual(self.client.post(url_my).status_code, 405)
+        self.assertEqual(self.client.get(url_re).status_code, 405)
+
+    def test_finish_swiping_group_not_found(self):
+        self.client.force_login(self.leader)
+        resp = self.client.post(
+            reverse("api_finish_swiping", args=[99999, self.event.id])
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_finish_swiping_event_not_found(self):
+        self.client.force_login(self.leader)
+        resp = self.client.post(
+            reverse("api_finish_swiping", args=[self.group.id, 99999])
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    @patch("groups.views.Group.objects")
+    def test_finish_swiping_exception(self, mock_objects):
+        mock_objects.get.side_effect = Exception("boom")
+        self.client.force_login(self.leader)
+        resp = self.client.post(
+            reverse("api_finish_swiping", args=[self.group.id, self.event.id])
+        )
+        self.assertEqual(resp.status_code, 500)
+
+    def test_my_swipes_not_found(self):
+        self.client.force_login(self.leader)
+        resp = self.client.get(reverse("api_my_swipes", args=[99999, self.event.id]))
+        self.assertEqual(resp.status_code, 404)
+
+    @patch("groups.views.Group.objects")
+    def test_my_swipes_exception(self, mock_objects):
+        mock_objects.get.side_effect = Exception("boom")
+        self.client.force_login(self.leader)
+        resp = self.client.get(
+            reverse("api_my_swipes", args=[self.group.id, self.event.id])
+        )
+        self.assertEqual(resp.status_code, 500)
+
+    def test_reswipe_not_found(self):
+        self.client.force_login(self.leader)
+        resp = self.client.post(reverse("api_reswipe", args=[99999, self.event.id]))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_reswipe_inactive_event(self):
+        self.event.status = SwipeEvent.Status.COMPLETED
+        self.event.save()
+        self.client.force_login(self.leader)
+        resp = self.client.post(
+            reverse("api_reswipe", args=[self.group.id, self.event.id])
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    @patch("groups.views.Group.objects")
+    def test_reswipe_exception(self, mock_objects):
+        mock_objects.get.side_effect = Exception("boom")
+        self.client.force_login(self.leader)
+        resp = self.client.post(
+            reverse("api_reswipe", args=[self.group.id, self.event.id])
+        )
+        self.assertEqual(resp.status_code, 500)

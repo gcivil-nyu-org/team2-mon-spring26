@@ -2,8 +2,9 @@ import json
 import logging
 from django.http import JsonResponse
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import transaction, models
 from django.utils import timezone
+import time
 
 from .models import Chat, ChatMember, Message
 
@@ -418,3 +419,59 @@ def api_chat_member_mute(request, chat_id, user_id):
     except Exception as e:
         logger.error(f"Mute member error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "Internal server error"}, status=500)
+
+
+def api_chat_sync(request):
+    """
+    GET /api/chat/sync/?since=YYYY-MM-DDTHH:MM:SSZ
+    Long-polls for up to 25s waiting for new or deleted messages for this user.
+    """
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    since_str = request.GET.get("since")
+    since = None
+    if since_str:
+        try:
+            since = timezone.datetime.fromisoformat(since_str.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+
+    if not since:
+        return JsonResponse(
+            {
+                "updates": True,
+                "timestamp": timezone.now().isoformat().replace("+00:00", "Z"),
+            }
+        )
+
+    # Poll loop up to 25 times (25s)
+    for _ in range(25):
+        # We query for any messages accessible to user that are created or deleted after `since`.
+        has_updates = (
+            Message.objects.filter(
+                chat__members__user=request.user, chat__members__left_at__isnull=True
+            )
+            .filter(models.Q(created_at__gt=since) | models.Q(deleted_at__gt=since))
+            .exists()
+        )
+
+        if has_updates:
+            return JsonResponse(
+                {
+                    "updates": True,
+                    "timestamp": timezone.now().isoformat().replace("+00:00", "Z"),
+                }
+            )
+
+        time.sleep(1)
+
+    # Completed loop without updates
+    return JsonResponse(
+        {
+            "updates": False,
+            "timestamp": timezone.now().isoformat().replace("+00:00", "Z"),
+        }
+    )
