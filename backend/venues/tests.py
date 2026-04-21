@@ -1515,3 +1515,297 @@ class ReviewCommentTests(TestCase):
         comments = list(self.review.comments.all())
         self.assertEqual(comments[0].content, "First")
         self.assertEqual(comments[1].content, "Second")
+
+
+class StrictPreferenceFilterTest(TestCase):
+    """Covers the STRICT_PREFERENCE_FILTERS toggle in filter_venues_by_preferences.
+
+    Dietary and food-type tags are inclusive-OR: a venue passes if it matches
+    at least one selected tag in each list. Both filters are applied only when
+    the settings flag is True; otherwise the arguments are ignored.
+    """
+
+    def setUp(self):
+        self.vegetarian = DietaryTag.objects.create(name="Vegetarian")
+        self.halal = DietaryTag.objects.create(name="Halal")
+        self.kosher = DietaryTag.objects.create(name="Kosher")
+
+        self.pizza = FoodTypeTag.objects.create(name="Pizza")
+        self.burgers = FoodTypeTag.objects.create(name="Burgers")
+        self.salads = FoodTypeTag.objects.create(name="Salads")
+
+        # All venues get a google_place_id so the default require_photos
+        # filter doesn't strip them out.
+        def make_venue(name):
+            return Venue.objects.create(
+                name=name,
+                is_active=True,
+                google_place_id=f"place-{name.lower().replace(' ', '-')}",
+            )
+
+        self.veg_venue = make_venue("Veg Place")
+        self.veg_venue.dietary_tags.add(self.vegetarian)
+
+        self.halal_venue = make_venue("Halal Place")
+        self.halal_venue.dietary_tags.add(self.halal)
+
+        self.kosher_venue = make_venue("Kosher Place")
+        self.kosher_venue.dietary_tags.add(self.kosher)
+
+        self.pizza_venue = make_venue("Pizza Place")
+        self.pizza_venue.food_type_tags.add(self.pizza)
+
+        self.burger_venue = make_venue("Burger Place")
+        self.burger_venue.food_type_tags.add(self.burgers)
+
+        self.salad_venue = make_venue("Salad Place")
+        self.salad_venue.food_type_tags.add(self.salads)
+
+        self.veg_pizza_venue = make_venue("Veg Pizza Place")
+        self.veg_pizza_venue.dietary_tags.add(self.vegetarian)
+        self.veg_pizza_venue.food_type_tags.add(self.pizza)
+
+    @override_settings(STRICT_PREFERENCE_FILTERS=True)
+    def test_dietary_filter_is_inclusive_or(self):
+        from venues.filters import filter_venues_by_preferences
+
+        qs = filter_venues_by_preferences(
+            dietary_tag_names=["Vegetarian", "Halal"],
+            require_photos=False,
+        )
+        names = set(qs.values_list("name", flat=True))
+        self.assertIn("Veg Place", names)
+        self.assertIn("Halal Place", names)
+        self.assertIn("Veg Pizza Place", names)
+        self.assertNotIn("Kosher Place", names)
+
+    @override_settings(STRICT_PREFERENCE_FILTERS=True)
+    def test_food_type_filter_is_inclusive_or(self):
+        from venues.filters import filter_venues_by_preferences
+
+        qs = filter_venues_by_preferences(
+            food_type_tag_names=["Pizza", "Burgers"],
+            require_photos=False,
+        )
+        names = set(qs.values_list("name", flat=True))
+        self.assertIn("Pizza Place", names)
+        self.assertIn("Burger Place", names)
+        self.assertIn("Veg Pizza Place", names)
+        self.assertNotIn("Salad Place", names)
+
+    @override_settings(STRICT_PREFERENCE_FILTERS=True)
+    def test_dietary_and_food_type_filters_combine(self):
+        from venues.filters import filter_venues_by_preferences
+
+        qs = filter_venues_by_preferences(
+            dietary_tag_names=["Vegetarian"],
+            food_type_tag_names=["Pizza"],
+            require_photos=False,
+        )
+        names = set(qs.values_list("name", flat=True))
+        # Veg Pizza Place is the only venue tagged both Vegetarian AND Pizza;
+        # Veg Place passes dietary but is not a Pizza venue; Pizza Place is
+        # Pizza but has no dietary tag.
+        self.assertEqual(names, {"Veg Pizza Place"})
+
+    @override_settings(STRICT_PREFERENCE_FILTERS=False)
+    def test_flag_off_ignores_tag_filters(self):
+        from venues.filters import filter_venues_by_preferences
+
+        qs = filter_venues_by_preferences(
+            dietary_tag_names=["Nonexistent"],
+            food_type_tag_names=["Nonexistent"],
+            require_photos=False,
+        )
+        # With the flag off, the tag args are ignored entirely — all active
+        # venues with a google_place_id come back.
+        names = set(qs.values_list("name", flat=True))
+        self.assertEqual(len(names), 7)
+
+
+# ---------------------------------------------------------------------------
+# /api/venues/preview/  +  /api/venues/<id>/preview-detail/
+# ---------------------------------------------------------------------------
+
+
+class VenuePreviewEndpointTests(TestCase):
+    """Integration tests for the preference-preview endpoints in venues.views.
+
+    Covers method/auth errors, ``countOnly``, limit/offset bounds, and a basic
+    filter case so the routes driving the preference-preview UI stay correct.
+    """
+
+    URL = "/api/venues/preview/"
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="preview-user@example.com", password="password123"
+        )
+
+        self.italian = CuisineType.objects.create(name="Italian")
+        self.chinese = CuisineType.objects.create(name="Chinese")
+
+        # Seed 3 venues so pagination is meaningful. Each gets a google_place_id
+        # (not strictly required since require_photos=False in the endpoint, but
+        # keeps the test rows realistic).
+        self.v_italian = Venue.objects.create(
+            name="Preview Italian",
+            is_active=True,
+            cuisine_type=self.italian,
+            google_place_id="place-italian",
+            google_rating=4.7,
+        )
+        self.v_chinese = Venue.objects.create(
+            name="Preview Chinese",
+            is_active=True,
+            cuisine_type=self.chinese,
+            google_place_id="place-chinese",
+            google_rating=4.3,
+        )
+        self.v_other = Venue.objects.create(
+            name="Preview Other",
+            is_active=True,
+            google_place_id="place-other",
+            google_rating=4.1,
+        )
+
+    # --- method / auth errors ----------------------------------------------
+
+    def test_preview_requires_auth(self):
+        resp = self.client.post(
+            self.URL, data=json.dumps({}), content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_preview_rejects_get(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, 405)
+
+    def test_preview_rejects_invalid_json(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            self.URL, data="not-json", content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    # --- countOnly ----------------------------------------------------------
+
+    def test_preview_count_only_returns_count_without_venues(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            self.URL,
+            data=json.dumps({"countOnly": True}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["count"], 3)
+        self.assertEqual(data["venues"], [])
+
+    # --- limit/offset bounds -----------------------------------------------
+
+    def test_preview_applies_limit_and_offset(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            self.URL,
+            data=json.dumps({"limit": 2, "offset": 0}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["venues"]), 2)
+
+        resp2 = self.client.post(
+            self.URL,
+            data=json.dumps({"limit": 2, "offset": 2}),
+            content_type="application/json",
+        )
+        self.assertEqual(len(resp2.json()["venues"]), 1)
+
+    def test_preview_clamps_invalid_limit_offset(self):
+        # limit > 50 → clamped; non-numeric limit → default; negative offset → 0.
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            self.URL,
+            data=json.dumps({"limit": 9999, "offset": -5}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        resp2 = self.client.post(
+            self.URL,
+            data=json.dumps({"limit": "not-a-number", "offset": "nope"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp2.status_code, 200)
+
+    # --- basic filter case --------------------------------------------------
+
+    def test_preview_filters_by_cuisine(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            self.URL,
+            data=json.dumps({"cuisines": ["Italian"]}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        names = {v["name"] for v in data["venues"]}
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(names, {"Preview Italian"})
+
+    def test_preview_unknown_cuisine_returns_zero(self):
+        # Cuisines input non-empty but none exist in the DB → short-circuits
+        # to count=0 rather than falling back to "no filter".
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            self.URL,
+            data=json.dumps({"cuisines": ["NonExistent Cuisine"]}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 0)
+        self.assertEqual(data["venues"], [])
+
+
+class VenuePreviewDetailEndpointTests(TestCase):
+    URL_FMT = "/api/venues/{venue_id}/preview-detail/"
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="detail-user@example.com", password="password123"
+        )
+        self.venue = Venue.objects.create(
+            name="Detail Venue",
+            is_active=True,
+            google_place_id="place-detail",
+        )
+
+    def test_detail_requires_auth(self):
+        resp = self.client.get(self.URL_FMT.format(venue_id=self.venue.id))
+        self.assertEqual(resp.status_code, 401)
+
+    def test_detail_rejects_wrong_method(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(self.URL_FMT.format(venue_id=self.venue.id))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_detail_returns_404_for_inactive_venue(self):
+        self.venue.is_active = False
+        self.venue.save()
+        self.client.force_login(self.user)
+        resp = self.client.get(self.URL_FMT.format(venue_id=self.venue.id))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_detail_returns_venue_when_found(self):
+        # bulk_prefetch_photos hits Google Places; patch it so the test runs
+        # offline and doesn't depend on a live API key.
+        self.client.force_login(self.user)
+        with patch("venues.views.bulk_prefetch_photos") as mock_fetch:
+            mock_fetch.return_value = None
+            resp = self.client.get(self.URL_FMT.format(venue_id=self.venue.id))
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["venue"]["name"], "Detail Venue")

@@ -6,20 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from 'react';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
-
-function apiUrl(path: string) {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${normalizedPath}`;
-}
-
-function getCookie(name: string): string {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(';').shift() ?? '';
-  return '';
-}
+import { apiUrl, getCsrf } from '@/app/lib/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,6 +15,7 @@ export interface VenueManager {
   email: string;
   name: string;
   role: 'venue_manager';
+  photoUrl?: string;
   businessName: string;
   businessEmail: string;
   businessPhone: string;
@@ -180,7 +168,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loginVenueManager = async (email: string, password: string) => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl('/api/auth/login/'), {
       method: 'POST',
       credentials: 'include',
@@ -206,7 +194,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
     businessEmail?: string;
     businessPhone?: string;
   }) => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl('/api/auth/venue-register/'), {
       method: 'POST',
       credentials: 'include',
@@ -221,7 +209,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
   };
 
   const logoutVenueManager = async () => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     await fetch(apiUrl('/api/auth/logout/'), {
       method: 'POST',
       credentials: 'include',
@@ -257,7 +245,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
   };
 
   const claimVenue = async (venueId: number, note = '') => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl(`/api/venues/${venueId}/claim/`), {
       method: 'POST',
       credentials: 'include',
@@ -285,7 +273,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
   };
 
   const createDiscount = async (venueId: number, formData: DiscountFormData): Promise<StudentDiscount> => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl(`/api/venues/${venueId}/discounts/`), {
       method: 'POST',
       credentials: 'include',
@@ -302,7 +290,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
     discountId: number,
     formData: Partial<DiscountFormData>
   ): Promise<StudentDiscount> => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl(`/api/venues/${venueId}/discounts/${discountId}/`), {
       method: 'PATCH',
       credentials: 'include',
@@ -315,7 +303,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteDiscount = async (venueId: number, discountId: number) => {
-    const csrftoken = getCookie('csrftoken') || '';
+    const csrftoken = getCsrf();
     const response = await fetch(apiUrl(`/api/venues/${venueId}/discounts/${discountId}/`), {
       method: 'DELETE',
       credentials: 'include',
@@ -379,6 +367,7 @@ function _apiUserToManager(apiUser: {
   email: string;
   name: string;
   role: string;
+  photoUrl?: string;
   venueManager?: {
     businessName: string;
     businessEmail: string;
@@ -391,6 +380,7 @@ function _apiUserToManager(apiUser: {
     email: apiUser.email,
     name: apiUser.name,
     role: 'venue_manager',
+    photoUrl: apiUser.photoUrl ?? '',
     businessName: apiUser.venueManager?.businessName ?? '',
     businessEmail: apiUser.venueManager?.businessEmail ?? '',
     businessPhone: apiUser.venueManager?.businessPhone ?? '',

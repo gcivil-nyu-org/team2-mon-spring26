@@ -4,6 +4,12 @@ from . import views
 urlpatterns = [
     path("search/", views.api_venue_search, name="venue_search"),
     path("my-venues/", views.api_my_venues, name="venue_my_venues"),
+    path("preview/", views.api_venue_preview, name="venue_preview"),
+    path(
+        "<int:venue_id>/preview-detail/",
+        views.api_venue_preview_detail,
+        name="venue_preview_detail",
+    ),
     path("<int:venue_id>/", views.api_venue_detail, name="venue_detail"),
     path("<int:venue_id>/claim/", views.api_venue_claim, name="venue_claim"),
     path(

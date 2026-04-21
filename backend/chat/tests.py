@@ -565,3 +565,131 @@ class ChatMuteMemberTests(TestCase):
         self.client.force_login(self.leader)
         resp = self.client.post(self._url(self.group.id, self.member.id))
         self.assertEqual(resp.status_code, 500)
+
+
+class MessagePhotoUrlTests(TestCase):
+    """Chat messages include the sender's photoUrl in the serialized payload."""
+
+    def setUp(self):
+        self.sender = User.objects.create_user(
+            email="photo-sender@test.local",
+            password="x",
+            first_name="Send",
+            last_name="Er",
+            photo_url="https://cdn.test/sender.jpg",
+        )
+        self.plain = User.objects.create_user(
+            email="plain@test.local",
+            password="x",
+            first_name="Plain",
+        )
+        self.group = Group.objects.create(name="PhotoG", created_by=self.sender)
+        GroupMembership.objects.create(
+            user=self.sender, group=self.group, role="leader"
+        )
+        self.chat = Chat.objects.create(
+            type="group", group=self.group, created_by=self.sender
+        )
+        ChatMember.objects.create(chat=self.chat, user=self.sender, role="admin")
+
+    def test_message_includes_user_photo_url(self):
+        from chat.views import _message_to_json
+
+        msg = Message.objects.create(chat=self.chat, sender=self.sender, body="hi")
+        payload = _message_to_json(msg)
+        self.assertEqual(payload["userPhotoUrl"], "https://cdn.test/sender.jpg")
+        self.assertEqual(payload["userId"], str(self.sender.id))
+
+    def test_message_photo_url_none_when_sender_has_no_photo(self):
+        from chat.views import _message_to_json
+
+        msg = Message.objects.create(chat=self.chat, sender=self.plain, body="hi")
+        payload = _message_to_json(msg)
+        self.assertIsNone(payload["userPhotoUrl"])
+
+    def test_message_photo_url_none_when_sender_nulled(self):
+        from chat.views import _message_to_json
+
+        msg = Message.objects.create(chat=self.chat, sender=self.sender, body="hi")
+        msg.sender = None
+        msg.save(update_fields=["sender"])
+        payload = _message_to_json(msg)
+        self.assertIsNone(payload["userPhotoUrl"])
+
+    def test_chat_api_response_messages_include_photo(self):
+        Message.objects.create(chat=self.chat, sender=self.sender, body="hello")
+        self.client.force_login(self.sender)
+        res = self.client.get("/api/chat/")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        chat_entry = next(c for c in data["chats"] if c["type"] == "group")
+        self.assertGreaterEqual(len(chat_entry["messages"]), 1)
+        msg0 = chat_entry["messages"][-1]
+        self.assertEqual(msg0["userPhotoUrl"], "https://cdn.test/sender.jpg")
+
+
+class ChatSyncTests(TestCase):
+    def setUp(self):
+        self.leader = _make_user("syncleader@example.com")
+
+        self.group = Group.objects.create(name="Sync Group", created_by=self.leader)
+        GroupMembership.objects.create(
+            user=self.leader, group=self.group, role=GroupMembership.Role.LEADER
+        )
+        self.chat = Chat.objects.create(
+            type="group", group=self.group, created_by=self.leader
+        )
+        ChatMember.objects.create(chat=self.chat, user=self.leader, role="admin")
+
+        self.url = reverse("chat-sync")
+
+    def test_sync_no_since_returns_true(self):
+        self.client.force_login(self.leader)
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["updates"])
+        self.assertIn("timestamp", data)
+
+    def test_sync_with_new_message_returns_true(self):
+        self.client.force_login(self.leader)
+        since = (
+            (timezone.now() - timezone.timedelta(minutes=5))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        Message.objects.create(chat=self.chat, sender=self.leader, body="Test")
+        resp = self.client.get(f"{self.url}?since={since}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["updates"])
+
+    @patch("chat.views.time.sleep")
+    def test_sync_no_updates_returns_false_and_sleeps(self, mock_sleep):
+        self.client.force_login(self.leader)
+        # Use future time so no changes are found
+        since = (
+            (timezone.now() + timezone.timedelta(minutes=5))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+        resp = self.client.get(f"{self.url}?since={since}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.json()["updates"])
+        self.assertEqual(mock_sleep.call_count, 25)
+
+    def test_sync_invalid_since_format(self):
+        """Should fall back to gracefully treating it as 'no since' if formatting is wrong."""
+        self.client.force_login(self.leader)
+        resp = self.client.get(f"{self.url}?since=invalid-date")
+        self.assertEqual(resp.status_code, 200)
+        # Treated as no since => updates: True
+        self.assertTrue(resp.json()["updates"])
+
+    def test_sync_requires_auth(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_sync_bad_method(self):
+        self.client.force_login(self.leader)
+        resp = self.client.post(self.url)
+        self.assertEqual(resp.status_code, 405)

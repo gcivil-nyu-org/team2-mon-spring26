@@ -102,6 +102,7 @@ export function PlanEventPage() {
   const [nyuLocation, setNyuLocation] = useState("washington-square");
   const [borough, setBorough] = useState("manhattan");
   const [neighborhood, setNeighborhood] = useState("greenwich-village");
+  const [venueLimit, setVenueLimit] = useState("10");
 
   if (!group) {
     return (
@@ -142,7 +143,7 @@ export function PlanEventPage() {
 
     const finalName = eventName || `Dining Plan - ${locationString}`;
     try {
-      const newEvent = await createSwipeEvent(group.id, finalName, eventBorough, eventNeighborhood);
+      const newEvent = await createSwipeEvent(group.id, finalName, eventBorough, eventNeighborhood, Number(venueLimit));
       setCurrentGroup(group);
       setCurrentSwipeEvent(newEvent);
       navigate(`/swipe/${newEvent.id}`);
@@ -231,6 +232,23 @@ export function PlanEventPage() {
                     className="h-11"
                   />
                 </div>
+              </div>
+
+              {/* Venue Options */}
+              <div className="space-y-2">
+                <Label htmlFor="venue-limit" className="text-base flex items-center gap-2">
+                  Swipe Size
+                </Label>
+                <Select value={venueLimit} onValueChange={setVenueLimit}>
+                  <SelectTrigger id="venue-limit" className="h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">Quick (10)</SelectItem>
+                    <SelectItem value="15">Balanced (15)</SelectItem>
+                    <SelectItem value="20">Thorough (20)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Location Type Toggle */}

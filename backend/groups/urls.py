@@ -46,11 +46,16 @@ urlpatterns = [
         views.api_make_leader,
         name="api_make_leader",
     ),
-    # Constraints
+    # Constraints — derived view-only from member preferences
     path(
-        "<int:group_id>/constraints/",
-        views.api_update_group_constraints,
-        name="api_update_group_constraints",
+        "<int:group_id>/effective-constraints/",
+        views.api_group_effective_constraints,
+        name="api_group_effective_constraints",
+    ),
+    path(
+        "<int:group_id>/preview-venues/",
+        views.api_group_preview_venues,
+        name="api_group_preview_venues",
     ),
     path("<int:group_id>/leave/", views.api_leave_group, name="api_leave_group"),
     # Swipe Events
@@ -73,5 +78,20 @@ urlpatterns = [
         "<int:group_id>/events/<int:event_id>/results/",
         views.api_swipe_event_results,
         name="api_swipe_event_results",
+    ),
+    path(
+        "<int:group_id>/events/<int:event_id>/finish/",
+        views.api_finish_swiping,
+        name="api_finish_swiping",
+    ),
+    path(
+        "<int:group_id>/events/<int:event_id>/my-swipes/",
+        views.api_my_swipes,
+        name="api_my_swipes",
+    ),
+    path(
+        "<int:group_id>/events/<int:event_id>/reswipe/",
+        views.api_reswipe,
+        name="api_reswipe",
     ),
 ]

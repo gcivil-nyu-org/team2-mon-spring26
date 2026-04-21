@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router';
 import { useVenue } from '@/app/contexts/venue-context';
 import { Button } from '@/app/components/ui/button';
+import { UserAvatar } from '@/app/components/user-avatar';
 import { Store, LogOut, ArrowLeft } from 'lucide-react';
 
 export function VenueTopNav() {
@@ -69,6 +70,12 @@ export function VenueTopNav() {
             </p>
             <p className="text-xs text-muted-foreground">{currentManager?.email}</p>
           </div>
+          <UserAvatar
+            name={currentManager?.businessName || currentManager?.name}
+            email={currentManager?.email}
+            role="venue_manager"
+            size={40}
+          />
           <Button
             variant="ghost"
             size="icon"

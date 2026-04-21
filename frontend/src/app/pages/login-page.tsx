@@ -158,10 +158,7 @@ export function LoginPage() {
               Create New Account
             </Button>
 
-            <div className="text-center space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Demo: Use alex@nyu.edu, sarah@nyu.edu, or jordan@nyu.edu
-              </p>
+            <div className="text-center">
               <button
                 type="button"
                 onClick={() => navigate('/venue/login')}

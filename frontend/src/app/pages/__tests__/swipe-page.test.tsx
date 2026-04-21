@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import * as sonner from 'sonner';
 import { SwipePage } from '../swipe-page';
 import { BrowserRouter } from 'react-router';
 import type { AppContextType } from '@/app/contexts/app-context';
@@ -51,6 +52,8 @@ describe('SwipePage Fixed Behaviors', () => {
         createdAt: "" 
       }],
       fetchSwipeVenues: vi.fn().mockResolvedValue([]),
+      fetchMySwipes: vi.fn().mockResolvedValue({ hasCompleted: false, swipes: [] }),
+      reswipeSession: vi.fn().mockResolvedValue(undefined),
       addSwipe: mockAddSwipe,
       addChatMessage: vi.fn()
     } as unknown as AppContextType);
@@ -101,15 +104,15 @@ describe('SwipePage Fixed Behaviors', () => {
         images: []
       }]),
       addSwipe: mockAddSwipe,
+      fetchMySwipes: vi.fn().mockResolvedValue({ hasCompleted: false, swipes: [] }),
+      reswipeSession: vi.fn().mockResolvedValue(undefined),
       addChatMessage: vi.fn()
     } as unknown as AppContextType);
 
     // Provide the error mock simulation
     mockAddSwipe.mockRejectedValueOnce(new Error("This event is no longer active"));
-    
-    // Mock window alert
-    const mockAlert = vi.fn();
-    window.alert = mockAlert;
+
+    const toastSpy = vi.spyOn(sonner.toast, 'info').mockImplementation(() => '');
 
     renderComponent();
 
@@ -117,16 +120,17 @@ describe('SwipePage Fixed Behaviors', () => {
     const discardBtn = await waitFor(() => {
       return screen.getByTestId('swipe-discard-btn');
     }, { timeout: 3000 });
-    
+
     // Fire the left swipe which hits our mock Error
     fireEvent.click(discardBtn!);
 
     await waitFor(() => {
-      // Assert it popped up the interceptor alert 
-      expect(mockAlert).toHaveBeenCalledWith("A match has already been found for this session!");
-      
+      // Assert it showed a toast instead of a blocking alert
+      expect(toastSpy).toHaveBeenCalledWith("A match has already been found for this session!");
+
       // And then navigated straight to Match page as configured
       expect(mockNavigate).toHaveBeenCalledWith('/match/event1');
     });
+    // spy is restored automatically by vi.restoreAllMocks() in afterEach (setup.ts)
   });
 });

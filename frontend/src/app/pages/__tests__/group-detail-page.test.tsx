@@ -53,7 +53,8 @@ describe('GroupDetailPage Synchronization', () => {
       },
       swipeEvents: [],
       fetchSwipeEvents: mockFetchSwipeEvents,
-      updateGroupConstraints: vi.fn(),
+      fetchGroupEffectiveConstraints: vi.fn().mockResolvedValue({}),
+      fetchGroupPreviewVenues: vi.fn().mockResolvedValue({ count: 0, venues: [] }),
       removeMember: vi.fn(),
       makeLeader: vi.fn(),
       leaveGroup: vi.fn(),
@@ -61,7 +62,6 @@ describe('GroupDetailPage Synchronization', () => {
       fetchAvailableUsers: vi.fn(),
       getAllUsers: vi.fn().mockReturnValue([]),
       createSwipeEvent: vi.fn(),
-      swipes: {},
       addChatMessage: vi.fn(),
       deleteChatMessage: vi.fn(),
       availableUsers: []

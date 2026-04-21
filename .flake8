@@ -4,12 +4,14 @@ max-line-length = 88
 # Tell it to ignore the long line errors (E501) entirely for now
 ignore = E501, E203, W503
 # Exclude folders that shouldn't be linted
-exclude = 
+exclude =
     .git,
     __pycache__,
     */migrations/*,
     venv,
+    .venv,
     env,
     .tox,
     build,
-    dist
+    dist,
+    backend/aws-elastic-beanstalk-cli-setup
