@@ -1,8 +1,15 @@
+import logging
+
+from django.conf import settings
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.utils import timezone
 from django.utils.text import slugify
+
+logger = logging.getLogger(__name__)
 
 
 class UserManager(BaseUserManager):
@@ -84,6 +91,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     phone = models.CharField(max_length=30, blank=True)
     photo_url = models.URLField(max_length=500, blank=True)
+    bio = models.TextField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -216,3 +224,43 @@ class VenueManagerProfile(models.Model):
 
     def __str__(self):
         return f"{self.business_name} ({self.user.email})"
+
+
+# ---------------------------------------------------------------------------
+# S3 cleanup — delete profile photo from S3 when a user is deleted
+# ---------------------------------------------------------------------------
+
+S3_BUCKET_PREFIX = "profile_photos/"
+
+
+@receiver(post_delete, sender="accounts.User")
+def delete_user_s3_photo(sender, instance, **kwargs):
+    """
+    When a User record is deleted, remove their profile photo from S3
+    if photo_url points to our bucket.
+    """
+    photo_url = getattr(instance, "photo_url", "") or ""
+    bucket = getattr(settings, "AWS_S3_BUCKET_NAME", "")
+    if not photo_url or not bucket:
+        return
+    if bucket not in photo_url or S3_BUCKET_PREFIX not in photo_url:
+        # Not one of our S3 uploads (e.g. an external URL set by admin)
+        return
+    try:
+        # Extract the S3 key from the URL
+        # URL format: https://<bucket>.s3.<region>.amazonaws.com/<key>
+        key = photo_url.split(f"{bucket}.s3.", 1)[-1]
+        key = key.split(".amazonaws.com/", 1)[-1]
+        import boto3 as boto3_lib
+        s3 = boto3_lib.client(
+            "s3",
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_S3_REGION_NAME,
+        )
+        s3.delete_object(Bucket=bucket, Key=key)
+        logger.info(f"Deleted S3 photo for deleted user {instance.email}: {key}")
+    except Exception as e:
+        logger.error(
+            f"Failed to delete S3 photo for user {instance.email}: {e}", exc_info=True
+        )

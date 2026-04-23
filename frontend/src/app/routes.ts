@@ -24,6 +24,7 @@ import { AdminVenueEditPage } from '@/app/pages/admin-venue-edit-page';
 import { AdminUsersPage } from '@/app/pages/admin-users-page';
 import { AdminUserEditPage } from '@/app/pages/admin-user-edit-page';
 import { ResetPasswordPage } from '@/app/pages/reset-password-page';
+import { ProfileEditPage } from '@/app/pages/profile-edit-page';
 import { ProtectedRoute } from '@/app/components/protected-route';
 import { VenueProtectedRoute } from '@/app/components/venue-protected-route';
 import { AdminProtectedRoute } from '@/app/components/admin-protected-route';
@@ -130,6 +131,10 @@ export const router = createBrowserRouter([
           {
             path: 'preferences',
             Component: PreferencesPage,
+          },
+          {
+            path: 'profile',
+            Component: ProfileEditPage,
           },
           {
             path: 'group/:groupId',
