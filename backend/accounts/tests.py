@@ -2207,13 +2207,15 @@ class UserProfileTests(TestCase):
         )
         self.assertEqual(resp.status_code, 500)
         self.assertIn("Photo upload failed", resp.json()["error"])
+        mock_boto.assert_called_once()
+        mock_s3.upload_fileobj.assert_called_once()
 
     @override_settings(
         AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1"
     )
     @patch("accounts.views.boto3_lib.client")
     def test_upload_photo_deletes_old_photo(self, mock_boto):
-        """If user already has an S3 photo, the old key is deleted before upload."""
+        """Old S3 key is deleted before the new photo is uploaded."""
         mock_s3 = MagicMock()
         mock_boto.return_value = mock_s3
         mock_s3.upload_fileobj.return_value = None
@@ -2227,11 +2229,15 @@ class UserProfileTests(TestCase):
             data={"photo": _make_jpeg()},
         )
         self.assertEqual(resp.status_code, 200)
+        # Verify delete happened before upload by checking call order
+        call_names = [c[0] for c in mock_s3.method_calls]
+        self.assertIn("delete_object", call_names)
+        self.assertIn("upload_fileobj", call_names)
+        self.assertLess(call_names.index("delete_object"), call_names.index("upload_fileobj"))
         mock_s3.delete_object.assert_called_once_with(
             Bucket="mealswipe-profile-pictures",
             Key="profile_photos/user_1_old.jpg",
         )
-        mock_s3.upload_fileobj.assert_called_once()
 
 
 class UserDeleteS3SignalTests(TestCase):
@@ -2294,5 +2300,11 @@ class UserDeleteS3SignalTests(TestCase):
 
         self.user.photo_url = "https://mealswipe-profile-pictures.s3.us-east-1.amazonaws.com/profile_photos/user_sig_err.jpg"
         self.user.save(update_fields=["photo_url"])
-        # Should not raise
+        # Should not raise even though delete_object raises
         self.user.delete()
+        # S3 client was created and delete_object was attempted
+        mock_boto.assert_called_once()
+        mock_s3.delete_object.assert_called_once_with(
+            Bucket="mealswipe-profile-pictures",
+            Key="profile_photos/user_sig_err.jpg",
+        )
