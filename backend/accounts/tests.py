@@ -2115,7 +2115,9 @@ class UserProfileTests(TestCase):
 
     # -- POST /api/auth/profile/photo/ ------------------------------------
 
-    @override_settings(AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1")
+    @override_settings(
+        AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1"
+    )
     @patch("accounts.views.boto3_lib.client")
     def test_upload_photo_success(self, mock_boto):
         mock_s3 = MagicMock()
