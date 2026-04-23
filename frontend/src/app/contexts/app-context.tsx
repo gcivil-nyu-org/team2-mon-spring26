@@ -61,6 +61,7 @@ export interface Group {
   createdBy: string;
   createdAt: string;
   joinCode?: string;
+  privacy?: 'public' | 'invite-only';
   constraints?: GroupConstraints;
 }
 
@@ -134,8 +135,26 @@ interface BackendGroup {
   created_by: number | string;
   created_at: string;
   join_code?: string;
+  privacy?: 'public' | 'invite-only';
   constraints?: GroupConstraints;
 }
+
+const parseBackendGroup = (g: BackendGroup): Group => ({
+  id: String(g.id),
+  name: g.name,
+  members: g.members.map((m: BackendMember) => ({
+    userId: String(m.id),
+    userName: m.name,
+    userPhotoUrl: m.photoUrl ?? '',
+    hasFinishedSwiping: false,
+    isLeader: m.role === 'leader',
+  })),
+  createdBy: String(g.created_by),
+  createdAt: g.created_at,
+  joinCode: g.join_code,
+  privacy: g.privacy,
+  constraints: g.constraints,
+});
 
 interface BackendUser {
   id: number | string;
@@ -150,6 +169,7 @@ interface BackendUser {
 export interface AppContextType extends AuthContextType {
   groups: Group[];
   createGroup: (name: string, groupType?: string, defaultLocation?: string, privacy?: string) => Promise<Group>;
+  editGroup: (groupId: string, data: { name?: string, description?: string, group_type?: string, default_location?: string, privacy?: string }) => Promise<void>;
   joinGroup: (code: string) => Promise<void>;
   fetchPublicGroups: () => Promise<Group[]>;
   regenerateJoinCode: (groupId: string) => Promise<string>;
@@ -248,23 +268,7 @@ function AppInner({ children }: { children: ReactNode }) {
       const res = await fetch(apiUrl('/api/groups/'), { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
-        setGroups(
-          data.groups.map((g: BackendGroup) => ({
-            id: String(g.id),
-            name: g.name,
-            members: g.members.map((m: BackendMember) => ({
-              userId: String(m.id),
-              userName: m.name,
-              userPhotoUrl: m.photoUrl ?? '',
-              hasFinishedSwiping: false,
-              isLeader: m.role === 'leader',
-            })),
-            createdBy: String(g.created_by),
-            createdAt: g.created_at,
-            joinCode: g.join_code,
-            constraints: g.constraints,
-          }))
-        );
+        setGroups(data.groups.map(parseBackendGroup));
       }
     } catch (err) {
       console.error('Failed to fetch user groups', err);
@@ -334,11 +338,10 @@ function AppInner({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
 
-  // Long-poll for chat, short-poll for notifications (less frequent).
+  // WebSockets for chat, short-poll for notifications (less frequent).
   useEffect(() => {
     if (!currentUser) return;
     let isActive = true;
-    let pollingTimeout: ReturnType<typeof setTimeout>;
 
     const invInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -346,37 +349,50 @@ function AppInner({ children }: { children: ReactNode }) {
       }
     }, 60000); // 1 minute for invites
 
-    const pollChat = async (sinceTimestamp?: string) => {
-      if (!isActive) return;
-      try {
-        let url = '/api/chat/sync/';
-        if (sinceTimestamp) {
-          url += `?since=${encodeURIComponent(sinceTimestamp)}`;
-        }
-        const res = await fetch(apiUrl(url), { credentials: 'include' });
-        if (!isActive) return;
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.updates) {
-            await fetchUserChats();
-          }
-          pollingTimeout = setTimeout(() => pollChat(data.timestamp), 0);
-        } else {
-          throw new Error('Sync failed');
-        }
-      } catch (err) {
-        console.error('Long poll error:', err);
-        pollingTimeout = setTimeout(() => pollChat(sinceTimestamp), 10000);
+    const connectWebSocket = () => {
+      if (!isActive) return;
+      
+      // Convert http:// API url to ws:// appropriately
+      let baseApiUrl = apiUrl('/ws/notifications/');
+      if (baseApiUrl.startsWith('/')) {
+        baseApiUrl = window.location.origin + baseApiUrl;
       }
+      const wsUrl = baseApiUrl.replace(/^http/, 'ws');
+      ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'chat_update') {
+             fetchUserChats();
+          }
+        } catch (e) {
+          console.error("Failed to parse websocket message", e);
+        }
+      };
+
+      ws.onclose = () => {
+        if (!isActive) return;
+        reconnectTimeout = setTimeout(connectWebSocket, 3000);
+      };
+      
+      ws.onerror = (err) => {
+         console.error('WebSocket error:', err);
+      };
     };
 
-    pollChat();
+    connectWebSocket();
 
     return () => {
       isActive = false;
       clearInterval(invInterval);
-      clearTimeout(pollingTimeout);
+      clearTimeout(reconnectTimeout);
+      if (ws) {
+        ws.close();
+      }
     };
   }, [currentUser, fetchUserChats, fetchInvitations]);
 
@@ -449,22 +465,7 @@ function AppInner({ children }: { children: ReactNode }) {
       throw new Error(err.error || 'Failed to create group');
     }
     const data = await res.json();
-    const bg = data.group;
-    const newGroup: Group = {
-      id: String(bg.id),
-      name: bg.name,
-      members: bg.members.map((m: BackendMember) => ({
-        userId: String(m.id),
-        userName: m.name,
-        userPhotoUrl: m.photoUrl ?? '',
-        hasFinishedSwiping: false,
-        isLeader: m.role === 'leader',
-      })),
-      createdBy: String(bg.created_by),
-      createdAt: bg.created_at,
-      joinCode: bg.join_code,
-      constraints: bg.constraints,
-    };
+    const newGroup = parseBackendGroup(data.group);
     setGroups((prev) => [...prev, newGroup]);
     return newGroup;
   };
@@ -474,25 +475,32 @@ function AppInner({ children }: { children: ReactNode }) {
       const res = await fetch(apiUrl('/api/groups/public/'), { credentials: 'include' });
       const data = await res.json();
       if (res.ok) {
-        return data.groups.map((g: BackendGroup) => ({
-          id: String(g.id),
-          name: g.name,
-          members: g.members.map((m: BackendMember) => ({
-            userId: String(m.id),
-            userName: m.name, userPhotoUrl: m.photoUrl ?? "",
-            hasFinishedSwiping: false,
-            isLeader: m.role === 'leader',
-          })),
-          createdBy: String(g.created_by),
-          createdAt: g.created_at,
-          joinCode: g.join_code,
-          constraints: g.constraints,
-        }));
+        return data.groups.map(parseBackendGroup);
       }
       return [];
     } catch (error) {
       console.error('Fetch public groups error:', error);
       return [];
+    }
+  };
+
+  const editGroup = async (groupId: string, data: { name?: string, description?: string, group_type?: string, default_location?: string, privacy?: string }): Promise<void> => {
+    if (!currentUser) return;
+    const res = await fetch(apiUrl(`/api/groups/${groupId}/`), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to edit group');
+    }
+    const updatedData = await res.json();
+    const formattedGroup = parseBackendGroup(updatedData.group);
+    setGroups((prev) => prev.map((g) => (g.id === groupId ? formattedGroup : g)));
+    if (currentGroup?.id === groupId) {
+      setCurrentGroup(formattedGroup);
     }
   };
 
@@ -845,7 +853,12 @@ function AppInner({ children }: { children: ReactNode }) {
       const data = await res.json().catch(() => ({}));
       console.error("Failed to finish swiping", data);
     } else {
-      setSwipeEvents(events => events.map(e => e.id === eventId ? { ...e, completedParticipantsCount: (e.completedParticipantsCount || 0) + 1 } : e));
+      const data = await res.json();
+      setSwipeEvents(events => events.map(e => e.id === eventId ? { 
+        ...e, 
+        completedParticipantsCount: (e.completedParticipantsCount || 0) + 1,
+        status: data.event_status || e.status
+      } : e));
     }
   };
 
@@ -1004,6 +1017,7 @@ function AppInner({ children }: { children: ReactNode }) {
         // Groups
         groups,
         createGroup,
+        editGroup,
         joinGroup,
         fetchPublicGroups,
         regenerateJoinCode,

@@ -14,5 +14,4 @@ urlpatterns = [
         views.api_chat_member_mute,
         name="chat-member-mute",
     ),
-    path("sync/", views.api_chat_sync, name="chat-sync"),
 ]

@@ -1092,6 +1092,7 @@ class GroupManagementAPITests(TestCase):
         self.group.refresh_from_db()
         self.assertEqual(self.group.description, "A fun group")
         self.assertEqual(self.group.default_location, "Manhattan")
+        self.assertEqual(self.group.privacy, "public")
 
     def test_edit_group_method_not_allowed(self):
         self.client.login(email="leader@example.com", password="pass123")
@@ -1516,10 +1517,10 @@ class JoinGroupByCodeTests(TestCase):
         resp = self.client.post(self._url(self.public_group.join_code))
         self.assertEqual(resp.status_code, 400)
 
-    def test_private_group_forbidden(self):
+    def test_private_group_allowed(self):
         self.client.force_login(self.user)
         resp = self.client.post(self._url(self.private_group.join_code))
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 200)
 
     def test_successful_join_creates_chat_member_and_system_message(self):
         self.client.force_login(self.user)
@@ -1778,6 +1779,36 @@ class SwipeCompletionAPITests(TestCase):
         self.assertIsNotNone(sys_msg)
         self.assertIn("finished swiping", sys_msg.body)
 
+    def test_finish_swiping_all_members_match_venue(self):
+        # Both leader and member swipe right on the same venue
+        from groups.models import Swipe
+
+        Swipe.objects.create(
+            event=self.event,
+            user=self.leader,
+            venue=self.venue,
+            direction=Swipe.Direction.RIGHT,
+        )
+        Swipe.objects.create(
+            event=self.event,
+            user=self.member,
+            venue=self.venue,
+            direction=Swipe.Direction.RIGHT,
+        )
+
+        # Member finishes swiping
+        self.event.completed_by.add(self.member)
+
+        # Leader finishes swiping
+        self.client.force_login(self.leader)
+        url = reverse("api_finish_swiping", args=[self.group.id, self.event.id])
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 200)
+
+        self.event.refresh_from_db()
+        self.assertEqual(self.event.status, "completed")
+        self.assertEqual(self.event.matched_venue.id, self.venue.id)
+
     def test_my_swipes(self):
         Swipe.objects.create(
             event=self.event, user=self.leader, venue=self.venue, direction="right"
@@ -1882,3 +1913,42 @@ class SwipeCompletionAPITests(TestCase):
             reverse("api_reswipe", args=[self.group.id, self.event.id])
         )
         self.assertEqual(resp.status_code, 500)
+
+
+class SwipeNotificationTests(TestCase):
+    def setUp(self):
+        from accounts.models import User
+        from groups.models import Group, SwipeEvent, SwipeSessionNotification
+
+        self.user = User.objects.create_user(email="user2@test.com", password="x")
+        self.client.force_login(self.user)
+        self.group = Group.objects.create(name="Notification Group")
+        self.event = SwipeEvent.objects.create(group=self.group)
+        self.notification = SwipeSessionNotification.objects.create(
+            user=self.user, event=self.event, is_read=False
+        )
+
+    def test_mark_read_success(self):
+        resp = self.client.post(
+            f"/api/groups/swipe-notifications/{self.notification.id}/read/"
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.notification.refresh_from_db()
+        self.assertTrue(self.notification.is_read)
+
+    def test_mark_read_not_found(self):
+        resp = self.client.post("/api/groups/swipe-notifications/9999/read/")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_mark_read_wrong_method(self):
+        resp = self.client.get(
+            f"/api/groups/swipe-notifications/{self.notification.id}/read/"
+        )
+        self.assertEqual(resp.status_code, 405)
+
+    def test_mark_read_unauthenticated(self):
+        self.client.logout()
+        resp = self.client.post(
+            f"/api/groups/swipe-notifications/{self.notification.id}/read/"
+        )
+        self.assertEqual(resp.status_code, 401)

@@ -133,6 +133,12 @@ interface VenueContextType {
   createDiscount: (venueId: number, data: DiscountFormData) => Promise<StudentDiscount>;
   updateDiscount: (venueId: number, discountId: number, data: Partial<DiscountFormData>) => Promise<StudentDiscount>;
   deleteDiscount: (venueId: number, discountId: number) => Promise<void>;
+
+  // Legacy fields to fix typescript errors in unmigrated pages
+  myClaims: unknown[];
+  addRestaurant: (data: unknown) => void;
+  updateRestaurant: (id: string | number, data: unknown) => void;
+  restaurants: unknown[];
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -281,8 +287,8 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(formData),
     });
     const data = await _parseJsonOrThrow(response, 'Failed to create discount');
-    if (!response.ok) throw new Error(data.error || 'Failed to create discount');
-    return data.discount;
+    if (!response.ok) throw new Error(String(data.error) || 'Failed to create discount');
+    return data.discount as StudentDiscount;
   };
 
   const updateDiscount = async (
@@ -298,8 +304,8 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(formData),
     });
     const data = await _parseJsonOrThrow(response, 'Failed to update discount');
-    if (!response.ok) throw new Error(data.error || 'Failed to update discount');
-    return data.discount;
+    if (!response.ok) throw new Error(String(data.error) || 'Failed to update discount');
+    return data.discount as StudentDiscount;
   };
 
   const deleteDiscount = async (venueId: number, discountId: number) => {
@@ -332,6 +338,10 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       createDiscount,
       updateDiscount,
       deleteDiscount,
+      myClaims: [],
+      restaurants: [],
+      addRestaurant: () => {},
+      updateRestaurant: () => {},
     }}>
       {children}
     </VenueContext.Provider>

@@ -41,7 +41,7 @@ const GRADE_COLORS: Record<string, string> = {
 };
 
 export function VenueDashboardPage() {
-  const { myVenues, venuesLoading, fetchMyVenues } = useVenue();
+  const { myVenues, myClaims, venuesLoading, fetchMyVenues } = useVenue();
   const navigate = useNavigate();
   const [venueToUnclaim, setVenueToUnclaim] = useState<ManagedVenue | null>(null);
 
@@ -232,6 +232,49 @@ export function VenueDashboardPage() {
                 </Card>
               );
             })}
+          </div>
+        )}
+
+        {/* Claims Table section */}
+        {!venuesLoading && myClaims && myClaims.length > 0 && (
+          <div className="mt-12 space-y-4">
+            <h2 className="text-2xl font-semibold">Verification Claims History</h2>
+            <Card>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
+                    <tr>
+                      <th className="px-6 py-3">Venue</th>
+                      <th className="px-6 py-3">Location</th>
+                      <th className="px-6 py-3">Date Submitted</th>
+                      <th className="px-6 py-3">Status</th>
+                      <th className="px-6 py-3">Admin Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {myClaims.map((claim) => (
+                      <tr key={claim.id} className="bg-card hover:bg-muted/30">
+                        <td className="px-6 py-4 font-medium">{claim.venue.name}</td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {claim.venue.streetAddress}, {claim.venue.borough}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {new Date(claim.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4">
+                          {claim.status === 'pending' && <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50">Pending</Badge>}
+                          {claim.status === 'approved' && <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-300">Approved</Badge>}
+                          {claim.status === 'rejected' && <Badge variant="destructive">Rejected</Badge>}
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground max-w-xs truncate" title={claim.adminNote || '-'}>
+                          {claim.adminNote || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           </div>
         )}
       </main>

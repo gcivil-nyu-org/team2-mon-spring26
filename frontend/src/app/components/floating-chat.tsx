@@ -28,13 +28,20 @@ interface Conversation {
 }
 
 export function FloatingChat() {
-  const { groups, dmConversations, chatMessages, addChatMessage, deleteChatMessage, currentUser, createDMConversation, getAllUsers } = useApp();
+  const { groups, dmConversations, chatMessages, addChatMessage, deleteChatMessage, currentUser, createDMConversation, fetchAvailableUsers } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string>('');
   const [newMessage, setNewMessage] = useState('');
   const [showNewDMDialog, setShowNewDMDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch available users lazily when the user tries to open the DM dialog
+  useEffect(() => {
+    if (showNewDMDialog) {
+      fetchAvailableUsers();
+    }
+  }, [showNewDMDialog, fetchAvailableUsers]);
 
   // Build and sort conversation list
   const conversations = useMemo((): Conversation[] => {
@@ -143,15 +150,30 @@ export function FloatingChat() {
   }, [handleStartDM]);
 
   // Get all users from groups (potential DM contacts)
-  const potentialDMContacts = getAllUsers().filter(user => {
-    // Exclude current user
-    if (user.id === currentUser?.id) return false;
+  const potentialDMContacts = useMemo(() => {
+    if (!currentUser) return [];
+    
+    const contactMap = new Map<string, { id: string, name: string, photoUrl?: string, email: string }>();
+    
     // Only show users who are in at least one group with the current user
-    return groups.some(group => 
-      group.members.some(m => m.userId === user.id) &&
-      group.members.some(m => m.userId === currentUser?.id)
-    );
-  });
+    groups.forEach(group => {
+      const isCurrentUserInGroup = group.members.some(m => String(m.userId) === String(currentUser.id));
+      if (!isCurrentUserInGroup) return;
+      
+      group.members.forEach(member => {
+        if (String(member.userId) !== String(currentUser.id)) {
+          contactMap.set(String(member.userId), {
+            id: String(member.userId),
+            name: member.userName,
+            photoUrl: member.userPhotoUrl,
+            email: '' // Fallback since UI uses name for avatar
+          });
+        }
+      });
+    });
+    
+    return Array.from(contactMap.values());
+  }, [groups, currentUser]);
 
   // Don't render if no current user (not logged in) or no conversations
   if (!currentUser || (groups.length === 0 && dmConversations.length === 0)) {
