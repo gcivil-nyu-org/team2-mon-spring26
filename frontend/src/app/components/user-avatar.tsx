@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 interface UserAvatarProps {
   photoUrl?: string | null;
   name?: string | null;
@@ -21,17 +23,31 @@ function getInitial(name?: string | null, email?: string | null): string {
 }
 
 export function UserAvatar({
+  photoUrl,
   name,
   email,
   role,
   size = 40,
   className = '',
 }: UserAvatarProps) {
-  const initial = getInitial(name, email);
-  const fontSize = Math.max(10, Math.round(size * 0.4));
+  const [imgError, setImgError] = useState(false);
   const style = { width: size, height: size };
   const gradient = GRADIENT[role ?? 'student'];
 
+  if (photoUrl && !imgError) {
+    return (
+      <img
+        src={photoUrl}
+        alt={name || email || 'User avatar'}
+        style={{ ...style, objectFit: 'cover', display: 'block' }}
+        className={`rounded-full ${className}`}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  const initial = getInitial(name, email);
+  const fontSize = Math.max(10, Math.round(size * 0.4));
   return (
     <div
       aria-label={`${initial} avatar`}

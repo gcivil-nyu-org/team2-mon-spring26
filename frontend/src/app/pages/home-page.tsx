@@ -8,7 +8,7 @@ import { JoinGroupModal } from '@/app/components/join-group-modal';
 import { useState } from 'react';
 
 export function HomePage() {
-  const { groups } = useApp();
+  const { groups, currentUser } = useApp();
   const navigate = useNavigate();
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
 
@@ -106,7 +106,7 @@ export function HomePage() {
                           className="border-2 border-white rounded-full"
                         >
                           <UserAvatar
-                            photoUrl={member.userPhotoUrl}
+                            photoUrl={member.userId === currentUser?.id ? (currentUser?.photoUrl ?? member.userPhotoUrl) : member.userPhotoUrl}
                             name={member.userName}
                             size={32}
                           />

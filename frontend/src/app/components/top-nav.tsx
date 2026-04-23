@@ -96,12 +96,19 @@ export function TopNav() {
             <p className="text-sm font-medium">{currentUser?.name}</p>
             <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
           </div>
-          <UserAvatar
-            name={currentUser?.name}
-            email={currentUser?.email}
-            role="student"
-            size={40}
-          />
+          <button
+            onClick={() => navigate('/profile')}
+            className="rounded-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-400"
+            aria-label="Edit profile"
+          >
+            <UserAvatar
+              photoUrl={currentUser?.photoUrl}
+              name={currentUser?.name}
+              email={currentUser?.email}
+              role={currentUser?.role ?? 'student'}
+              size={40}
+            />
+          </button>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="icon" className="relative">

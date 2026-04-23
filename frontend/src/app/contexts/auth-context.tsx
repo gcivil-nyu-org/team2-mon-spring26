@@ -9,7 +9,11 @@ import { apiUrl, getCsrf } from '@/app/lib/api';
 export interface User {
   id: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
+  phone?: string;
+  bio?: string;
   role?: 'student' | 'venue_manager' | 'admin';
   photoUrl?: string;
   preferences: {
@@ -49,6 +53,13 @@ export interface AuthContextType {
     minimumSanitationGrade?: string;
     priceRange?: string;
   }) => Promise<void>;
+  updateProfile: (data: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    bio?: string;
+  }) => Promise<void>;
+  uploadProfilePhoto: (file: File) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   validatePasswordResetToken: (uid: string, token: string) => Promise<void>;
   confirmPasswordReset: (uid: string, token: string, newPassword: string) => Promise<void>;
@@ -70,6 +81,10 @@ export function normalizeApiUser(apiUser: {
   id: number | string;
   email: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  bio?: string;
   role?: 'student' | 'venue_manager' | 'admin';
   photoUrl?: string;
   preferences?: {
@@ -87,6 +102,10 @@ export function normalizeApiUser(apiUser: {
     id: String(apiUser.id),
     email: apiUser.email,
     name: apiUser.name,
+    firstName: apiUser.firstName ?? '',
+    lastName: apiUser.lastName ?? '',
+    phone: apiUser.phone ?? '',
+    bio: apiUser.bio ?? '',
     role: apiUser.role,
     photoUrl: apiUser.photoUrl ?? '',
     preferences: {
@@ -218,6 +237,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.user) setCurrentUser(normalizeApiUser(data.user));
   };
 
+  const updateProfile = async (data: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    bio?: string;
+  }) => {
+    const response = await fetch(apiUrl('/api/auth/profile/'), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify(data),
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(json.error || 'Failed to update profile');
+    setCurrentUser(normalizeApiUser(json.user));
+  };
+
+  const uploadProfilePhoto = async (file: File) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    // Do NOT set Content-Type — browser must set multipart/form-data boundary automatically
+    const response = await fetch(apiUrl('/api/auth/profile/photo/'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRFToken': getCsrf() },
+      body: formData,
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(json.error || 'Failed to upload photo');
+    setCurrentUser((u) => (u ? { ...u, photoUrl: json.photoUrl } : u));
+  };
+
   const requestPasswordReset = async (email: string) => {
     const csrftoken = getCsrf();
     const response = await fetch(apiUrl('/api/auth/request-password-reset/'), {
@@ -269,6 +320,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         updatePreferences,
+        updateProfile,
+        uploadProfilePhoto,
         requestPasswordReset,
         validatePasswordResetToken,
         confirmPasswordReset,

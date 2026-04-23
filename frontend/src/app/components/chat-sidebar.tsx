@@ -17,6 +17,13 @@ export function ChatSidebar({ groupId, onClose }: ChatSidebarProps) {
   const messages = useMemo(() => chatMessages[groupId] || [], [chatMessages, groupId]);
 
   useEffect(() => {
+    window.dispatchEvent(new CustomEvent('chat-sidebar-open'));
+    return () => {
+      window.dispatchEvent(new CustomEvent('chat-sidebar-close'));
+    };
+  }, []);
+
+  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
@@ -61,31 +68,33 @@ export function ChatSidebar({ groupId, onClose }: ChatSidebarProps) {
                   </p>
                 </div>
               ) : (
-                <div className={`flex gap-2 ${msg.userId === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <UserAvatar
-                    photoUrl={msg.userPhotoUrl}
-                    name={msg.userName}
-                    size={28}
-                    className="flex-shrink-0 mt-5"
-                  />
-                  <div className={`flex-1 min-w-0 flex flex-col ${msg.userId === currentUser?.id ? 'items-end' : 'items-start'}`}>
-                    <p className="text-xs text-muted-foreground mb-1">
-                      {msg.userName}
-                    </p>
-                    <div className={`inline-block rounded-lg px-3 py-2 max-w-full break-words ${
-                      msg.userId === currentUser?.id
-                        ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                        : 'bg-muted'
-                    }`}>
-                      <p className="text-sm">{msg.message}</p>
+                <div className={`flex flex-col ${msg.userId === currentUser?.id ? 'items-end' : 'items-start'}`}>
+                  <div className={`flex gap-2 items-end ${msg.userId === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}>
+                    <UserAvatar
+                      photoUrl={msg.userPhotoUrl}
+                      name={msg.userName}
+                      size={28}
+                      className="flex-shrink-0"
+                    />
+                    <div className={`min-w-0 flex flex-col ${msg.userId === currentUser?.id ? 'items-end' : 'items-start'}`}>
+                      <p className="text-xs text-muted-foreground mb-1">
+                        {msg.userName}
+                      </p>
+                      <div className={`inline-block rounded-lg px-3 py-2 max-w-full break-words ${
+                        msg.userId === currentUser?.id
+                          ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                          : 'bg-muted'
+                      }`}>
+                        <p className="text-sm">{msg.message}</p>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {new Date(msg.timestamp).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
                   </div>
+                  <p className={`text-xs text-muted-foreground mt-1 ${msg.userId === currentUser?.id ? 'pr-9' : 'pl-9'}`}>
+                    {new Date(msg.timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
                 </div>
               )}
             </div>

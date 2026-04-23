@@ -7,7 +7,8 @@ for students, venue managers, and admins.
 import json
 import smtplib
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from io import BytesIO
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
@@ -2006,3 +2007,182 @@ class CSRFProtectionTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
+
+
+# ---------------------------------------------------------------------------
+# User profile self-edit endpoints (PATCH /api/auth/profile/ and
+# POST /api/auth/profile/photo/)
+# ---------------------------------------------------------------------------
+
+
+def _make_jpeg(size=(10, 10)):
+    """Return an in-memory BytesIO JPEG with a .name attribute."""
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", size, color="red").save(buf, format="JPEG")
+    buf.seek(0)
+    buf.name = "photo.jpg"
+    return buf
+
+
+class UserProfileTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            email="profile@nyu.edu",
+            password="StrongPass!1",
+            first_name="Ada",
+            last_name="Lovelace",
+            phone="212-555-0100",
+        )
+        self.client.force_login(self.user)
+
+    # -- PATCH /api/auth/profile/ -----------------------------------------
+
+    def test_update_profile_success(self):
+        resp = self.client.patch(
+            reverse("api_update_profile"),
+            data=json.dumps(
+                {
+                    "firstName": "Grace",
+                    "lastName": "Hopper",
+                    "phone": "212-555-0200",
+                    "bio": "I debug things.",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["user"]["firstName"], "Grace")
+        self.assertEqual(data["user"]["lastName"], "Hopper")
+        self.assertEqual(data["user"]["phone"], "212-555-0200")
+        self.assertEqual(data["user"]["bio"], "I debug things.")
+        self.assertEqual(data["user"]["name"], "Grace Hopper")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Grace")
+        self.assertEqual(self.user.bio, "I debug things.")
+
+    def test_update_profile_partial_update(self):
+        """Sending only bio should leave other fields untouched."""
+        resp = self.client.patch(
+            reverse("api_update_profile"),
+            data=json.dumps({"bio": "Just a bio."}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Ada")  # unchanged
+        self.assertEqual(self.user.bio, "Just a bio.")
+
+    def test_update_profile_unauthenticated(self):
+        self.client.logout()
+        resp = self.client.patch(
+            reverse("api_update_profile"),
+            data=json.dumps({"bio": "x"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_update_profile_wrong_method(self):
+        resp = self.client.get(reverse("api_update_profile"))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_update_profile_bio_too_long(self):
+        resp = self.client.patch(
+            reverse("api_update_profile"),
+            data=json.dumps({"bio": "x" * 501}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Bio too long", resp.json()["error"])
+
+    def test_update_profile_persists_across_login(self):
+        self.client.patch(
+            reverse("api_update_profile"),
+            data=json.dumps({"firstName": "Persisted", "bio": "Saved bio"}),
+            content_type="application/json",
+        )
+        self.client.logout()
+        self.client.login(email="profile@nyu.edu", password="StrongPass!1")
+        resp = self.client.get(reverse("api_me"))
+        self.assertEqual(resp.status_code, 200)
+        user_data = resp.json()["user"]
+        self.assertEqual(user_data["firstName"], "Persisted")
+        self.assertEqual(user_data["bio"], "Saved bio")
+
+    # -- POST /api/auth/profile/photo/ ------------------------------------
+
+    @override_settings(
+        AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1"
+    )
+    @patch("accounts.views.boto3_lib.client")
+    def test_upload_photo_success(self, mock_boto):
+        mock_s3 = MagicMock()
+        mock_boto.return_value = mock_s3
+        mock_s3.upload_fileobj.return_value = None
+
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"),
+            data={"photo": _make_jpeg()},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["success"])
+        self.assertIn("mealswipe-profile-pictures", data["photoUrl"])
+        self.assertIn("profile_photos/", data["photoUrl"])
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.photo_url, data["photoUrl"])
+        mock_s3.upload_fileobj.assert_called_once()
+
+    def test_upload_photo_unauthenticated(self):
+        self.client.logout()
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"),
+            data={"photo": _make_jpeg()},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_upload_photo_too_large(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        big = SimpleUploadedFile(
+            "big.jpg", b"x" * (5 * 1024 * 1024 + 1), content_type="image/jpeg"
+        )
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"), data={"photo": big}
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("too large", resp.json()["error"])
+
+    def test_upload_photo_invalid_content_type(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        pdf = SimpleUploadedFile(
+            "doc.pdf", b"%PDF-fake", content_type="application/pdf"
+        )
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"), data={"photo": pdf}
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Invalid file type", resp.json()["error"])
+
+    def test_upload_photo_spoofed_content_type(self):
+        """content_type says JPEG but body is not a valid image — Pillow rejects it."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        fake = SimpleUploadedFile(
+            "photo.jpg", b"this is not an image", content_type="image/jpeg"
+        )
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"), data={"photo": fake}
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Invalid or corrupt", resp.json()["error"])
+
+    def test_upload_photo_no_file(self):
+        resp = self.client.post(reverse("api_upload_profile_photo"), data={})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("No photo", resp.json()["error"])
