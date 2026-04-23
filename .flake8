@@ -18,3 +18,4 @@ exclude =
     backend/test_db.py,
     backend/test_duplicate.py,
     backend/update_usernames.py
+    node_modules

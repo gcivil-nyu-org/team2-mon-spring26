@@ -483,7 +483,7 @@ export function GroupDetailPage() {
                   className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
                 >
                   <UserAvatar
-                    photoUrl={member.userPhotoUrl}
+                    photoUrl={member.userId === currentUser?.id ? (currentUser?.photoUrl ?? member.userPhotoUrl) : member.userPhotoUrl}
                     name={member.userName}
                     size={40}
                   />

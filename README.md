@@ -1,9 +1,6 @@
 Main: [![Coverage Status](https://coveralls.io/repos/github/gcivil-nyu-org/team2-mon-spring26/badge.svg?branch=main)](https://coveralls.io/github/gcivil-nyu-org/team2-mon-spring26?branch=main)
 [![Build Status](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26.svg?token=JELzXxdXXHqneS9SacAF&branch=main)](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26)
 
-Develop: [![Coverage Status](https://coveralls.io/repos/github/gcivil-nyu-org/team2-mon-spring26/badge.svg?branch=develop)](https://coveralls.io/github/gcivil-nyu-org/team2-mon-spring26?branch=develop)
-[![Build Status](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26.svg?token=JELzXxdXXHqneS9SacAF&branch=develop)](https://app.travis-ci.com/gcivil-nyu-org/team2-mon-spring26)
-
 # Git & Repository Guidelines
 
 ## 1. Git Workflow Strategy

@@ -1,5 +1,8 @@
 import json
 import logging
+import uuid
+import boto3 as boto3_lib
+from PIL import Image
 from urllib.parse import urljoin
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, logout, authenticate
@@ -37,6 +40,9 @@ logger = logging.getLogger(__name__)
 VALID_SANITATION_GRADES = {choice[0] for choice in SANITATION_GRADE_CHOICES}
 VALID_PRICE_RANGES = {choice[0] for choice in PRICE_RANGE_CHOICES}
 User = get_user_model()
+
+ALLOWED_PHOTO_CONTENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+MAX_PHOTO_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 def _build_frontend_reset_link(
@@ -149,6 +155,10 @@ def _user_to_json(user):
         "id": user.id,
         "email": user.email,
         "name": f"{user.first_name} {user.last_name}".strip(),
+        "firstName": user.first_name,
+        "lastName": user.last_name,
+        "phone": user.phone,
+        "bio": user.bio,
         "role": user.role,
         "photoUrl": user.photo_url,
         "preferences": _get_preferences_dict(user),
@@ -436,6 +446,141 @@ def api_me(request):
             }
         )
     return JsonResponse({"authenticated": False}, status=401)
+
+
+@ensure_csrf_cookie
+def api_update_profile(request):
+    """
+    PATCH /api/auth/profile/
+    Authenticated user updates their own profile text fields (name, phone, bio).
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+    if request.method != "PATCH":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    user = request.user
+    fields_changed = []
+
+    if "firstName" in data:
+        val = (data["firstName"] or "").strip()
+        if len(val) > 150:
+            return JsonResponse({"error": "First name too long (max 150)"}, status=400)
+        user.first_name = val
+        fields_changed.append("first_name")
+
+    if "lastName" in data:
+        val = (data["lastName"] or "").strip()
+        if len(val) > 150:
+            return JsonResponse({"error": "Last name too long (max 150)"}, status=400)
+        user.last_name = val
+        fields_changed.append("last_name")
+
+    if "phone" in data:
+        val = (data["phone"] or "").strip()
+        if len(val) > 30:
+            return JsonResponse({"error": "Phone too long (max 30)"}, status=400)
+        user.phone = val
+        fields_changed.append("phone")
+
+    if "bio" in data:
+        val = (data["bio"] or "").strip()
+        if len(val) > 500:
+            return JsonResponse({"error": "Bio too long (max 500)"}, status=400)
+        user.bio = val
+        fields_changed.append("bio")
+
+    if fields_changed:
+        fields_changed.append("updated_at")
+        user.save(update_fields=fields_changed)
+
+    return JsonResponse({"success": True, "user": _user_to_json(user)})
+
+
+@ensure_csrf_cookie
+def api_upload_profile_photo(request):
+    """
+    POST /api/auth/profile/photo/
+    Authenticated user uploads a profile photo. Stored in S3; public URL saved to photo_url.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    photo = request.FILES.get("photo")
+    if not photo:
+        return JsonResponse({"error": "No photo provided"}, status=400)
+    if photo.size > MAX_PHOTO_BYTES:
+        return JsonResponse({"error": "File too large (max 5 MB)"}, status=400)
+    if photo.content_type not in ALLOWED_PHOTO_CONTENT_TYPES:
+        return JsonResponse(
+            {"error": "Invalid file type. Allowed: JPEG, PNG, GIF, WebP"}, status=400
+        )
+
+    # Pillow verify — confirms actual image data, rejects spoofed content-types
+    try:
+        img = Image.open(photo)
+        img.verify()
+        photo.seek(0)  # verify() consumes the pointer — reset before upload
+    except Exception:
+        return JsonResponse({"error": "Invalid or corrupt image file"}, status=400)
+
+    ext_map = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/gif": "gif",
+        "image/webp": "webp",
+    }
+    ext = ext_map[photo.content_type]
+
+    key = f"profile_photos/user_{request.user.id}_{uuid.uuid4().hex}.{ext}"
+    bucket = settings.AWS_S3_BUCKET_NAME
+
+    try:
+        s3 = boto3_lib.client(
+            "s3",
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_S3_REGION_NAME,
+        )
+        # Delete the old photo from S3 before uploading the new one
+        old_url = request.user.photo_url or ""
+        if old_url and bucket in old_url and "profile_photos/" in old_url:
+            try:
+                old_key = old_url.split(f"{bucket}.s3.", 1)[-1]
+                old_key = old_key.split(".amazonaws.com/", 1)[-1]
+                s3.delete_object(Bucket=bucket, Key=old_key)
+            except Exception as del_err:
+                logger.warning(
+                    f"Could not delete old S3 photo for user {request.user.id}: {del_err}"
+                )
+
+        s3.upload_fileobj(
+            photo,
+            bucket,
+            key,
+            ExtraArgs={"ContentType": photo.content_type},
+        )
+    except Exception as e:
+        logger.error(f"S3 upload failed for user {request.user.id}: {e}", exc_info=True)
+        return JsonResponse(
+            {"error": "Photo upload failed. Please try again."}, status=500
+        )
+
+    photo_url = (
+        f"https://{settings.AWS_S3_BUCKET_NAME}"
+        f".s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{key}"
+    )
+    request.user.photo_url = photo_url
+    request.user.save(update_fields=["photo_url", "updated_at"])
+
+    return JsonResponse({"success": True, "photoUrl": photo_url})
 
 
 def api_preferences_update(request):
