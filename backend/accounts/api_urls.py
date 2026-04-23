@@ -20,7 +20,11 @@ urlpatterns = [
     path("logout/", views.api_logout, name="api_logout"),
     path("me/", views.api_me, name="api_me"),
     path("profile/", views.api_update_profile, name="api_update_profile"),
-    path("profile/photo/", views.api_upload_profile_photo, name="api_upload_profile_photo"),
+    path(
+        "profile/photo/",
+        views.api_upload_profile_photo,
+        name="api_upload_profile_photo",
+    ),
     path("preferences/", views.api_preferences_update, name="api_preferences_update"),
     path(
         "request-password-reset/",

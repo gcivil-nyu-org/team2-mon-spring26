@@ -557,7 +557,9 @@ def api_upload_profile_photo(request):
                 old_key = old_key.split(".amazonaws.com/", 1)[-1]
                 s3.delete_object(Bucket=bucket, Key=old_key)
             except Exception as del_err:
-                logger.warning(f"Could not delete old S3 photo for user {request.user.id}: {del_err}")
+                logger.warning(
+                    f"Could not delete old S3 photo for user {request.user.id}: {del_err}"
+                )
 
         s3.upload_fileobj(
             photo,
@@ -567,7 +569,9 @@ def api_upload_profile_photo(request):
         )
     except Exception as e:
         logger.error(f"S3 upload failed for user {request.user.id}: {e}", exc_info=True)
-        return JsonResponse({"error": "Photo upload failed. Please try again."}, status=500)
+        return JsonResponse(
+            {"error": "Photo upload failed. Please try again."}, status=500
+        )
 
     photo_url = (
         f"https://{settings.AWS_S3_BUCKET_NAME}"

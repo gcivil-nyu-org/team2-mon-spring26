@@ -2148,15 +2148,21 @@ class UserProfileTests(TestCase):
         big = SimpleUploadedFile(
             "big.jpg", b"x" * (5 * 1024 * 1024 + 1), content_type="image/jpeg"
         )
-        resp = self.client.post(reverse("api_upload_profile_photo"), data={"photo": big})
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"), data={"photo": big}
+        )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("too large", resp.json()["error"])
 
     def test_upload_photo_invalid_content_type(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
-        pdf = SimpleUploadedFile("doc.pdf", b"%PDF-fake", content_type="application/pdf")
-        resp = self.client.post(reverse("api_upload_profile_photo"), data={"photo": pdf})
+        pdf = SimpleUploadedFile(
+            "doc.pdf", b"%PDF-fake", content_type="application/pdf"
+        )
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"), data={"photo": pdf}
+        )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Invalid file type", resp.json()["error"])
 
@@ -2167,7 +2173,9 @@ class UserProfileTests(TestCase):
         fake = SimpleUploadedFile(
             "photo.jpg", b"this is not an image", content_type="image/jpeg"
         )
-        resp = self.client.post(reverse("api_upload_profile_photo"), data={"photo": fake})
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"), data={"photo": fake}
+        )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Invalid or corrupt", resp.json()["error"])
 

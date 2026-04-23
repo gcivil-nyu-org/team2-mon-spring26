@@ -252,6 +252,7 @@ def delete_user_s3_photo(sender, instance, **kwargs):
         key = photo_url.split(f"{bucket}.s3.", 1)[-1]
         key = key.split(".amazonaws.com/", 1)[-1]
         import boto3 as boto3_lib
+
         s3 = boto3_lib.client(
             "s3",
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
