@@ -28,7 +28,7 @@ interface Conversation {
 }
 
 export function FloatingChat() {
-  const { groups, dmConversations, chatMessages, addChatMessage, deleteChatMessage, currentUser, createDMConversation, fetchAvailableUsers } = useApp();
+  const { groups, dmConversations, chatMessages, addChatMessage, deleteChatMessage, currentUser, createDMConversation } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string>('');
@@ -37,12 +37,6 @@ export function FloatingChat() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch available users lazily when the user tries to open the DM dialog
-  useEffect(() => {
-    if (showNewDMDialog) {
-      fetchAvailableUsers();
-    }
-  }, [showNewDMDialog, fetchAvailableUsers]);
 
   // Build and sort conversation list
   const conversations = useMemo((): Conversation[] => {

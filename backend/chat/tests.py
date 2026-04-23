@@ -626,3 +626,11 @@ class MessagePhotoUrlTests(TestCase):
         self.assertGreaterEqual(len(chat_entry["messages"]), 1)
         msg0 = chat_entry["messages"][-1]
         self.assertEqual(msg0["userPhotoUrl"], "https://cdn.test/sender.jpg")
+
+    def test_model_str(self):
+        chat = Chat.objects.create(type=Chat.ChatType.DIRECT, created_by=self.sender)
+        member = ChatMember.objects.create(chat=chat, user=self.sender)
+        msg = Message.objects.create(chat=chat, sender=self.sender, body="test")
+        str(chat)
+        str(member)
+        str(msg)

@@ -338,16 +338,10 @@ function AppInner({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
 
-  // WebSockets for chat, short-poll for notifications (less frequent).
+  // WebSockets for chat and notifications.
   useEffect(() => {
     if (!currentUser) return;
     let isActive = true;
-
-    const invInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchInvitations();
-      }
-    }, 60000); // 1 minute for invites
 
     let ws: WebSocket | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout>;
@@ -368,6 +362,8 @@ function AppInner({ children }: { children: ReactNode }) {
           const data = JSON.parse(event.data);
           if (data.type === 'chat_update') {
              fetchUserChats();
+          } else if (data.type === 'notification_update') {
+             fetchInvitations();
           }
         } catch (e) {
           console.error("Failed to parse websocket message", e);
@@ -388,7 +384,6 @@ function AppInner({ children }: { children: ReactNode }) {
 
     return () => {
       isActive = false;
-      clearInterval(invInterval);
       clearTimeout(reconnectTimeout);
       if (ws) {
         ws.close();

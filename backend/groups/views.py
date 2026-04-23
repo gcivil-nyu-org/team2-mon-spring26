@@ -344,6 +344,14 @@ def api_invite_to_group(request, group_id):
         if not created:
             return JsonResponse({"error": "User has already been invited"}, status=400)
 
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"user_notifications_{target_user.id}", {"type": "notification_update"}
+        )
+
         return JsonResponse(
             {"success": True, "message": "Invitation sent successfully"}
         )
@@ -874,6 +882,16 @@ def api_swipe_events(request, group_id):
                     )
                 )
             SwipeSessionNotification.objects.bulk_create(notifications)
+
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+
+            channel_layer = get_channel_layer()
+
+            for sn in notifications:
+                async_to_sync(channel_layer.group_send)(
+                    f"user_notifications_{sn.user.id}", {"type": "notification_update"}
+                )
 
             return JsonResponse(
                 {"success": True, "event": _event_to_json(event)}, status=201
@@ -1413,7 +1431,14 @@ def api_finish_swiping(request, group_id, event_id):
             event.status = SwipeEvent.Status.COMPLETED
             event.save(update_fields=["matched_venue", "status", "updated_at"])
 
-        return JsonResponse({"success": True, "event_status": event.status})
+        return JsonResponse(
+            {
+                "success": True,
+                "event_status": event.status,
+                "completed_count": completed_count,
+                "total_participants": total_participants,
+            }
+        )
 
     except Group.DoesNotExist:
         return JsonResponse({"error": "Group not found"}, status=404)

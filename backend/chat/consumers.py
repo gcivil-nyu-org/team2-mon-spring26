@@ -32,3 +32,9 @@ class UserNotificationConsumer(AsyncWebsocketConsumer):
         Handler for the 'chat_update' event received from the channel layer.
         """
         await self.send(text_data=json.dumps({"type": "chat_update"}))
+
+    async def notification_update(self, event):
+        """
+        Handler for the 'notification_update' event to reload invites/activity.
+        """
+        await self.send(text_data=json.dumps({"type": "notification_update"}))

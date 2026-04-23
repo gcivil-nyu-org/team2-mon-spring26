@@ -99,6 +99,21 @@ export interface ManagedVenue {
   activeDiscounts: StudentDiscount[];
 }
 
+export interface VenueClaim {
+  id: number;
+  status: 'pending' | 'approved' | 'rejected';
+  note?: string;
+  adminNote?: string;
+  createdAt: string;
+  reviewedAt: string | null;
+  venue: {
+    id: number;
+    name: string;
+    streetAddress: string;
+    borough: string;
+  };
+}
+
 export interface DiscountFormData {
   discountType: string;
   discountValue: string;
@@ -135,7 +150,7 @@ interface VenueContextType {
   deleteDiscount: (venueId: number, discountId: number) => Promise<void>;
 
   // Legacy fields to fix typescript errors in unmigrated pages
-  myClaims: unknown[];
+  myClaims: VenueClaim[];
   addRestaurant: (data: unknown) => void;
   updateRestaurant: (id: string | number, data: unknown) => void;
   restaurants: unknown[];
@@ -150,6 +165,7 @@ const VenueContext = createContext<VenueContextType | undefined>(undefined);
 export function VenueProvider({ children }: { children: ReactNode }) {
   const [currentManager, setCurrentManager] = useState<VenueManager | null>(null);
   const [myVenues, setMyVenues] = useState<ManagedVenue[]>([]);
+  const [myClaims, setMyClaims] = useState<VenueClaim[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
   const [venuesLoading, setVenuesLoading] = useState(false);
 
@@ -232,6 +248,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         setMyVenues(data.venues ?? []);
+        setMyClaims(data.claims ?? []);
       }
     } finally {
       setVenuesLoading(false);
@@ -338,7 +355,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       createDiscount,
       updateDiscount,
       deleteDiscount,
-      myClaims: [],
+      myClaims,
       restaurants: [],
       addRestaurant: () => {},
       updateRestaurant: () => {},

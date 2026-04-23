@@ -143,7 +143,7 @@ _redis_url = os.environ.get("REDIS_URL")
 if _redis_url:
     CHANNEL_LAYERS = {
         "default": {
-            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "BACKEND": "channels_valkey.core.ValkeyChannelLayer",
             "CONFIG": {
                 "hosts": [_redis_url],
             },
