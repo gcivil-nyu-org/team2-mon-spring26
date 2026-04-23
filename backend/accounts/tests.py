@@ -2233,7 +2233,9 @@ class UserProfileTests(TestCase):
         call_names = [c[0] for c in mock_s3.method_calls]
         self.assertIn("delete_object", call_names)
         self.assertIn("upload_fileobj", call_names)
-        self.assertLess(call_names.index("delete_object"), call_names.index("upload_fileobj"))
+        self.assertLess(
+            call_names.index("delete_object"), call_names.index("upload_fileobj")
+        )
         mock_s3.delete_object.assert_called_once_with(
             Bucket="mealswipe-profile-pictures",
             Key="profile_photos/user_1_old.jpg",
