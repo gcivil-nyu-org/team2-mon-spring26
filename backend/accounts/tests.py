@@ -2186,3 +2186,105 @@ class UserProfileTests(TestCase):
         resp = self.client.post(reverse("api_upload_profile_photo"), data={})
         self.assertEqual(resp.status_code, 400)
         self.assertIn("No photo", resp.json()["error"])
+
+    def test_upload_photo_wrong_method(self):
+        resp = self.client.get(reverse("api_upload_profile_photo"))
+        self.assertEqual(resp.status_code, 405)
+
+    @override_settings(AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1")
+    @patch("accounts.views.boto3_lib.client")
+    def test_upload_photo_s3_failure(self, mock_boto):
+        """S3 upload_fileobj raises — view should return 500."""
+        mock_s3 = MagicMock()
+        mock_boto.return_value = mock_s3
+        mock_s3.upload_fileobj.side_effect = Exception("S3 down")
+
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"),
+            data={"photo": _make_jpeg()},
+        )
+        self.assertEqual(resp.status_code, 500)
+        self.assertIn("Photo upload failed", resp.json()["error"])
+
+    @override_settings(AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1")
+    @patch("accounts.views.boto3_lib.client")
+    def test_upload_photo_deletes_old_photo(self, mock_boto):
+        """If user already has an S3 photo, the old key is deleted before upload."""
+        mock_s3 = MagicMock()
+        mock_boto.return_value = mock_s3
+        mock_s3.upload_fileobj.return_value = None
+
+        old_url = "https://mealswipe-profile-pictures.s3.us-east-1.amazonaws.com/profile_photos/user_1_old.jpg"
+        self.user.photo_url = old_url
+        self.user.save(update_fields=["photo_url"])
+
+        resp = self.client.post(
+            reverse("api_upload_profile_photo"),
+            data={"photo": _make_jpeg()},
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_s3.delete_object.assert_called_once_with(
+            Bucket="mealswipe-profile-pictures",
+            Key="profile_photos/user_1_old.jpg",
+        )
+        mock_s3.upload_fileobj.assert_called_once()
+
+
+class UserDeleteS3SignalTests(TestCase):
+    """Tests for the post_delete signal that cleans up S3 photos."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="signal@nyu.edu",
+            password="StrongPass!1",
+        )
+
+    @override_settings(AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1")
+    @patch("boto3.client")
+    def test_signal_deletes_s3_photo_on_user_delete(self, mock_boto):
+        mock_s3 = MagicMock()
+        mock_boto.return_value = mock_s3
+
+        self.user.photo_url = (
+            "https://mealswipe-profile-pictures.s3.us-east-1.amazonaws.com/profile_photos/user_sig_abc.jpg"
+        )
+        self.user.save(update_fields=["photo_url"])
+        self.user.delete()
+
+        mock_s3.delete_object.assert_called_once_with(
+            Bucket="mealswipe-profile-pictures",
+            Key="profile_photos/user_sig_abc.jpg",
+        )
+
+    @override_settings(AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1")
+    @patch("boto3.client")
+    def test_signal_skips_delete_if_no_photo(self, mock_boto):
+        """User with no photo_url — signal returns early without touching S3."""
+        self.user.photo_url = ""
+        self.user.save(update_fields=["photo_url"])
+        self.user.delete()
+        mock_boto.assert_not_called()
+
+    @override_settings(AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1")
+    @patch("boto3.client")
+    def test_signal_skips_delete_if_external_url(self, mock_boto):
+        """photo_url pointing to external CDN — not our bucket, signal skips."""
+        self.user.photo_url = "https://external-cdn.example.com/avatars/abc.jpg"
+        self.user.save(update_fields=["photo_url"])
+        self.user.delete()
+        mock_boto.assert_not_called()
+
+    @override_settings(AWS_S3_BUCKET_NAME="mealswipe-profile-pictures", AWS_S3_REGION_NAME="us-east-1")
+    @patch("boto3.client")
+    def test_signal_logs_error_on_s3_failure(self, mock_boto):
+        """S3 delete_object raises — signal catches and logs, does not propagate."""
+        mock_s3 = MagicMock()
+        mock_boto.return_value = mock_s3
+        mock_s3.delete_object.side_effect = Exception("S3 down")
+
+        self.user.photo_url = (
+            "https://mealswipe-profile-pictures.s3.us-east-1.amazonaws.com/profile_photos/user_sig_err.jpg"
+        )
+        self.user.save(update_fields=["photo_url"])
+        # Should not raise
+        self.user.delete()
