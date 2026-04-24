@@ -163,6 +163,11 @@ export function PreferencePreviewSheet({
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const detailedVenuesRef = useRef<Map<string, Restaurant>>(new Map());
+  // Incremented each time a fresh list is fetched, so the thumbnail prefetch
+  // effect re-runs for the new set of venues without depending on `venues` directly
+  // (which would re-trigger as thumbnails fill in).
+  const listVersionRef = useRef(0);
+  const [listVersion, setListVersion] = useState(0);
 
   const key = filtersKey(filters);
 
@@ -192,6 +197,9 @@ export function PreferencePreviewSheet({
         // aren't in the new result set.
         detailedVenuesRef.current = new Map();
         setSelected(result.venues[0] ?? null);
+        // Signal the thumbnail prefetch effect to run for this new list.
+        listVersionRef.current += 1;
+        setListVersion(listVersionRef.current);
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') return;
         setError((err as Error).message ?? 'Failed to load preview');
@@ -207,7 +215,46 @@ export function PreferencePreviewSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, key, mode, groupId]);
 
-  // Lazy-load full detail (with fetched photo) for the selected venue.
+  // Prefetch full details for all venues in the list so thumbnails appear without
+  // waiting for the user to click. Requests are fired in parallel; each resolved
+  // venue updates the list in-place so its thumbnail shows progressively.
+  useEffect(() => {
+    if (listVersion === 0 || venues.length === 0) return;
+    let cancelled = false;
+
+    venues.forEach((venue) => {
+      if (venue.images && venue.images.length > 0) return; // already has photo
+      if (detailedVenuesRef.current.has(venue.id)) {
+        // Already fetched — patch it into the list immediately.
+        const cached = detailedVenuesRef.current.get(venue.id)!;
+        setVenues((prev) => prev.map((v) => (v.id === cached.id ? cached : v)));
+        setSelected((prev) =>
+          prev?.id === cached.id && (!prev.images || prev.images.length === 0) ? cached : prev
+        );
+        return;
+      }
+      fetchVenuePreviewDetail(venue.id)
+        .then((detailed) => {
+          if (cancelled) return;
+          detailedVenuesRef.current.set(detailed.id, detailed);
+          setVenues((prev) => prev.map((v) => (v.id === detailed.id ? detailed : v)));
+          setSelected((prev) =>
+            prev?.id === detailed.id && (!prev.images || prev.images.length === 0)
+              ? detailed
+              : prev
+          );
+        })
+        .catch(() => {
+          // Non-fatal — thumbnail stays empty for this venue.
+        });
+    });
+
+    return () => { cancelled = true; };
+    // listVersion changes only when a new list is fetched, not when thumbnails fill in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listVersion]);
+
+  // Lazy-load full detail for the selected venue if it wasn't already prefetched.
   useEffect(() => {
     if (!selected) return;
     if (selected.images && selected.images.length > 0) return;
@@ -223,6 +270,7 @@ export function PreferencePreviewSheet({
         if (controller.signal.aborted) return;
         detailedVenuesRef.current.set(venue.id, venue);
         setSelected(venue);
+        setVenues((prev) => prev.map((v) => (v.id === venue.id ? venue : v)));
       })
       .catch(() => {
         // Non-fatal — fall back to whatever data we already have.
@@ -294,7 +342,9 @@ export function PreferencePreviewSheet({
                                 alt={venue.name}
                                 className="h-full w-full object-cover"
                               />
-                            ) : null}
+                            ) : (
+                              <Skeleton className="h-full w-full" />
+                            )}
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-medium text-sm text-zinc-900">

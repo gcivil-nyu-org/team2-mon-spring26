@@ -18,10 +18,13 @@ export function ChatSidebar({ groupId, onClose }: ChatSidebarProps) {
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('chat-sidebar-open'));
+    const handleFloatingChatOpen = () => onClose();
+    window.addEventListener('floating-chat-open', handleFloatingChatOpen);
     return () => {
       window.dispatchEvent(new CustomEvent('chat-sidebar-close'));
+      window.removeEventListener('floating-chat-open', handleFloatingChatOpen);
     };
-  }, []);
+  }, [onClose]);
 
   useEffect(() => {
     if (scrollRef.current) {

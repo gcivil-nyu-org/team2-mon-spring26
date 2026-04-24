@@ -1,9 +1,11 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 import requests
 from django.conf import settings
 from django.db import close_old_connections
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +14,19 @@ logger = logging.getLogger(__name__)
 _PLACES_DETAIL_URL = "https://places.googleapis.com/v1/places/{place_id}?fields=photos"
 _PLACES_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/media?maxWidthPx=800"
 
+# Google CDN URLs (lh3.googleusercontent.com) have an undocumented TTL that can
+# be as short as a few hours. Re-fetch after this threshold to stay fresh.
+_PHOTO_TTL = timedelta(hours=6)
+
 
 def fetch_and_cache_primary_photo(venue):
     """
-    Returns the primary photo URL for a venue, fetching from Google Places API if not yet cached.
+    Returns the primary photo URL for a venue, fetching from Google Places API if not cached
+    or if the cached URL is older than _PHOTO_TTL.
 
-    On first call: hits the API, resolves the CDN redirect URL (API key sent via header,
-    never stored), saves to VenuePhoto, and returns the URL.
-    On subsequent calls: returns the cached URL from VenuePhoto with no API call.
+    On first call or when stale: hits the API, resolves the CDN redirect URL (API key sent
+    via header, never stored), updates VenuePhoto.fetched_at, and returns the URL.
+    On subsequent calls within TTL: returns the cached URL from VenuePhoto with no API call.
     Returns None if the venue has no google_place_id, the key is missing, or the API call fails.
     """
     from venues.models import VenuePhoto  # local import to avoid circular dependency
@@ -28,14 +35,14 @@ def fetch_and_cache_primary_photo(venue):
     if not venue.google_place_id or not api_key:
         return None
 
-    # Check DB cache first
-    cached = (
-        VenuePhoto.objects.filter(venue=venue, source="google_places", is_primary=True)
-        .values_list("image_url", flat=True)
-        .first()
-    )
+    # Check DB cache — return early only if the URL is still fresh
+    cached = VenuePhoto.objects.filter(
+        venue=venue, source="google_places", is_primary=True
+    ).first()
     if cached:
-        return cached
+        is_fresh = cached.fetched_at and (timezone.now() - cached.fetched_at) < _PHOTO_TTL
+        if is_fresh:
+            return cached.image_url
 
     headers = {"X-Goog-Api-Key": api_key}
 
@@ -77,13 +84,14 @@ def fetch_and_cache_primary_photo(venue):
         if not image_url:
             return None
 
-        # get_or_create is safe against duplicate inserts because VenuePhoto has a
-        # DB-level UniqueConstraint on (venue, source) for is_primary=True rows.
-        photo, _ = VenuePhoto.objects.get_or_create(
+        # update_or_create refreshes both the URL and fetched_at on every fetch,
+        # safe against duplicate inserts via the DB-level UniqueConstraint on
+        # (venue, source) for is_primary=True rows.
+        photo, _ = VenuePhoto.objects.update_or_create(
             venue=venue,
             source="google_places",
             is_primary=True,
-            defaults={"image_url": image_url},
+            defaults={"image_url": image_url, "fetched_at": timezone.now()},
         )
         return photo.image_url
 
@@ -102,12 +110,26 @@ def _fetch_with_connection_cleanup(venue):
 
 def bulk_prefetch_photos(venues, max_workers=5):
     """
-    Ensures all venues in the list have a cached primary Google Places photo.
-    Fetches missing photos in parallel so the serialization loop stays side-effect free.
-    Expects venues to have already had their 'photos' relation prefetched.
-    Each worker thread calls close_old_connections() on exit to prevent DB connection leaks.
+    Ensures all venues in the list have a fresh primary Google Places photo.
+    Fetches missing or stale photos in parallel so the serialization loop stays
+    side-effect free. Expects venues to have already had their 'photos' relation
+    prefetched. Each worker thread calls close_old_connections() on exit to
+    prevent DB connection leaks.
     """
-    needs_fetch = [v for v in venues if v.google_place_id and not list(v.photos.all())]
+    staleness_cutoff = timezone.now() - _PHOTO_TTL
+
+    def _needs_fetch(venue):
+        if not venue.google_place_id:
+            return False
+        primary = next(
+            (p for p in venue.photos.all() if p.is_primary and p.source == "google_places"),
+            None,
+        )
+        if primary is None:
+            return True
+        return primary.fetched_at is None or primary.fetched_at < staleness_cutoff
+
+    needs_fetch = [v for v in venues if _needs_fetch(v)]
     if not needs_fetch:
         return
     with ThreadPoolExecutor(max_workers=min(len(needs_fetch), max_workers)) as executor:

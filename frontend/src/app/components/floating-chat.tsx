@@ -28,7 +28,7 @@ interface Conversation {
 }
 
 export function FloatingChat() {
-  const { groups, dmConversations, chatMessages, addChatMessage, deleteChatMessage, currentUser, createDMConversation, getAllUsers } = useApp();
+  const { groups, dmConversations, chatMessages, addChatMessage, deleteChatMessage, currentUser, createDMConversation } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string>('');
@@ -135,6 +135,7 @@ export function FloatingChat() {
   useEffect(() => {
     const handleOpenDM = (e: CustomEvent<string>) => {
       setIsOpen(true);
+      window.dispatchEvent(new CustomEvent('floating-chat-open'));
       handleStartDM(e.detail);
     };
     window.addEventListener('open-chat-dm', handleOpenDM as EventListener);
@@ -144,7 +145,11 @@ export function FloatingChat() {
   }, [handleStartDM]);
 
   useEffect(() => {
-    const handleSidebarOpen = () => setIsSidebarOpen(true);
+    const handleSidebarOpen = () => {
+      setIsSidebarOpen(true);
+      setIsOpen(false);
+      setIsExpanded(false);
+    };
     const handleSidebarClose = () => setIsSidebarOpen(false);
     window.addEventListener('chat-sidebar-open', handleSidebarOpen);
     window.addEventListener('chat-sidebar-close', handleSidebarClose);
@@ -154,16 +159,22 @@ export function FloatingChat() {
     };
   }, []);
 
-  // Get all users from groups (potential DM contacts)
-  const potentialDMContacts = getAllUsers().filter(user => {
-    // Exclude current user
-    if (user.id === currentUser?.id) return false;
-    // Only show users who are in at least one group with the current user
-    return groups.some(group => 
-      group.members.some(m => m.userId === user.id) &&
-      group.members.some(m => m.userId === currentUser?.id)
-    );
-  });
+  // Derive DM contacts from group members — no separate API call needed.
+  const potentialDMContacts = useMemo(() => {
+    const seen = new Set<string>();
+    const contacts: { id: string; name: string; photoUrl?: string }[] = [];
+    for (const group of groups) {
+      const currentUserInGroup = group.members.some(m => m.userId === currentUser?.id);
+      if (!currentUserInGroup) continue;
+      for (const member of group.members) {
+        if (member.userId === currentUser?.id) continue;
+        if (seen.has(member.userId)) continue;
+        seen.add(member.userId);
+        contacts.push({ id: member.userId, name: member.userName, photoUrl: member.userPhotoUrl });
+      }
+    }
+    return contacts;
+  }, [groups, currentUser?.id]);
 
   // Don't render if no current user (not logged in) or no conversations
   if (!currentUser || (groups.length === 0 && dmConversations.length === 0)) {
@@ -175,7 +186,7 @@ export function FloatingChat() {
       {/* Floating Chat Button */}
       {!isOpen && !isSidebarOpen && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => { setIsOpen(true); window.dispatchEvent(new CustomEvent('floating-chat-open')); }}
           className="fixed bottom-6 right-6 w-14 h-14 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 z-50"
           aria-label="Open chat"
         >
@@ -223,13 +234,9 @@ export function FloatingChat() {
                             <UserAvatar
                               photoUrl={user.photoUrl}
                               name={user.name}
-                              email={user.email}
                               size={40}
                             />
-                            <div>
-                              <p className="font-medium">{user.name}</p>
-                              <p className="text-xs text-muted-foreground">{user.email}</p>
-                            </div>
+                            <p className="font-medium">{user.name}</p>
                           </button>
                         ))
                       )}
