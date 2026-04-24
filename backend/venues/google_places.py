@@ -40,7 +40,9 @@ def fetch_and_cache_primary_photo(venue):
         venue=venue, source="google_places", is_primary=True
     ).first()
     if cached:
-        is_fresh = cached.fetched_at and (timezone.now() - cached.fetched_at) < _PHOTO_TTL
+        is_fresh = (
+            cached.fetched_at and (timezone.now() - cached.fetched_at) < _PHOTO_TTL
+        )
         if is_fresh:
             return cached.image_url
 
@@ -122,7 +124,11 @@ def bulk_prefetch_photos(venues, max_workers=5):
         if not venue.google_place_id:
             return False
         primary = next(
-            (p for p in venue.photos.all() if p.is_primary and p.source == "google_places"),
+            (
+                p
+                for p in venue.photos.all()
+                if p.is_primary and p.source == "google_places"
+            ),
             None,
         )
         if primary is None:

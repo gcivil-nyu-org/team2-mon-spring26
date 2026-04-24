@@ -51,6 +51,7 @@ _secret_key = os.environ.get("SECRET_KEY", "")
 if not _secret_key:
     if not DEBUG:
         from django.core.exceptions import ImproperlyConfigured
+
         raise ImproperlyConfigured(
             "The SECRET_KEY environment variable must be set in production."
         )
