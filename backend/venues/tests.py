@@ -11,6 +11,7 @@ from django.core.management import call_command
 from django.db import IntegrityError
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import (
     CuisineType,
@@ -194,6 +195,7 @@ class GooglePlacesPhotoTest(TestCase):
             image_url=cdn_url,
             source="google_places",
             is_primary=True,
+            fetched_at=timezone.now(),
         )
 
         from venues.google_places import fetch_and_cache_primary_photo
