@@ -136,7 +136,10 @@ def bulk_prefetch_photos(venues, max_workers=5):
         )
         if google_primary is not None:
             # Only re-fetch if the existing Google Places URL is stale.
-            return google_primary.fetched_at is None or google_primary.fetched_at < staleness_cutoff
+            return (
+                google_primary.fetched_at is None
+                or google_primary.fetched_at < staleness_cutoff
+            )
         # Fetch only when the venue has no photos at all — if it already has
         # photos from another source (e.g. S3) those will render fine without
         # hitting the Google Places API.
