@@ -164,7 +164,7 @@ export interface AppContextType extends AuthContextType {
     filters: PreviewFilters,
     options?: { countOnly?: boolean; limit?: number; offset?: number; signal?: AbortSignal }
   ) => Promise<{ count: number; venues: Restaurant[] }>;
-  fetchVenuePreviewDetail: (venueId: string) => Promise<Restaurant>;
+  fetchVenuePreviewDetail: (venueId: string, signal?: AbortSignal) => Promise<Restaurant>;
   removeMember: (groupId: string, userId: string) => Promise<void>;
   makeLeader: (groupId: string, userId: string) => Promise<void>;
   inviteMember: (groupId: string, userEmail: string) => Promise<void>;
@@ -674,10 +674,10 @@ function AppInner({ children }: { children: ReactNode }) {
   );
 
   const fetchVenuePreviewDetail = useCallback(
-    async (venueId: string): Promise<Restaurant> => {
+    async (venueId: string, signal?: AbortSignal): Promise<Restaurant> => {
       const response = await fetch(
         apiUrl(`/api/venues/${venueId}/preview-detail/`),
-        { credentials: 'include' }
+        { credentials: 'include', signal }
       );
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));

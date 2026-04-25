@@ -217,6 +217,25 @@ class GooglePlacesPhotoTest(TestCase):
         self.assertFalse(VenuePhoto.objects.filter(venue=self.venue).exists())
 
     @patch("venues.google_places.requests.get")
+    def test_stale_cache_api_failure_falls_back_to_cached_url(self, mock_get):
+        """If refresh fails, the stale cached URL is returned rather than None."""
+        stale_url = "https://lh3.googleusercontent.com/places/stale"
+        VenuePhoto.objects.create(
+            venue=self.venue,
+            image_url=stale_url,
+            source="google_places",
+            is_primary=True,
+            fetched_at=timezone.now() - datetime.timedelta(hours=24),
+        )
+        mock_get.side_effect = Exception("network error")
+
+        from venues.google_places import fetch_and_cache_primary_photo
+
+        result = fetch_and_cache_primary_photo(self.venue)
+
+        self.assertEqual(result, stale_url)
+
+    @patch("venues.google_places.requests.get")
     def test_non_redirect_response_does_not_store_api_key_url(self, mock_get):
         # If Google returns 200 directly (no redirect), we must not store the URL
         # because it would contain the API key.

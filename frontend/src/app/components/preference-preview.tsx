@@ -216,26 +216,36 @@ export function PreferencePreviewSheet({
   }, [open, key, mode, groupId]);
 
   // Prefetch full details for all venues in the list so thumbnails appear without
-  // waiting for the user to click. Requests are fired in parallel; each resolved
-  // venue updates the list in-place so its thumbnail shows progressively.
+  // waiting for the user to click. Concurrency is capped at 5 to avoid spiking
+  // backend load. An AbortController cancels in-flight requests when the sheet
+  // closes or filters change.
   useEffect(() => {
     if (listVersion === 0 || venues.length === 0) return;
-    let cancelled = false;
+    const controller = new AbortController();
 
-    venues.forEach((venue) => {
-      if (venue.images && venue.images.length > 0) return; // already has photo
-      if (detailedVenuesRef.current.has(venue.id)) {
-        // Already fetched — patch it into the list immediately.
-        const cached = detailedVenuesRef.current.get(venue.id)!;
-        setVenues((prev) => prev.map((v) => (v.id === cached.id ? cached : v)));
+    const needsFetch = venues.filter((v) => {
+      if (v.images && v.images.length > 0) return false;
+      if (detailedVenuesRef.current.has(v.id)) {
+        // Already cached — patch immediately without a network call.
+        const cached = detailedVenuesRef.current.get(v.id)!;
+        setVenues((prev) => prev.map((p) => (p.id === cached.id ? cached : p)));
         setSelected((prev) =>
           prev?.id === cached.id && (!prev.images || prev.images.length === 0) ? cached : prev
         );
-        return;
+        return false;
       }
-      fetchVenuePreviewDetail(venue.id)
+      return true;
+    });
+
+    // Run up to CONCURRENCY fetches at once, starting the next when one finishes.
+    const CONCURRENCY = 5;
+    let idx = 0;
+    const runNext = () => {
+      if (controller.signal.aborted || idx >= needsFetch.length) return;
+      const venue = needsFetch[idx++];
+      fetchVenuePreviewDetail(venue.id, controller.signal)
         .then((detailed) => {
-          if (cancelled) return;
+          if (controller.signal.aborted) return;
           detailedVenuesRef.current.set(detailed.id, detailed);
           setVenues((prev) => prev.map((v) => (v.id === detailed.id ? detailed : v)));
           setSelected((prev) =>
@@ -246,10 +256,15 @@ export function PreferencePreviewSheet({
         })
         .catch(() => {
           // Non-fatal — thumbnail stays empty for this venue.
-        });
-    });
+        })
+        .finally(runNext);
+    };
 
-    return () => { cancelled = true; };
+    for (let i = 0; i < Math.min(CONCURRENCY, needsFetch.length); i++) {
+      runNext();
+    }
+
+    return () => controller.abort();
     // listVersion changes only when a new list is fetched, not when thumbnails fill in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listVersion]);
@@ -265,7 +280,7 @@ export function PreferencePreviewSheet({
     }
     const controller = new AbortController();
     setDetailLoading(true);
-    fetchVenuePreviewDetail(selected.id)
+    fetchVenuePreviewDetail(selected.id, controller.signal)
       .then((venue) => {
         if (controller.signal.aborted) return;
         detailedVenuesRef.current.set(venue.id, venue);

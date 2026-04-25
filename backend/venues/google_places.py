@@ -99,6 +99,10 @@ def fetch_and_cache_primary_photo(venue):
 
     except Exception:
         logger.exception("Failed to fetch Google Places photo for venue %s", venue.id)
+        # Return the stale cached URL rather than None so thumbnails don't
+        # disappear during transient API failures or quota errors.
+        if cached:
+            return cached.image_url
         return None
 
 
