@@ -1960,9 +1960,7 @@ class AdminModerationActionExtraTests(TestCase):
         self.reporter = User.objects.create_user(
             email="reporter2@nyu.edu", password="pass"
         )
-        self.author = User.objects.create_user(
-            email="author2@nyu.edu", password="pass"
-        )
+        self.author = User.objects.create_user(email="author2@nyu.edu", password="pass")
         self.venue = Venue.objects.create(name="Action Venue")
         self.review = Review.objects.create(
             venue=self.venue,

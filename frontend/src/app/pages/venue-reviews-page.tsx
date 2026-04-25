@@ -88,9 +88,6 @@ export function VenueReviewsPage() {
     }
   };
 
-  const stars = (rating: number) =>
-    Array.from({ length: 5 }, (_, index) => index < rating);
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
