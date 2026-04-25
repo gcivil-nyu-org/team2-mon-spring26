@@ -232,6 +232,7 @@ class Review(models.Model):
     rating = models.PositiveSmallIntegerField()  # 1 to 5
     title = models.CharField(max_length=255, blank=True)
     content = models.TextField(blank=True)
+    additional_photos = models.JSONField(default=list, blank=True)
     visit_date = models.DateField()
     is_flagged = models.BooleanField(default=False)
     is_visible = models.BooleanField(default=True)

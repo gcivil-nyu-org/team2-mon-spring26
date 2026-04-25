@@ -20,6 +20,12 @@ urlpatterns = [
         views.api_venue_discount_detail,
         name="venue_discount_detail",
     ),
+    path("<int:venue_id>/reviews/", views.api_venue_reviews, name="venue_reviews"),
+    path(
+        "<int:venue_id>/reviews/<int:review_id>/comments/",
+        views.api_venue_review_comment,
+        name="venue_review_comment",
+    ),
     path(
         "reviews/<int:review_id>/report/", views.api_report_review, name="report_review"
     ),

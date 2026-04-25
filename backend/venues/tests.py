@@ -1593,6 +1593,134 @@ class ModerationWorkflowTests(TestCase):
         self.assertEqual(first["reporter"]["email"], "reporter@nyu.edu")
 
 
+class VenueReviewApiTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.venue = Venue.objects.create(name="Review Venue")
+        self.student = User.objects.create_user(
+            email="student@nyu.edu", password="pass"
+        )
+        self.other_student = User.objects.create_user(
+            email="other@nyu.edu", password="pass"
+        )
+        self.manager_user = User.objects.create_user(
+            email="manager@nyu.edu", password="pass", role="venue_manager"
+        )
+        self.manager_profile = VenueManagerProfile.objects.create(
+            user=self.manager_user,
+            business_name="Review Venue LLC",
+            business_email="manager@nyu.edu",
+        )
+        self.venue.managed_by = self.manager_profile
+        self.venue.save(update_fields=["managed_by", "updated_at"])
+
+        self.visible_review = Review.objects.create(
+            venue=self.venue,
+            user=self.student,
+            rating=5,
+            title="Great",
+            content="Really solid food.",
+            visit_date=datetime.date(2025, 1, 12),
+            additional_photos=["https://example.com/review-photo.jpg"],
+        )
+        self.hidden_review = Review.objects.create(
+            venue=self.venue,
+            user=self.other_student,
+            rating=2,
+            title="Hidden",
+            content="This should not show publicly.",
+            visit_date=datetime.date(2025, 1, 13),
+            is_visible=False,
+            is_flagged=True,
+        )
+        self.owner_comment = ReviewComment.objects.create(
+            review=self.visible_review,
+            user=self.manager_user,
+            content="Thanks for coming in!",
+            is_manager_response=True,
+        )
+
+    def test_public_review_list_excludes_hidden_reviews(self):
+        res = self.client.get(reverse("venue_reviews", args=[self.venue.id]))
+        self.assertEqual(res.status_code, 200)
+        payload = res.json()
+        self.assertTrue(payload["success"])
+        self.assertFalse(payload["canReply"])
+        self.assertEqual(payload["venue"]["name"], "Review Venue")
+        self.assertEqual(len(payload["reviews"]), 1)
+        review = payload["reviews"][0]
+        self.assertEqual(review["title"], "Great")
+        self.assertEqual(
+            review["additionalPhotos"], ["https://example.com/review-photo.jpg"]
+        )
+        self.assertEqual(len(review["comments"]), 1)
+        self.assertTrue(review["comments"][0]["isManagerResponse"])
+
+    def test_manager_can_view_hidden_reviews_for_owned_venue(self):
+        self.client.force_login(self.manager_user)
+        res = self.client.get(reverse("venue_reviews", args=[self.venue.id]))
+        self.assertEqual(res.status_code, 200)
+        payload = res.json()
+        self.assertTrue(payload["canReply"])
+        self.assertEqual(len(payload["reviews"]), 2)
+        hidden = next(
+            review for review in payload["reviews"] if review["title"] == "Hidden"
+        )
+        self.assertFalse(hidden["isVisible"])
+
+    def test_student_can_create_review_with_photos(self):
+        self.client.force_login(self.student)
+        res = self.client.post(
+            reverse("venue_reviews", args=[self.venue.id]),
+            data=json.dumps(
+                {
+                    "rating": 4,
+                    "title": "Good meal",
+                    "content": "Would come back.",
+                    "visitDate": "2025-02-14",
+                    "additionalPhotos": [
+                        "https://example.com/a.jpg",
+                        "https://example.com/b.jpg",
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        review = Review.objects.get(title="Good meal")
+        self.assertEqual(review.user, self.student)
+        self.assertEqual(
+            review.additional_photos,
+            ["https://example.com/a.jpg", "https://example.com/b.jpg"],
+        )
+        self.assertTrue(review.is_visible)
+
+    def test_manager_can_reply_to_review_as_owner_response(self):
+        self.client.force_login(self.manager_user)
+        res = self.client.post(
+            reverse(
+                "venue_review_comment", args=[self.venue.id, self.visible_review.id]
+            ),
+            data=json.dumps({"content": "We appreciate the feedback."}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        comment = ReviewComment.objects.get(content="We appreciate the feedback.")
+        self.assertTrue(comment.is_manager_response)
+        self.assertEqual(comment.user, self.manager_user)
+
+    def test_non_manager_cannot_reply_to_review(self):
+        self.client.force_login(self.student)
+        res = self.client.post(
+            reverse(
+                "venue_review_comment", args=[self.venue.id, self.visible_review.id]
+            ),
+            data=json.dumps({"content": "Not allowed"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+
 class StrictPreferenceFilterTest(TestCase):
     """Covers the STRICT_PREFERENCE_FILTERS toggle in filter_venues_by_preferences.
 

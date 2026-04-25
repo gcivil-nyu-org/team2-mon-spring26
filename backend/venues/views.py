@@ -1,10 +1,11 @@
 import json
 import logging
 import math
+from datetime import date
 
 from django.http import JsonResponse
 from django.db import transaction
-from django.db.models import F, prefetch_related_objects
+from django.db.models import F, Prefetch, prefetch_related_objects
 from django.utils import timezone
 from django.core.mail import send_mail
 from django.conf import settings
@@ -132,6 +133,64 @@ def _discount_to_json(discount):
         ),
         "createdAt": discount.created_at.isoformat(),
         "updatedAt": discount.updated_at.isoformat(),
+    }
+
+
+def _venue_review_summary(venue):
+    return {
+        "id": venue.id,
+        "name": venue.name,
+        "streetAddress": venue.street_address,
+        "borough": venue.borough,
+        "priceRange": venue.price_range,
+        "cuisineType": venue.cuisine_type.name if venue.cuisine_type else "",
+    }
+
+
+def _review_comment_to_json(comment):
+    author = comment.user
+    return {
+        "id": comment.id,
+        "content": comment.content,
+        "isManagerResponse": comment.is_manager_response,
+        "isFlagged": comment.is_flagged,
+        "isVisible": comment.is_visible,
+        "createdAt": comment.created_at.isoformat(),
+        "updatedAt": comment.updated_at.isoformat(),
+        "author": {
+            "id": author.id,
+            "email": author.email,
+            "name": _safe_display_name(author),
+            "role": author.role,
+        },
+    }
+
+
+def _review_to_json(review, include_hidden=False):
+    comments = review.comments.all()
+    if not include_hidden:
+        comments = comments.filter(is_visible=True)
+    comments = comments.order_by("created_at")
+
+    return {
+        "id": review.id,
+        "venueId": review.venue_id,
+        "rating": review.rating,
+        "title": review.title,
+        "content": review.content,
+        "visitDate": review.visit_date.isoformat(),
+        "additionalPhotos": list(review.additional_photos or []),
+        "isFlagged": review.is_flagged,
+        "isVisible": review.is_visible,
+        "createdAt": review.created_at.isoformat(),
+        "updatedAt": review.updated_at.isoformat(),
+        "author": {
+            "id": review.user.id,
+            "email": review.user.email,
+            "name": _safe_display_name(review.user),
+            "role": review.user.role,
+        },
+        "comments": [_review_comment_to_json(comment) for comment in comments],
     }
 
 
@@ -446,6 +505,170 @@ def api_venue_discount_detail(request, venue_id, discount_id):
         return JsonResponse({"success": True})
 
     return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+def api_venue_reviews(request, venue_id):
+    """
+    GET  /api/venues/<id>/reviews/  — list visible reviews, or all reviews for the
+                                       venue manager who owns the venue
+    POST /api/venues/<id>/reviews/  — create a new review
+    """
+    try:
+        venue = (
+            Venue.objects.select_related(
+                "cuisine_type", "managed_by", "managed_by__user"
+            )
+            .prefetch_related(
+                Prefetch(
+                    "reviews",
+                    queryset=Review.objects.select_related("user").prefetch_related(
+                        Prefetch(
+                            "comments",
+                            queryset=ReviewComment.objects.select_related(
+                                "user"
+                            ).order_by("created_at"),
+                        )
+                    ),
+                )
+            )
+            .get(pk=venue_id, is_active=True)
+        )
+    except Venue.DoesNotExist:
+        return JsonResponse({"error": "Venue not found"}, status=404)
+
+    is_owner_manager = (
+        request.user.is_authenticated
+        and request.user.role == "venue_manager"
+        and venue.managed_by is not None
+        and venue.managed_by.user_id == request.user.id
+    )
+
+    if request.method == "GET":
+        reviews = venue.reviews.all().order_by("-created_at")
+        if not is_owner_manager:
+            reviews = reviews.filter(is_visible=True)
+        return JsonResponse(
+            {
+                "success": True,
+                "venue": _venue_review_summary(venue),
+                "canReply": is_owner_manager,
+                "reviews": [
+                    _review_to_json(review, include_hidden=is_owner_manager)
+                    for review in reviews
+                ],
+            }
+        )
+
+    if request.method == "POST":
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "Authentication required"}, status=401)
+        if request.user.role != "student":
+            return JsonResponse({"error": "Student access required"}, status=403)
+
+        try:
+            data = json.loads(request.body or "{}")
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        try:
+            rating = int(data.get("rating"))
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "Rating is required"}, status=400)
+        if rating < 1 or rating > 5:
+            return JsonResponse({"error": "Rating must be between 1 and 5"}, status=400)
+
+        visit_date_raw = (data.get("visitDate") or "").strip()
+        try:
+            visit_date = date.fromisoformat(visit_date_raw)
+        except ValueError:
+            return JsonResponse({"error": "Valid visitDate is required"}, status=400)
+
+        additional_photos = data.get("additionalPhotos") or []
+        if not isinstance(additional_photos, list):
+            return JsonResponse(
+                {"error": "additionalPhotos must be a list"}, status=400
+            )
+        clean_photos = [
+            photo.strip()
+            for photo in additional_photos
+            if isinstance(photo, str) and photo.strip()
+        ]
+        if len(clean_photos) > 5:
+            return JsonResponse(
+                {"error": "At most 5 additional photos are allowed"}, status=400
+            )
+
+        review = Review.objects.create(
+            venue=venue,
+            user=request.user,
+            rating=rating,
+            title=(data.get("title") or "").strip(),
+            content=(data.get("content") or "").strip(),
+            visit_date=visit_date,
+            additional_photos=clean_photos,
+        )
+        return JsonResponse(
+            {
+                "success": True,
+                "review": _review_to_json(review, include_hidden=True),
+            },
+            status=201,
+        )
+
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+def api_venue_review_comment(request, venue_id, review_id):
+    """
+    POST /api/venues/<venue_id>/reviews/<review_id>/comments/
+    Venue managers can add owner responses to reviews they own.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    manager, err = _require_venue_manager(request)
+    if err:
+        return err
+
+    try:
+        venue = Venue.objects.select_related("managed_by", "managed_by__user").get(
+            pk=venue_id, is_active=True
+        )
+    except Venue.DoesNotExist:
+        return JsonResponse({"error": "Venue not found"}, status=404)
+
+    if venue.managed_by_id != manager.id:
+        return JsonResponse({"error": "You do not manage this venue"}, status=403)
+
+    try:
+        review = Review.objects.select_related("venue", "user").get(
+            pk=review_id, venue=venue
+        )
+    except Review.DoesNotExist:
+        return JsonResponse({"error": "Review not found"}, status=404)
+
+    try:
+        data = json.loads(request.body or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    content = (data.get("content") or "").strip()
+    if not content:
+        return JsonResponse({"error": "Comment content is required"}, status=400)
+
+    comment = ReviewComment.objects.create(
+        review=review,
+        user=request.user,
+        content=content,
+        is_manager_response=True,
+    )
+    return JsonResponse(
+        {
+            "success": True,
+            "comment": _review_comment_to_json(comment),
+        },
+        status=201,
+    )
 
 
 # ---------------------------------------------------------------------------

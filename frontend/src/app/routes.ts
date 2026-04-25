@@ -9,9 +9,11 @@ import { GroupDetailPage } from '@/app/pages/group-detail-page';
 import { PlanEventPage } from '@/app/pages/plan-event-page';
 import { SwipePage } from '@/app/pages/swipe-page';
 import { MatchPage } from '@/app/pages/match-page';
+import { ReviewVenuePage } from '@/app/pages/review-venue-page';
 import { VenueDashboardPage } from '@/app/pages/venue-dashboard-page';
 import { ClaimVenuePage } from '@/app/pages/claim-venue-page';
 import { VenueDiscountPage } from '@/app/pages/venue-discount-page';
+import { VenueReviewsPage } from '@/app/pages/venue-reviews-page';
 import { VenueLoginPage } from '@/app/pages/venue-login-page';
 import { VenueRegisterPage } from '@/app/pages/venue-register-page';
 import { AdminLoginPage } from '@/app/pages/admin-login-page';
@@ -119,6 +121,10 @@ export const router = createBrowserRouter([
             path: 'venue/venue/:venueId/discounts',
             Component: VenueDiscountPage,
           },
+          {
+            path: 'venue/venue/:venueId/reviews',
+            Component: VenueReviewsPage,
+          },
         ],
       },
       // ── Student protected routes ─────────────────────────────────────
@@ -156,6 +162,10 @@ export const router = createBrowserRouter([
           {
             path: 'match/:eventId',
             Component: MatchPage,
+          },
+          {
+            path: 'venues/:venueId/review',
+            Component: ReviewVenuePage,
           },
         ],
       },
