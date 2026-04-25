@@ -243,7 +243,35 @@ def api_my_venues(request):
         .order_by("name")
     )
 
-    return JsonResponse({"venues": [_venue_to_json(v) for v in venues]})
+    claims_qs = (
+        VenueClaim.objects.filter(manager=manager)
+        .select_related("venue")
+        .order_by("-created_at")
+    )
+    claims_data = []
+    for claim in claims_qs:
+        claims_data.append(
+            {
+                "id": claim.id,
+                "status": claim.status,
+                "note": claim.note,
+                "adminNote": claim.admin_note,
+                "createdAt": claim.created_at.isoformat(),
+                "reviewedAt": (
+                    claim.reviewed_at.isoformat() if claim.reviewed_at else None
+                ),
+                "venue": {
+                    "id": claim.venue.id,
+                    "name": claim.venue.name,
+                    "streetAddress": claim.venue.street_address,
+                    "borough": claim.venue.borough,
+                },
+            }
+        )
+
+    return JsonResponse(
+        {"venues": [_venue_to_json(v) for v in venues], "claims": claims_data}
+    )
 
 
 def api_venue_detail(request, venue_id):

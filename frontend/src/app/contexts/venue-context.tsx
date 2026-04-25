@@ -99,6 +99,21 @@ export interface ManagedVenue {
   activeDiscounts: StudentDiscount[];
 }
 
+export interface VenueClaim {
+  id: number;
+  status: 'pending' | 'approved' | 'rejected';
+  note?: string;
+  adminNote?: string;
+  createdAt: string;
+  reviewedAt: string | null;
+  venue: {
+    id: number;
+    name: string;
+    streetAddress: string;
+    borough: string;
+  };
+}
+
 export interface DiscountFormData {
   discountType: string;
   discountValue: string;
@@ -133,6 +148,12 @@ interface VenueContextType {
   createDiscount: (venueId: number, data: DiscountFormData) => Promise<StudentDiscount>;
   updateDiscount: (venueId: number, discountId: number, data: Partial<DiscountFormData>) => Promise<StudentDiscount>;
   deleteDiscount: (venueId: number, discountId: number) => Promise<void>;
+
+  // Legacy fields to fix typescript errors in unmigrated pages
+  myClaims: VenueClaim[];
+  addRestaurant: (data: unknown) => void;
+  updateRestaurant: (id: string | number, data: unknown) => void;
+  restaurants: unknown[];
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -144,6 +165,7 @@ const VenueContext = createContext<VenueContextType | undefined>(undefined);
 export function VenueProvider({ children }: { children: ReactNode }) {
   const [currentManager, setCurrentManager] = useState<VenueManager | null>(null);
   const [myVenues, setMyVenues] = useState<ManagedVenue[]>([]);
+  const [myClaims, setMyClaims] = useState<VenueClaim[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
   const [venuesLoading, setVenuesLoading] = useState(false);
 
@@ -226,6 +248,7 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         setMyVenues(data.venues ?? []);
+        setMyClaims(data.claims ?? []);
       }
     } finally {
       setVenuesLoading(false);
@@ -281,8 +304,8 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(formData),
     });
     const data = await _parseJsonOrThrow(response, 'Failed to create discount');
-    if (!response.ok) throw new Error(data.error || 'Failed to create discount');
-    return data.discount;
+    if (!response.ok) throw new Error(String(data.error) || 'Failed to create discount');
+    return data.discount as StudentDiscount;
   };
 
   const updateDiscount = async (
@@ -298,8 +321,8 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(formData),
     });
     const data = await _parseJsonOrThrow(response, 'Failed to update discount');
-    if (!response.ok) throw new Error(data.error || 'Failed to update discount');
-    return data.discount;
+    if (!response.ok) throw new Error(String(data.error) || 'Failed to update discount');
+    return data.discount as StudentDiscount;
   };
 
   const deleteDiscount = async (venueId: number, discountId: number) => {
@@ -332,6 +355,10 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       createDiscount,
       updateDiscount,
       deleteDiscount,
+      myClaims,
+      restaurants: [],
+      addRestaurant: () => {},
+      updateRestaurant: () => {},
     }}>
       {children}
     </VenueContext.Provider>
