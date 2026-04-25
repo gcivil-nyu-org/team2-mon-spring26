@@ -627,69 +627,10 @@ class MessagePhotoUrlTests(TestCase):
         msg0 = chat_entry["messages"][-1]
         self.assertEqual(msg0["userPhotoUrl"], "https://cdn.test/sender.jpg")
 
-
-class ChatSyncTests(TestCase):
-    def setUp(self):
-        self.leader = _make_user("syncleader@example.com")
-
-        self.group = Group.objects.create(name="Sync Group", created_by=self.leader)
-        GroupMembership.objects.create(
-            user=self.leader, group=self.group, role=GroupMembership.Role.LEADER
-        )
-        self.chat = Chat.objects.create(
-            type="group", group=self.group, created_by=self.leader
-        )
-        ChatMember.objects.create(chat=self.chat, user=self.leader, role="admin")
-
-        self.url = reverse("chat-sync")
-
-    def test_sync_no_since_returns_true(self):
-        self.client.force_login(self.leader)
-        resp = self.client.get(self.url)
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertTrue(data["updates"])
-        self.assertIn("timestamp", data)
-
-    def test_sync_with_new_message_returns_true(self):
-        self.client.force_login(self.leader)
-        since = (
-            (timezone.now() - timezone.timedelta(minutes=5))
-            .isoformat()
-            .replace("+00:00", "Z")
-        )
-        Message.objects.create(chat=self.chat, sender=self.leader, body="Test")
-        resp = self.client.get(f"{self.url}?since={since}")
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.json()["updates"])
-
-    @patch("chat.views.time.sleep")
-    def test_sync_no_updates_returns_false_and_sleeps(self, mock_sleep):
-        self.client.force_login(self.leader)
-        # Use future time so no changes are found
-        since = (
-            (timezone.now() + timezone.timedelta(minutes=5))
-            .isoformat()
-            .replace("+00:00", "Z")
-        )
-        resp = self.client.get(f"{self.url}?since={since}")
-        self.assertEqual(resp.status_code, 200)
-        self.assertFalse(resp.json()["updates"])
-        self.assertEqual(mock_sleep.call_count, 25)
-
-    def test_sync_invalid_since_format(self):
-        """Should fall back to gracefully treating it as 'no since' if formatting is wrong."""
-        self.client.force_login(self.leader)
-        resp = self.client.get(f"{self.url}?since=invalid-date")
-        self.assertEqual(resp.status_code, 200)
-        # Treated as no since => updates: True
-        self.assertTrue(resp.json()["updates"])
-
-    def test_sync_requires_auth(self):
-        resp = self.client.get(self.url)
-        self.assertEqual(resp.status_code, 401)
-
-    def test_sync_bad_method(self):
-        self.client.force_login(self.leader)
-        resp = self.client.post(self.url)
-        self.assertEqual(resp.status_code, 405)
+    def test_model_str(self):
+        chat = Chat.objects.create(type=Chat.ChatType.DIRECT, created_by=self.sender)
+        member = ChatMember.objects.create(chat=chat, user=self.sender)
+        msg = Message.objects.create(chat=chat, sender=self.sender, body="test")
+        str(chat)
+        str(member)
+        str(msg)

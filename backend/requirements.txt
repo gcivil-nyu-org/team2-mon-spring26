@@ -5,5 +5,9 @@ python-dotenv==1.0.1
 certifi==2026.2.25
 psycopg2-binary==2.9.10
 requests==2.32.3
+channels==4.3.2
+daphne==4.1.2
 Pillow==11.2.1
 boto3==1.38.0
+channels-valkey==0.3.0
+valkey==6.1.1

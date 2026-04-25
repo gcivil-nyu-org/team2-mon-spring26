@@ -344,6 +344,14 @@ def api_invite_to_group(request, group_id):
         if not created:
             return JsonResponse({"error": "User has already been invited"}, status=400)
 
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"user_notifications_{target_user.id}", {"type": "notification_update"}
+        )
+
         return JsonResponse(
             {"success": True, "message": "Invitation sent successfully"}
         )
@@ -467,16 +475,13 @@ def api_invitation_action(request, invitation_id, action):
                 invitation.status = GroupInvitation.Status.ACCEPTED
                 invitation.save()
 
-                # Create membership
-                if not GroupMembership.objects.filter(
-                    group=invitation.group, user=request.user
-                ).exists():
-                    GroupMembership.objects.create(
-                        group=invitation.group,
-                        user=request.user,
-                        role=GroupMembership.Role.MEMBER,
-                    )
+                membership, created = GroupMembership.objects.get_or_create(
+                    group=invitation.group,
+                    user=request.user,
+                    defaults={"role": GroupMembership.Role.MEMBER},
+                )
 
+                if created:
                     # Add to chat
                     if hasattr(invitation.group, "chat"):
                         ChatRoomMember.objects.update_or_create(
@@ -877,6 +882,16 @@ def api_swipe_events(request, group_id):
                     )
                 )
             SwipeSessionNotification.objects.bulk_create(notifications)
+
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+
+            channel_layer = get_channel_layer()
+
+            for sn in notifications:
+                async_to_sync(channel_layer.group_send)(
+                    f"user_notifications_{sn.user.id}", {"type": "notification_update"}
+                )
 
             return JsonResponse(
                 {"success": True, "event": _event_to_json(event)}, status=201
@@ -1287,22 +1302,18 @@ def api_join_group_by_code(request, join_code):
         if not group:
             return JsonResponse({"error": "Invalid join code"}, status=404)
 
-        if GroupMembership.objects.filter(group=group, user=request.user).exists():
+        membership, created = GroupMembership.objects.get_or_create(
+            group=group,
+            user=request.user,
+            defaults={"role": GroupMembership.Role.MEMBER},
+        )
+
+        if not created:
             return JsonResponse(
                 {"error": "You are already a member of this group"}, status=400
             )
 
-        if group.privacy != Group.PrivacyType.PUBLIC:
-            return JsonResponse(
-                {"error": "This group is private and cannot be joined via code"},
-                status=403,
-            )
-
         with transaction.atomic():
-            GroupMembership.objects.create(
-                group=group, user=request.user, role=GroupMembership.Role.MEMBER
-            )
-
             if hasattr(group, "chat"):
                 ChatRoomMember.objects.update_or_create(
                     chat=group.chat,
@@ -1390,7 +1401,44 @@ def api_finish_swiping(request, group_id, event_id):
                     body=f"{username_display} finished swiping",
                 )
 
-        return JsonResponse({"success": True})
+        # Auto-complete the event if all members have finished swiping
+        completed_count = event.completed_by.count()
+        total_participants = group.memberships.count()
+
+        if completed_count >= total_participants:
+            import math
+            from django.db.models import Count
+            from .models import Swipe
+            from venues.models import Venue
+
+            all_swipes = event.swipes.all()
+            threshold = math.ceil(total_participants * 2 / 3)
+            venue_likes = (
+                all_swipes.filter(direction=Swipe.Direction.RIGHT)
+                .values("venue_id")
+                .annotate(like_count=Count("user_id", distinct=True))
+                .order_by("-like_count")
+            )
+
+            matched_venue = None
+            for entry in venue_likes:
+                if entry["like_count"] >= threshold:
+                    matched_venue = Venue.objects.get(id=entry["venue_id"])
+                    break
+
+            if matched_venue:
+                event.matched_venue = matched_venue
+            event.status = SwipeEvent.Status.COMPLETED
+            event.save(update_fields=["matched_venue", "status", "updated_at"])
+
+        return JsonResponse(
+            {
+                "success": True,
+                "event_status": event.status,
+                "completed_count": completed_count,
+                "total_participants": total_participants,
+            }
+        )
 
     except Group.DoesNotExist:
         return JsonResponse({"error": "Group not found"}, status=404)

@@ -10,6 +10,16 @@ def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     try:
         from django.core.management import execute_from_command_line
+
+        if sys.version_info >= (3, 14) and "test" in sys.argv:
+            try:
+                import django.test.client
+
+                django.test.client.store_rendered_templates = (
+                    lambda *args, **kwargs: None
+                )
+            except Exception:
+                pass
     except ImportError as exc:
         raise ImportError(
             "Couldn't import Django. Are you sure it's installed and "

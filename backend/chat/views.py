@@ -2,13 +2,25 @@ import json
 import logging
 from django.http import JsonResponse
 from django.contrib.auth import get_user_model
-from django.db import transaction, models
+from django.db import transaction
 from django.utils import timezone
-import time
 
 from .models import Chat, ChatMember, Message
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 logger = logging.getLogger(__name__)
+
+
+def notify_chat_users(chat):
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        memberships = chat.members.filter(left_at__isnull=True)
+        for member in memberships:
+            group_name = f"user_notifications_{member.user.id}"
+            async_to_sync(channel_layer.group_send)(group_name, {"type": "chat_update"})
+
+
 User = get_user_model()
 
 
@@ -187,6 +199,7 @@ def api_chat_list_create(request):
             chat_full = Chat.objects.prefetch_related("members__user", "messages").get(
                 id=chat.id
             )
+            notify_chat_users(chat_full)
             return JsonResponse(
                 {"success": True, "chat": _chat_to_json(chat_full, request.user)},
                 status=201,
@@ -300,6 +313,7 @@ def api_chat_messages(request, chat_id):
             message = Message.objects.create(
                 chat=chat, sender=sender, message_type=actual_type, body=body
             )
+            notify_chat_users(chat)
 
             is_admin = membership.role == ChatMember.Role.ADMIN
             return JsonResponse(
@@ -368,6 +382,7 @@ def api_chat_message_detail(request, chat_id, message_id):
 
         message.deleted_at = timezone.now()
         message.save(update_fields=["deleted_at"])
+        notify_chat_users(chat)
 
         return JsonResponse({"success": True, "message": "Message deleted gracefully"})
 
@@ -414,64 +429,9 @@ def api_chat_member_mute(request, chat_id, user_id):
 
         target_membership.is_muted = not target_membership.is_muted
         target_membership.save(update_fields=["is_muted"])
+        notify_chat_users(chat)
 
         return JsonResponse({"success": True, "is_muted": target_membership.is_muted})
     except Exception as e:
         logger.error(f"Mute member error: {str(e)}", exc_info=True)
         return JsonResponse({"error": "Internal server error"}, status=500)
-
-
-def api_chat_sync(request):
-    """
-    GET /api/chat/sync/?since=YYYY-MM-DDTHH:MM:SSZ
-    Long-polls for up to 25s waiting for new or deleted messages for this user.
-    """
-    if request.method != "GET":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "Authentication required"}, status=401)
-
-    since_str = request.GET.get("since")
-    since = None
-    if since_str:
-        try:
-            since = timezone.datetime.fromisoformat(since_str.replace("Z", "+00:00"))
-        except ValueError:
-            pass
-
-    if not since:
-        return JsonResponse(
-            {
-                "updates": True,
-                "timestamp": timezone.now().isoformat().replace("+00:00", "Z"),
-            }
-        )
-
-    # Poll loop up to 25 times (25s)
-    for _ in range(25):
-        # We query for any messages accessible to user that are created or deleted after `since`.
-        has_updates = (
-            Message.objects.filter(
-                chat__members__user=request.user, chat__members__left_at__isnull=True
-            )
-            .filter(models.Q(created_at__gt=since) | models.Q(deleted_at__gt=since))
-            .exists()
-        )
-
-        if has_updates:
-            return JsonResponse(
-                {
-                    "updates": True,
-                    "timestamp": timezone.now().isoformat().replace("+00:00", "Z"),
-                }
-            )
-
-        time.sleep(1)
-
-    # Completed loop without updates
-    return JsonResponse(
-        {
-            "updates": False,
-            "timestamp": timezone.now().isoformat().replace("+00:00", "Z"),
-        }
-    )

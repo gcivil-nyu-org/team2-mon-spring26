@@ -37,6 +37,7 @@ export function FloatingChat() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+
   // Build and sort conversation list
   const conversations = useMemo((): Conversation[] => {
     const list: Conversation[] = [
@@ -161,20 +162,21 @@ export function FloatingChat() {
 
   // Derive DM contacts from group members — no separate API call needed.
   const potentialDMContacts = useMemo(() => {
+    if (!currentUser) return [];
     const seen = new Set<string>();
     const contacts: { id: string; name: string; photoUrl?: string }[] = [];
     for (const group of groups) {
-      const currentUserInGroup = group.members.some(m => m.userId === currentUser?.id);
+      const currentUserInGroup = group.members.some(m => String(m.userId) === String(currentUser.id));
       if (!currentUserInGroup) continue;
       for (const member of group.members) {
-        if (member.userId === currentUser?.id) continue;
-        if (seen.has(member.userId)) continue;
-        seen.add(member.userId);
-        contacts.push({ id: member.userId, name: member.userName, photoUrl: member.userPhotoUrl });
+        if (String(member.userId) === String(currentUser.id)) continue;
+        if (seen.has(String(member.userId))) continue;
+        seen.add(String(member.userId));
+        contacts.push({ id: String(member.userId), name: member.userName, photoUrl: member.userPhotoUrl });
       }
     }
     return contacts;
-  }, [groups, currentUser?.id]);
+  }, [groups, currentUser]);
 
   // Don't render if no current user (not logged in) or no conversations
   if (!currentUser || (groups.length === 0 && dmConversations.length === 0)) {

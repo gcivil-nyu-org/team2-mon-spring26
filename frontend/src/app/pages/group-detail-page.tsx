@@ -19,6 +19,7 @@ import {
 import { Input } from "@/app/components/ui/input";
 import { Badge } from "@/app/components/ui/badge";
 import { Label } from "@/app/components/ui/label";
+import { Switch } from "@/app/components/ui/switch";
 import {
   Plus,
   Users,
@@ -65,6 +66,7 @@ export function GroupDetailPage() {
     getAllUsers,
     fetchAvailableUsers,
     fetchSwipeEvents,
+    editGroup,
     regenerateJoinCode,
     leaveGroup,
     deleteGroup,
@@ -79,6 +81,7 @@ export function GroupDetailPage() {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [searchEmail, setSearchEmail] = useState("");
   const [showConstraintsDialog, setShowConstraintsDialog] = useState(false);
+  const [settingPrivacy, setSettingPrivacy] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<Set<string>>(new Set());
   const [inviteSuccessMsg, setInviteSuccessMsg] = useState<string | null>(null);
   const [regeneratingCode, setRegeneratingCode] = useState(false);
@@ -189,6 +192,24 @@ export function GroupDetailPage() {
   const handlePlanReservation = () => {
     // Navigates to a new page where users input Date, Name, and Location
     navigate(`/group/${group.id}/plan`);
+  };
+
+  const handlePrivacyToggle = async (checked: boolean) => {
+    if (!group) return;
+    setSettingPrivacy(true);
+    const newPrivacy = checked ? "public" : "invite-only";
+    try {
+      await editGroup(group.id, { privacy: newPrivacy });
+      toast.success(`Group is now ${newPrivacy}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(err.message);
+      } else {
+        toast.error('Failed to change privacy settings.');
+      }
+    } finally {
+      setSettingPrivacy(false);
+    }
   };
 
   const handleCopyJoinCode = async () => {
@@ -623,19 +644,18 @@ export function GroupDetailPage() {
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
                     <Settings2 className="w-6 h-6" />
                   </div>
-                  <CardTitle className="mb-2">Dietary Settings</CardTitle>
+                  <CardTitle className="mb-2">Group Settings</CardTitle>
                   <CardDescription className="text-emerald-100">
-                    View combined group food filters
+                    View group filters & privacy
                   </CardDescription>
                 </CardHeader>
               </Card>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
               <DialogHeader>
-                <DialogTitle>Group Dietary Constraints</DialogTitle>
+                <DialogTitle>Group Settings</DialogTitle>
                 <DialogDescription>
-                  These are derived from every member&rsquo;s individual preferences. To
-                  change them, members should update their own preferences.
+                  View derived dietary filters or modify group settings.
                 </DialogDescription>
               </DialogHeader>
               {constraintsError && (
@@ -644,6 +664,33 @@ export function GroupDetailPage() {
                 </p>
               )}
               <div className="grid gap-6 py-4">
+                {/* Privacy Settings */}
+                <div className="space-y-3 pb-4 border-b">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-base">Group Privacy</Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Public groups can be joined without a specific invite code.
+                      </p>
+                    </div>
+                    {isLeader ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Private</span>
+                        <Switch 
+                          checked={group.privacy === 'public'}
+                          onCheckedChange={handlePrivacyToggle}
+                          disabled={settingPrivacy}
+                        />
+                        <span className="text-sm text-muted-foreground">Public</span>
+                      </div>
+                    ) : (
+                      <Badge variant={group.privacy === 'public' ? 'default' : 'secondary'}>
+                        {group.privacy === 'public' ? 'Public' : 'Private'}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
                 {/* cuisines */}
                 <div className="space-y-3">
                   <Label>Cuisines (union of members)</Label>
