@@ -1,9 +1,11 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { useVenue } from '@/app/contexts/venue-context';
+import { useApp } from '@/app/contexts/app-context';
 import { VenueTopNav } from '@/app/components/venue-top-nav';
 
 export function VenueProtectedRoute() {
   const { currentManager, authLoading } = useVenue();
+  const { currentUser } = useApp();
   const location = useLocation();
 
   // Wait for the session check to complete before deciding
@@ -16,10 +18,16 @@ export function VenueProtectedRoute() {
   }
 
   if (!currentManager) {
+    if (currentUser?.role === 'admin') {
+      return <Navigate to="/admin/dashboard" state={{ from: location }} replace />;
+    }
+    if (currentUser?.role === 'student') {
+      return <Navigate to="/home" state={{ from: location }} replace />;
+    }
     return <Navigate to="/venue/login" state={{ from: location }} replace />;
   }
   if (currentManager.role !== 'venue_manager') {
-    return <Navigate to="/" state={{ from: location }} replace />;
+    return <Navigate to="/home" state={{ from: location }} replace />;
   }
 
   return (

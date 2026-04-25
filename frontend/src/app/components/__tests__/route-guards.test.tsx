@@ -38,6 +38,7 @@ describe('Route Guards', () => {
     mockUseApp.mockReset();
     mockUseAdmin.mockReset();
     mockUseVenue.mockReset();
+    mockUseApp.mockReturnValue({ currentUser: null });
   });
 
   it('redirects admin away from student route', () => {
@@ -82,16 +83,20 @@ describe('Route Guards', () => {
     expect(screen.getByTestId('location').textContent).toBe('/venue/dashboard');
   });
 
-  it('rejects non-admin user in admin route guard', () => {
+  it('redirects student from admin route to home', () => {
+    mockUseApp.mockReturnValue({
+      currentUser: { id: '3', role: 'student' },
+    });
     mockUseAdmin.mockReturnValue({
       authLoading: false,
-      currentAdmin: { id: '3', role: 'student' },
+      currentAdmin: null,
     });
 
     render(
       <MemoryRouter initialEntries={['/admin/dashboard']}>
         <Routes>
-          <Route path="/" element={<LocationEcho />} />
+          <Route path="/home" element={<LocationEcho />} />
+          <Route path="/venue/dashboard" element={<LocationEcho />} />
           <Route path="/admin/login" element={<LocationEcho />} />
           <Route element={<AdminProtectedRoute />}>
             <Route path="/admin/dashboard" element={<Outlet />} />
@@ -100,19 +105,48 @@ describe('Route Guards', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByTestId('location').textContent).toBe('/');
+    expect(screen.getByTestId('location').textContent).toBe('/home');
   });
 
-  it('rejects non-venue role in venue route guard', () => {
+  it('redirects venue manager from admin route to venue dashboard', () => {
+    mockUseApp.mockReturnValue({
+      currentUser: { id: '4', role: 'venue_manager' },
+    });
+    mockUseAdmin.mockReturnValue({
+      authLoading: false,
+      currentAdmin: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/dashboard']}>
+        <Routes>
+          <Route path="/home" element={<LocationEcho />} />
+          <Route path="/venue/dashboard" element={<LocationEcho />} />
+          <Route path="/admin/login" element={<LocationEcho />} />
+          <Route element={<AdminProtectedRoute />}>
+            <Route path="/admin/dashboard" element={<Outlet />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('location').textContent).toBe('/venue/dashboard');
+  });
+
+  it('redirects admin from venue route to admin dashboard', () => {
+    mockUseApp.mockReturnValue({
+      currentUser: { id: '5', role: 'admin' },
+    });
     mockUseVenue.mockReturnValue({
       authLoading: false,
-      currentManager: { id: '4', role: 'student' },
+      currentManager: null,
     });
 
     render(
       <MemoryRouter initialEntries={['/venue/dashboard']}>
         <Routes>
-          <Route path="/" element={<LocationEcho />} />
+          <Route path="/home" element={<LocationEcho />} />
+          <Route path="/admin/dashboard" element={<LocationEcho />} />
           <Route path="/venue/login" element={<LocationEcho />} />
           <Route element={<VenueProtectedRoute />}>
             <Route path="/venue/dashboard" element={<Outlet />} />
@@ -121,6 +155,6 @@ describe('Route Guards', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByTestId('location').textContent).toBe('/');
+    expect(screen.getByTestId('location').textContent).toBe('/admin/dashboard');
   });
 });
