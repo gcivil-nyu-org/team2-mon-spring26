@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import IntegrityError
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, Client
 from django.urls import reverse
 
 from accounts.models import (
@@ -28,6 +28,7 @@ from venues.management.commands.ingest_csv import (
     map_price_range,
 )
 from venues.models import (
+    ContentReport,
     Inspection,
     Review,
     ReviewComment,
@@ -1515,6 +1516,79 @@ class ReviewCommentTests(TestCase):
         comments = list(self.review.comments.all())
         self.assertEqual(comments[0].content, "First")
         self.assertEqual(comments[1].content, "Second")
+
+
+class ModerationWorkflowTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email="admin@nyu.edu",
+            password="pass",
+            role="admin",
+            is_staff=True,
+        )
+        self.reporter = User.objects.create_user(email="reporter@nyu.edu", password="pass")
+        self.author = User.objects.create_user(email="author@nyu.edu", password="pass")
+        self.venue = Venue.objects.create(name="Queue Venue")
+        self.review = Review.objects.create(
+            venue=self.venue,
+            user=self.author,
+            rating=2,
+            title="Bad",
+            content="Offensive text",
+            visit_date=datetime.date(2025, 1, 1),
+        )
+
+    def test_report_review_creates_pending_report(self):
+        self.client.force_login(self.reporter)
+        res = self.client.post(
+            reverse("report_review", args=[self.review.id]),
+            data=json.dumps({"reason": "Harassment"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.review.refresh_from_db()
+        self.assertTrue(self.review.is_flagged)
+        report = ContentReport.objects.get(review=self.review)
+        self.assertEqual(report.status, ContentReport.Status.PENDING)
+        self.assertEqual(report.reporter_id, self.reporter.id)
+
+    def test_admin_confirm_hides_content_and_records_audit(self):
+        report = ContentReport.objects.create(
+            review=self.review,
+            reporter=self.reporter,
+            reason="Abusive language",
+        )
+        self.client.force_login(self.admin)
+        with patch("venues.views.send_mail") as send_mail_mock:
+            res = self.client.post(
+                reverse("admin_moderation_action", args=[report.id]),
+                data=json.dumps({"action": "confirm"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+        report.refresh_from_db()
+        self.review.refresh_from_db()
+        self.assertEqual(report.status, ContentReport.Status.CONFIRMED)
+        self.assertEqual(report.reviewed_by_id, self.admin.id)
+        self.assertIsNotNone(report.reviewed_at)
+        self.assertFalse(self.review.is_visible)
+        send_mail_mock.assert_called_once()
+
+    def test_admin_queue_includes_report_reason_and_reporter(self):
+        ContentReport.objects.create(
+            review=self.review,
+            reporter=self.reporter,
+            reason="Spam",
+        )
+        self.client.force_login(self.admin)
+        res = self.client.get(reverse("admin_moderation_queue"))
+        self.assertEqual(res.status_code, 200)
+        payload = res.json()
+        self.assertEqual(payload["totalCount"], 1)
+        first = payload["reports"][0]
+        self.assertEqual(first["reason"], "Spam")
+        self.assertEqual(first["reporter"]["email"], "reporter@nyu.edu")
 
 
 class StrictPreferenceFilterTest(TestCase):

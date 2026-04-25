@@ -114,6 +114,7 @@ class SwipeEvent(models.Model):
     )
     borough = models.CharField(max_length=50, blank=True)
     neighborhood = models.CharField(max_length=100, blank=True)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
     completed_by = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="completed_swipe_events"
     )

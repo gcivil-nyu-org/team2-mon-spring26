@@ -6,13 +6,46 @@ from django.http import JsonResponse
 from django.db import transaction
 from django.db.models import F, prefetch_related_objects
 from django.utils import timezone
+from django.core.mail import send_mail
+from django.conf import settings
 
-from .models import Venue, StudentDiscount, VenueClaim
+from .models import (
+    Venue,
+    StudentDiscount,
+    VenueClaim,
+    Review,
+    ReviewComment,
+    ContentReport,
+)
 from .filters import filter_venues_by_preferences
 from .google_places import bulk_prefetch_photos
 from accounts.models import VenueManagerProfile, CuisineType, DietaryTag, FoodTypeTag
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_display_name(user):
+    full_name = f"{user.first_name} {user.last_name}".strip()
+    return full_name or user.email
+
+
+def _notify_content_removed(user, venue_name, content_type):
+    """Best-effort email notification when admin removes reported content."""
+    subject = "Your MealSwipe content was removed"
+    message = (
+        f"Your {content_type} for {venue_name} was removed by an administrator "
+        "after moderation review."
+    )
+    try:
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=True,
+        )
+    except Exception:
+        logger.warning("Failed to send moderation email to %s", user.email, exc_info=True)
 
 
 def _require_venue_manager(request):
@@ -411,6 +444,217 @@ def api_venue_discount_detail(request, venue_id, discount_id):
         return JsonResponse({"success": True})
 
     return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+# ---------------------------------------------------------------------------
+# Content Moderation API
+# ---------------------------------------------------------------------------
+
+
+def _content_report_to_json(report):
+    if report.review_id:
+        target = report.review
+        content_type = "review"
+        content_body = target.content
+        venue_name = target.venue.name
+        author = target.user
+    else:
+        target = report.comment
+        content_type = "comment"
+        content_body = target.content
+        venue_name = target.review.venue.name
+        author = target.user
+
+    reviewer = report.reviewed_by
+    return {
+        "id": report.id,
+        "status": report.status,
+        "reason": report.reason,
+        "createdAt": report.created_at.isoformat(),
+        "reviewedAt": report.reviewed_at.isoformat() if report.reviewed_at else None,
+        "contentType": content_type,
+        "content": {
+            "id": target.id,
+            "title": getattr(target, "title", ""),
+            "body": content_body,
+            "venueName": venue_name,
+            "authorEmail": author.email,
+            "authorName": _safe_display_name(author),
+        },
+        "reporter": {
+            "id": report.reporter_id,
+            "email": report.reporter.email,
+            "name": _safe_display_name(report.reporter),
+        },
+        "reviewer": (
+            {
+                "id": reviewer.id,
+                "email": reviewer.email,
+                "name": _safe_display_name(reviewer),
+            }
+            if reviewer
+            else None
+        ),
+    }
+
+
+def api_report_review(request, review_id):
+    """POST /api/venues/reviews/<review_id>/report/"""
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+    try:
+        review = Review.objects.select_related("user", "venue").get(pk=review_id)
+    except Review.DoesNotExist:
+        return JsonResponse({"error": "Review not found"}, status=404)
+
+    try:
+        data = json.loads(request.body or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        return JsonResponse({"error": "Report reason is required"}, status=400)
+
+    report = ContentReport.objects.create(
+        review=review,
+        reporter=request.user,
+        reason=reason,
+    )
+    if not review.is_flagged:
+        review.is_flagged = True
+        review.save(update_fields=["is_flagged", "updated_at"])
+    return JsonResponse({"success": True, "report": _content_report_to_json(report)}, status=201)
+
+
+def api_report_review_comment(request, comment_id):
+    """POST /api/venues/review-comments/<comment_id>/report/"""
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+    try:
+        comment = ReviewComment.objects.select_related("user", "review__venue").get(pk=comment_id)
+    except ReviewComment.DoesNotExist:
+        return JsonResponse({"error": "Comment not found"}, status=404)
+
+    try:
+        data = json.loads(request.body or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        return JsonResponse({"error": "Report reason is required"}, status=400)
+
+    report = ContentReport.objects.create(
+        comment=comment,
+        reporter=request.user,
+        reason=reason,
+    )
+    if not comment.is_flagged:
+        comment.is_flagged = True
+        comment.save(update_fields=["is_flagged", "updated_at"])
+    return JsonResponse({"success": True, "report": _content_report_to_json(report)}, status=201)
+
+
+def api_admin_moderation_queue(request):
+    """GET /api/venues/admin/moderation/?status=pending&page=1"""
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    err = _require_admin(request)
+    if err:
+        return err
+
+    status_filter = (request.GET.get("status") or "pending").strip()
+    page = int(request.GET.get("page", 1))
+    per_page = 20
+
+    reports_qs = ContentReport.objects.select_related(
+        "reporter",
+        "reviewed_by",
+        "review__user",
+        "review__venue",
+        "comment__user",
+        "comment__review__venue",
+    ).order_by("-created_at")
+
+    if status_filter in dict(ContentReport.Status.choices):
+        reports_qs = reports_qs.filter(status=status_filter)
+
+    total = reports_qs.count()
+    total_pages = max(1, math.ceil(total / per_page))
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
+    reports_page = reports_qs[offset : offset + per_page]
+
+    return JsonResponse(
+        {
+            "success": True,
+            "reports": [_content_report_to_json(report) for report in reports_page],
+            "page": page,
+            "totalPages": total_pages,
+            "totalCount": total,
+        }
+    )
+
+
+def api_admin_moderation_action(request, report_id):
+    """POST /api/venues/admin/moderation/<id>/ with action=confirm|reject."""
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    err = _require_admin(request)
+    if err:
+        return err
+
+    try:
+        report = ContentReport.objects.select_related(
+            "review__user",
+            "review__venue",
+            "comment__user",
+            "comment__review__venue",
+            "reporter",
+        ).get(pk=report_id)
+    except ContentReport.DoesNotExist:
+        return JsonResponse({"error": "Report not found"}, status=404)
+
+    try:
+        data = json.loads(request.body or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+    action = (data.get("action") or "").strip().lower()
+    if action not in ("confirm", "reject"):
+        return JsonResponse({"error": "action must be 'confirm' or 'reject'"}, status=400)
+
+    with transaction.atomic():
+        report.reviewed_by = request.user
+        report.reviewed_at = timezone.now()
+        if action == "confirm":
+            report.status = ContentReport.Status.CONFIRMED
+            if report.review_id:
+                report.review.is_visible = False
+                report.review.is_flagged = True
+                report.review.save(update_fields=["is_visible", "is_flagged", "updated_at"])
+                _notify_content_removed(report.review.user, report.review.venue.name, "review")
+            else:
+                report.comment.is_visible = False
+                report.comment.is_flagged = True
+                report.comment.save(update_fields=["is_visible", "is_flagged", "updated_at"])
+                _notify_content_removed(report.comment.user, report.comment.review.venue.name, "comment")
+        else:
+            report.status = ContentReport.Status.REJECTED
+            if report.review_id:
+                report.review.is_visible = True
+                report.review.is_flagged = False
+                report.review.save(update_fields=["is_visible", "is_flagged", "updated_at"])
+            else:
+                report.comment.is_visible = True
+                report.comment.is_flagged = False
+                report.comment.save(update_fields=["is_visible", "is_flagged", "updated_at"])
+
+        report.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+
+    return JsonResponse({"success": True, "report": _content_report_to_json(report)})
 
 
 # ---------------------------------------------------------------------------

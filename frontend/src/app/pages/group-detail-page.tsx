@@ -813,16 +813,22 @@ export function GroupDetailPage() {
                           {event.name}
                         </CardTitle>
                         <CardDescription>
+                          Scheduled:{' '}
                           {new Date(
-                            event.createdAt,
-                          ).toLocaleDateString()}{" "}
-                          at{" "}
+                            event.scheduledFor || event.createdAt,
+                          ).toLocaleDateString()}{' '}
+                          at{' '}
                           {new Date(
-                            event.createdAt,
+                            event.scheduledFor || event.createdAt,
                           ).toLocaleTimeString([], {
                             hour: "2-digit",
                             minute: "2-digit",
                           })}
+                          {(event.neighborhood || event.borough) && (
+                            <span className="block mt-1">
+                              Location: {[event.neighborhood, event.borough].filter(Boolean).join(', ')}
+                            </span>
+                          )}
                           {event.totalParticipants !== undefined && event.completedParticipantsCount !== undefined && (
                             <span className="block mt-1 font-medium text-purple-600">
                               {event.completedParticipantsCount} of {event.totalParticipants} members finished swiping

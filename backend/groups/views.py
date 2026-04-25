@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+from datetime import datetime
 from django.http import JsonResponse
 from django.contrib.auth import get_user_model
 from django.db import transaction, models
@@ -8,6 +9,8 @@ from django.db.models import Count, prefetch_related_objects
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
+from django.core.mail import send_mail
+from django.conf import settings
 
 from .models import Group, GroupMembership, SwipeEvent, Swipe, GroupInvitation
 from venues.models import Venue, VenuePhoto
@@ -343,6 +346,28 @@ def api_invite_to_group(request, group_id):
         )
         if not created:
             return JsonResponse({"error": "User has already been invited"}, status=400)
+
+        inviter_name = (
+            f"{request.user.first_name} {request.user.last_name}".strip()
+            or request.user.email
+        )
+        try:
+            send_mail(
+                subject=f"You were invited to join {group.name}",
+                message=(
+                    f"{inviter_name} invited you to join the group \"{group.name}\" on MealSwipe.\n"
+                    "Sign in to view and respond to your invitation."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[target_user.email],
+                fail_silently=True,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to send invitation email to user_id=%s",
+                target_user.id,
+                exc_info=True,
+            )
 
         from channels.layers import get_channel_layer
         from asgiref.sync import async_to_sync
@@ -722,10 +747,27 @@ def _event_to_json(event):
         "matched_venue_id": event.matched_venue_id,
         "borough": event.borough,
         "neighborhood": event.neighborhood,
+        "scheduled_for": event.scheduled_for.isoformat() if event.scheduled_for else None,
         "created_at": event.created_at.isoformat(),
         "total_participants": event.group.memberships.count(),
         "completed_participants_count": event.completed_by.count(),
     }
+
+
+def _parse_scheduled_for(raw_value):
+    """Parse optional ISO datetime from API payload to timezone-aware datetime."""
+    if not raw_value or not isinstance(raw_value, str):
+        return None
+    value = raw_value.strip()
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
 
 
 def _venue_to_swipe_json(venue):
@@ -858,6 +900,7 @@ def api_swipe_events(request, group_id):
                 created_by=request.user,
                 borough=(data.get("borough") or "").strip(),
                 neighborhood=(data.get("neighborhood") or "").strip(),
+                scheduled_for=_parse_scheduled_for(data.get("scheduled_for")),
                 venue_limit=int(data.get("venue_limit", 10)),
             )
 

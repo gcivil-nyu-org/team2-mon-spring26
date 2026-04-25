@@ -1383,6 +1383,19 @@ class AdminUsersEndpointTests(TestCase):
         self.assertEqual(data["totalCount"], 1)
         self.assertEqual(data["users"][0]["lastName"], "Jones")
 
+    def test_admin_users_search_by_username_when_query_long_enough(self):
+        self.student1.username = "alice_student"
+        self.student1.save(update_fields=["username"])
+        res = self.client.get("/api/auth/admin/users/?q=alice")
+        data = res.json()
+        self.assertEqual(data["totalCount"], 1)
+        self.assertEqual(data["users"][0]["username"], "alice_student")
+
+    def test_admin_users_short_query_does_not_filter(self):
+        res = self.client.get("/api/auth/admin/users/?q=ali")
+        data = res.json()
+        self.assertEqual(data["totalCount"], 4)
+
     def test_admin_users_filter_by_role(self):
         res = self.client.get("/api/auth/admin/users/?role=student")
         data = res.json()
@@ -1403,6 +1416,7 @@ class AdminUsersEndpointTests(TestCase):
         u = res.json()["users"][0]
         for key in (
             "id",
+            "username",
             "email",
             "firstName",
             "lastName",

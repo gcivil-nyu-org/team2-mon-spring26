@@ -23,6 +23,7 @@ import { AdminVenuesPage } from '@/app/pages/admin-venues-page';
 import { AdminVenueEditPage } from '@/app/pages/admin-venue-edit-page';
 import { AdminUsersPage } from '@/app/pages/admin-users-page';
 import { AdminUserEditPage } from '@/app/pages/admin-user-edit-page';
+import { AdminModerationPage } from '@/app/pages/admin-moderation-page';
 import { ResetPasswordPage } from '@/app/pages/reset-password-page';
 import { ProfileEditPage } from '@/app/pages/profile-edit-page';
 import { ProtectedRoute } from '@/app/components/protected-route';
@@ -86,6 +87,10 @@ export const router = createBrowserRouter([
           {
             path: 'admin/users/:userId',
             Component: AdminUserEditPage,
+          },
+          {
+            path: 'admin/moderation',
+            Component: AdminModerationPage,
           },
         ],
       },

@@ -142,8 +142,16 @@ export function PlanEventPage() {
     }
 
     const finalName = eventName || `Dining Plan - ${locationString}`;
+    const scheduledFor = `${date}T${time}`;
     try {
-      const newEvent = await createSwipeEvent(group.id, finalName, eventBorough, eventNeighborhood, Number(venueLimit));
+      const newEvent = await createSwipeEvent(
+        group.id,
+        finalName,
+        eventBorough,
+        eventNeighborhood,
+        Number(venueLimit),
+        scheduledFor
+      );
       setCurrentGroup(group);
       setCurrentSwipeEvent(newEvent);
       navigate(`/swipe/${newEvent.id}`);

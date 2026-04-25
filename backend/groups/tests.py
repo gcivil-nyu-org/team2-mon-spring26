@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase, Client
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import UserPreference
 from chat.models import Chat, ChatMember, Message
@@ -98,17 +99,19 @@ class GroupAPITests(TestCase):
         )
 
         self.client.login(email="alice@example.com", password="password123")
-        response = self.client.post(
-            f"/api/groups/{group.id}/invite/",
-            json.dumps({"email": "bob@example.com"}),
-            content_type="application/json",
-        )
+        with patch("groups.views.send_mail") as send_mail_mock:
+            response = self.client.post(
+                f"/api/groups/{group.id}/invite/",
+                json.dumps({"email": "bob@example.com"}),
+                content_type="application/json",
+            )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(
             GroupInvitation.objects.filter(
                 invitee=self.user2, group=group, status="pending"
             ).exists()
         )
+        send_mail_mock.assert_called_once()
 
     def test_cannot_leave_if_only_leader(self):
         group = Group.objects.create(name="Solo Club", created_by=self.user1)
@@ -284,6 +287,25 @@ class SwipeEventAPITests(TestCase):
         self.assertTrue(data["success"])
         self.assertEqual(data["event"]["name"], "Friday Dinner")
         self.assertEqual(data["event"]["status"], "active")
+
+    def test_create_event_with_scheduled_for(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/",
+            json.dumps(
+                {
+                    "name": "Timed Session",
+                    "scheduled_for": "2026-05-01T19:30:00",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertIn("scheduled_for", payload["event"])
+        self.assertIsNotNone(payload["event"]["scheduled_for"])
+        event = SwipeEvent.objects.get(id=payload["event"]["id"])
+        self.assertTrue(timezone.is_aware(event.scheduled_for))
 
     def test_create_event_as_member_forbidden(self):
         self.client.login(email="member1@nyu.edu", password="pass123")

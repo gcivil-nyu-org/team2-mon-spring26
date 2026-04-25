@@ -11,12 +11,13 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import { UserAvatar } from '@/app/components/user-avatar';
-import { Search, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Pencil, X } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 interface UserRow {
   id: number;
+  username: string;
   email: string;
   firstName: string;
   lastName: string;
@@ -68,7 +69,8 @@ export function AdminUsersPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (query) params.set('q', query);
+      const trimmedQuery = query.trim();
+      if (trimmedQuery.length > 3) params.set('q', trimmedQuery);
       if (role) params.set('role', role);
       if (status) params.set('status', status);
       params.set('page', String(page));
@@ -112,7 +114,7 @@ export function AdminUsersPage() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Email or name…"
+              placeholder="Email or username (min 4 chars)…"
               className="pl-9"
             />
           </div>
@@ -166,6 +168,20 @@ export function AdminUsersPage() {
         >
           Search
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10"
+          onClick={() => {
+            setQuery('');
+            setRole('');
+            setStatus('');
+            setPage(1);
+          }}
+        >
+          <X className="w-4 h-4 mr-1" />
+          Clear
+        </Button>
       </form>
 
       {loading ? (
@@ -183,9 +199,10 @@ export function AdminUsersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="text-left px-4 py-3 font-semibold">User</th>
-                  <th className="text-left px-4 py-3 font-semibold">Role</th>
+                  <th className="text-left px-4 py-3 font-semibold">Username</th>
+                  <th className="text-left px-4 py-3 font-semibold">Email</th>
                   <th className="text-left px-4 py-3 font-semibold">Status</th>
+                  <th className="text-left px-4 py-3 font-semibold">Role</th>
                   <th className="text-left px-4 py-3 font-semibold">Joined</th>
                   <th className="text-right px-4 py-3 font-semibold">Action</th>
                 </tr>
@@ -196,9 +213,9 @@ export function AdminUsersPage() {
                     key={u.id}
                     className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer"
                     onClick={() => navigate(`/admin/users/${u.id}`)}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
                         <UserAvatar
                           name={u.name}
                           email={u.email}
@@ -207,21 +224,13 @@ export function AdminUsersPage() {
                         />
                         <div>
                           <div className="font-medium">
-                            {u.name || '—'}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {u.email}
+                            {u.username || u.name || '—'}
                           </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge
-                        variant="outline"
-                        className={`text-xs ${ROLE_BADGE_CLASS[u.role]}`}
-                      >
-                        {ROLE_LABELS[u.role]}
-                      </Badge>
+                      <span className="text-sm text-muted-foreground">{u.email}</span>
                     </td>
                     <td className="px-4 py-3">
                       {u.isActive ? (
@@ -236,9 +245,17 @@ export function AdminUsersPage() {
                           variant="outline"
                           className="bg-red-50 text-red-600 border-red-200 text-xs"
                         >
-                          Inactive
+                          Banned
                         </Badge>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge
+                        variant="outline"
+                        className={`text-xs ${ROLE_BADGE_CLASS[u.role]}`}
+                      >
+                        {ROLE_LABELS[u.role]}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {formatDate(u.createdAt)}
