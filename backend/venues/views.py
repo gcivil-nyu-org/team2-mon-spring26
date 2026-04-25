@@ -45,7 +45,9 @@ def _notify_content_removed(user, venue_name, content_type):
             fail_silently=True,
         )
     except Exception:
-        logger.warning("Failed to send moderation email to %s", user.email, exc_info=True)
+        logger.warning(
+            "Failed to send moderation email to %s", user.email, exc_info=True
+        )
 
 
 def _require_venue_manager(request):
@@ -525,7 +527,9 @@ def api_report_review(request, review_id):
     if not review.is_flagged:
         review.is_flagged = True
         review.save(update_fields=["is_flagged", "updated_at"])
-    return JsonResponse({"success": True, "report": _content_report_to_json(report)}, status=201)
+    return JsonResponse(
+        {"success": True, "report": _content_report_to_json(report)}, status=201
+    )
 
 
 def api_report_review_comment(request, comment_id):
@@ -535,7 +539,9 @@ def api_report_review_comment(request, comment_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Authentication required"}, status=401)
     try:
-        comment = ReviewComment.objects.select_related("user", "review__venue").get(pk=comment_id)
+        comment = ReviewComment.objects.select_related("user", "review__venue").get(
+            pk=comment_id
+        )
     except ReviewComment.DoesNotExist:
         return JsonResponse({"error": "Comment not found"}, status=404)
 
@@ -555,7 +561,9 @@ def api_report_review_comment(request, comment_id):
     if not comment.is_flagged:
         comment.is_flagged = True
         comment.save(update_fields=["is_flagged", "updated_at"])
-    return JsonResponse({"success": True, "report": _content_report_to_json(report)}, status=201)
+    return JsonResponse(
+        {"success": True, "report": _content_report_to_json(report)}, status=201
+    )
 
 
 def api_admin_moderation_queue(request):
@@ -624,7 +632,9 @@ def api_admin_moderation_action(request, report_id):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
     action = (data.get("action") or "").strip().lower()
     if action not in ("confirm", "reject"):
-        return JsonResponse({"error": "action must be 'confirm' or 'reject'"}, status=400)
+        return JsonResponse(
+            {"error": "action must be 'confirm' or 'reject'"}, status=400
+        )
 
     with transaction.atomic():
         report.reviewed_by = request.user
@@ -634,25 +644,39 @@ def api_admin_moderation_action(request, report_id):
             if report.review_id:
                 report.review.is_visible = False
                 report.review.is_flagged = True
-                report.review.save(update_fields=["is_visible", "is_flagged", "updated_at"])
-                _notify_content_removed(report.review.user, report.review.venue.name, "review")
+                report.review.save(
+                    update_fields=["is_visible", "is_flagged", "updated_at"]
+                )
+                _notify_content_removed(
+                    report.review.user, report.review.venue.name, "review"
+                )
             else:
                 report.comment.is_visible = False
                 report.comment.is_flagged = True
-                report.comment.save(update_fields=["is_visible", "is_flagged", "updated_at"])
-                _notify_content_removed(report.comment.user, report.comment.review.venue.name, "comment")
+                report.comment.save(
+                    update_fields=["is_visible", "is_flagged", "updated_at"]
+                )
+                _notify_content_removed(
+                    report.comment.user, report.comment.review.venue.name, "comment"
+                )
         else:
             report.status = ContentReport.Status.REJECTED
             if report.review_id:
                 report.review.is_visible = True
                 report.review.is_flagged = False
-                report.review.save(update_fields=["is_visible", "is_flagged", "updated_at"])
+                report.review.save(
+                    update_fields=["is_visible", "is_flagged", "updated_at"]
+                )
             else:
                 report.comment.is_visible = True
                 report.comment.is_flagged = False
-                report.comment.save(update_fields=["is_visible", "is_flagged", "updated_at"])
+                report.comment.save(
+                    update_fields=["is_visible", "is_flagged", "updated_at"]
+                )
 
-        report.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+        report.save(
+            update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"]
+        )
 
     return JsonResponse({"success": True, "report": _content_report_to_json(report)})
 

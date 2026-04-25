@@ -1527,7 +1527,9 @@ class ModerationWorkflowTests(TestCase):
             role="admin",
             is_staff=True,
         )
-        self.reporter = User.objects.create_user(email="reporter@nyu.edu", password="pass")
+        self.reporter = User.objects.create_user(
+            email="reporter@nyu.edu", password="pass"
+        )
         self.author = User.objects.create_user(email="author@nyu.edu", password="pass")
         self.venue = Venue.objects.create(name="Queue Venue")
         self.review = Review.objects.create(

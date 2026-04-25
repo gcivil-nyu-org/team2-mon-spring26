@@ -355,5 +355,9 @@ class ContentReport(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        target = f"review:{self.review_id}" if self.review_id else f"comment:{self.comment_id}"
+        target = (
+            f"review:{self.review_id}"
+            if self.review_id
+            else f"comment:{self.comment_id}"
+        )
         return f"{self.reporter.email} reported {target} ({self.status})"

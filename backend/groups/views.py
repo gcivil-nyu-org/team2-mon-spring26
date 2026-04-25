@@ -355,7 +355,7 @@ def api_invite_to_group(request, group_id):
             send_mail(
                 subject=f"You were invited to join {group.name}",
                 message=(
-                    f"{inviter_name} invited you to join the group \"{group.name}\" on MealSwipe.\n"
+                    f'{inviter_name} invited you to join the group "{group.name}" on MealSwipe.\n'
                     "Sign in to view and respond to your invitation."
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
@@ -747,7 +747,9 @@ def _event_to_json(event):
         "matched_venue_id": event.matched_venue_id,
         "borough": event.borough,
         "neighborhood": event.neighborhood,
-        "scheduled_for": event.scheduled_for.isoformat() if event.scheduled_for else None,
+        "scheduled_for": (
+            event.scheduled_for.isoformat() if event.scheduled_for else None
+        ),
         "created_at": event.created_at.isoformat(),
         "total_participants": event.group.memberships.count(),
         "completed_participants_count": event.completed_by.count(),

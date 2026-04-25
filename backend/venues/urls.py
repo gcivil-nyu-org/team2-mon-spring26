@@ -20,7 +20,9 @@ urlpatterns = [
         views.api_venue_discount_detail,
         name="venue_discount_detail",
     ),
-    path("reviews/<int:review_id>/report/", views.api_report_review, name="report_review"),
+    path(
+        "reviews/<int:review_id>/report/", views.api_report_review, name="report_review"
+    ),
     path(
         "review-comments/<int:comment_id>/report/",
         views.api_report_review_comment,
