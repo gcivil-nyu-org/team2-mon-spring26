@@ -220,7 +220,7 @@ export function PreferencePreviewSheet({
   // backend load. An AbortController cancels in-flight requests when the sheet
   // closes or filters change.
   useEffect(() => {
-    if (listVersion === 0 || venues.length === 0) return;
+    if (!open || listVersion === 0 || venues.length === 0) return;
     const controller = new AbortController();
 
     const needsFetch = venues.filter((v) => {
@@ -265,9 +265,10 @@ export function PreferencePreviewSheet({
     }
 
     return () => controller.abort();
-    // listVersion changes only when a new list is fetched, not when thumbnails fill in.
+    // open: abort immediately when sheet closes. listVersion: re-run for each new list.
+    // fetchVenuePreviewDetail is stable (useCallback with empty deps).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listVersion]);
+  }, [open, listVersion]);
 
   // Lazy-load full detail for the selected venue if it wasn't already prefetched.
   useEffect(() => {

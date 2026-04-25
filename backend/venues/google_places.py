@@ -27,7 +27,9 @@ def fetch_and_cache_primary_photo(venue):
     On first call or when stale: hits the API, resolves the CDN redirect URL (API key sent
     via header, never stored), updates VenuePhoto.fetched_at, and returns the URL.
     On subsequent calls within TTL: returns the cached URL from VenuePhoto with no API call.
-    Returns None if the venue has no google_place_id, the key is missing, or the API call fails.
+    On refresh failure: returns the stale cached URL (if one exists) so thumbnails don't
+    disappear during transient API/quota errors. Returns None only when there is no cached
+    photo and the API call fails, or when the venue has no google_place_id / API key.
     """
     from venues.models import VenuePhoto  # local import to avoid circular dependency
 
@@ -127,17 +129,18 @@ def bulk_prefetch_photos(venues, max_workers=5):
     def _needs_fetch(venue):
         if not venue.google_place_id:
             return False
-        primary = next(
-            (
-                p
-                for p in venue.photos.all()
-                if p.is_primary and p.source == "google_places"
-            ),
+        all_photos = list(venue.photos.all())
+        google_primary = next(
+            (p for p in all_photos if p.is_primary and p.source == "google_places"),
             None,
         )
-        if primary is None:
-            return True
-        return primary.fetched_at is None or primary.fetched_at < staleness_cutoff
+        if google_primary is not None:
+            # Only re-fetch if the existing Google Places URL is stale.
+            return google_primary.fetched_at is None or google_primary.fetched_at < staleness_cutoff
+        # Fetch only when the venue has no photos at all — if it already has
+        # photos from another source (e.g. S3) those will render fine without
+        # hitting the Google Places API.
+        return len(all_photos) == 0
 
     needs_fetch = [v for v in venues if _needs_fetch(v)]
     if not needs_fetch:
