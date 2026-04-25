@@ -115,6 +115,11 @@ export function PlanEventPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!date || !time) {
+      console.warn('Date and time are required to schedule a session.');
+      return;
+    }
+
     // Build location string and determine borough/neighborhood for filtering
     let locationString = "";
     let eventBorough = "";

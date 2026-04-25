@@ -1391,10 +1391,29 @@ class AdminUsersEndpointTests(TestCase):
         self.assertEqual(data["totalCount"], 1)
         self.assertEqual(data["users"][0]["username"], "alice_student")
 
+    def test_admin_users_search_by_username_only_match(self):
+        """Username matching is independent from email/name matching."""
+        self.student1.username = "zzz_only_username_match"
+        self.student1.save(update_fields=["username"])
+        res = self.client.get("/api/auth/admin/users/?q=zzz_only_username_match")
+        data = res.json()
+        self.assertEqual(data["totalCount"], 1)
+        self.assertEqual(data["users"][0]["id"], self.student1.id)
+
     def test_admin_users_short_query_does_not_filter(self):
         res = self.client.get("/api/auth/admin/users/?q=ali")
         data = res.json()
         self.assertEqual(data["totalCount"], 4)
+
+    def test_admin_users_query_exactly_three_chars_does_not_filter(self):
+        """Boundary: 'more than 3' means strictly > 3 chars."""
+        res = self.client.get("/api/auth/admin/users/?q=bob")
+        # 'bob' is 3 chars; would match bob@test.local if filtering kicked in
+        self.assertEqual(res.json()["totalCount"], 4)
+
+    def test_admin_users_query_four_chars_filters(self):
+        res = self.client.get("/api/auth/admin/users/?q=alic")
+        self.assertEqual(res.json()["totalCount"], 1)
 
     def test_admin_users_filter_by_role(self):
         res = self.client.get("/api/auth/admin/users/?role=student")

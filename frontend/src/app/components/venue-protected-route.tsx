@@ -26,9 +26,6 @@ export function VenueProtectedRoute() {
     }
     return <Navigate to="/venue/login" state={{ from: location }} replace />;
   }
-  if (currentManager.role !== 'venue_manager') {
-    return <Navigate to="/home" state={{ from: location }} replace />;
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 flex flex-col">

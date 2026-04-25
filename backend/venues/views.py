@@ -884,18 +884,29 @@ def api_admin_moderation_action(request, report_id):
                 )
         else:
             report.status = ContentReport.Status.REJECTED
-            if report.review_id:
-                report.review.is_visible = True
-                report.review.is_flagged = False
-                report.review.save(
-                    update_fields=["is_visible", "is_flagged", "updated_at"]
-                )
-            else:
-                report.comment.is_visible = True
-                report.comment.is_flagged = False
-                report.comment.save(
-                    update_fields=["is_visible", "is_flagged", "updated_at"]
-                )
+            target = report.review if report.review_id else report.comment
+            sibling_filter = (
+                {"review_id": report.review_id}
+                if report.review_id
+                else {"comment_id": report.comment_id}
+            )
+            siblings = ContentReport.objects.filter(**sibling_filter).exclude(
+                pk=report.pk
+            )
+            # Only restore visibility if no other report on this content is still confirmed.
+            other_confirmed = siblings.filter(
+                status=ContentReport.Status.CONFIRMED
+            ).exists()
+            other_open = siblings.filter(status=ContentReport.Status.PENDING).exists()
+
+            update_fields = ["updated_at"]
+            if not other_confirmed:
+                target.is_visible = True
+                update_fields.append("is_visible")
+            if not other_confirmed and not other_open:
+                target.is_flagged = False
+                update_fields.append("is_flagged")
+            target.save(update_fields=update_fields)
 
         report.save(
             update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"]

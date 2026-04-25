@@ -307,6 +307,65 @@ class SwipeEventAPITests(TestCase):
         event = SwipeEvent.objects.get(id=payload["event"]["id"])
         self.assertTrue(timezone.is_aware(event.scheduled_for))
 
+    def test_create_event_without_scheduled_for_is_none(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/",
+            json.dumps({"name": "No Schedule"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()["event"]["scheduled_for"])
+        event = SwipeEvent.objects.get(name="No Schedule")
+        self.assertIsNone(event.scheduled_for)
+
+    def test_create_event_with_invalid_scheduled_for_silently_drops(self):
+        """Backend tolerates an unparseable scheduled_for instead of erroring."""
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/",
+            json.dumps({"name": "Bad Date", "scheduled_for": "not-a-date"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()["event"]["scheduled_for"])
+
+    def test_create_event_with_aware_scheduled_for_preserves_offset(self):
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.post(
+            f"/api/groups/{self.group.id}/events/",
+            json.dumps(
+                {
+                    "name": "TZ Aware",
+                    "scheduled_for": "2026-05-01T19:30:00+00:00",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        event = SwipeEvent.objects.get(name="TZ Aware")
+        self.assertTrue(timezone.is_aware(event.scheduled_for))
+
+    def test_event_list_includes_scheduled_for(self):
+        SwipeEvent.objects.create(
+            group=self.group,
+            name="Scheduled",
+            created_by=self.leader,
+            scheduled_for=timezone.make_aware(
+                __import__("datetime").datetime(2026, 6, 1, 18, 0)
+            ),
+            borough="Manhattan",
+            neighborhood="East Village",
+        )
+        self.client.login(email="leader@nyu.edu", password="pass123")
+        response = self.client.get(f"/api/groups/{self.group.id}/events/")
+        self.assertEqual(response.status_code, 200)
+        events = response.json()["events"]
+        scheduled = next(e for e in events if e["name"] == "Scheduled")
+        self.assertIsNotNone(scheduled["scheduled_for"])
+        self.assertEqual(scheduled["borough"], "Manhattan")
+        self.assertEqual(scheduled["neighborhood"], "East Village")
+
     def test_create_event_as_member_forbidden(self):
         self.client.login(email="member1@nyu.edu", password="pass123")
         response = self.client.post(
