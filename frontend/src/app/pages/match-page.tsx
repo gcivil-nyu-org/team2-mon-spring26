@@ -124,6 +124,14 @@ export function MatchPage() {
                 <div className="mb-6">
                   <RestaurantCard restaurant={matchedRestaurant} isReadonly={true} />
                 </div>
+                <div className="mb-3">
+                  <Button
+                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+                    onClick={() => navigate(`/venues/${matchedRestaurant.id}/review?eventId=${event.id}`)}
+                  >
+                    Leave a Review
+                  </Button>
+                </div>
                 <Button
                   variant="outline"
                   className="w-full"

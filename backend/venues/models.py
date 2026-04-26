@@ -232,6 +232,7 @@ class Review(models.Model):
     rating = models.PositiveSmallIntegerField()  # 1 to 5
     title = models.CharField(max_length=255, blank=True)
     content = models.TextField(blank=True)
+    additional_photos = models.JSONField(default=list, blank=True)
     visit_date = models.DateField()
     is_flagged = models.BooleanField(default=False)
     is_visible = models.BooleanField(default=True)
@@ -296,3 +297,68 @@ class ReviewComment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.user.email} on review {self.review.id}"
+
+
+class ContentReport(models.Model):
+    """User-submitted moderation reports for reviews and review comments."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        CONFIRMED = "confirmed", "Confirmed"
+        REJECTED = "rejected", "Rejected"
+
+    review = models.ForeignKey(
+        Review,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="reports",
+    )
+    comment = models.ForeignKey(
+        ReviewComment,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="reports",
+    )
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="content_reports",
+    )
+    reason = models.TextField()
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_content_reports",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    (models.Q(review__isnull=False) & models.Q(comment__isnull=True))
+                    | (models.Q(review__isnull=True) & models.Q(comment__isnull=False))
+                ),
+                name="content_report_exactly_one_target",
+            )
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        target = (
+            f"review:{self.review_id}"
+            if self.review_id
+            else f"comment:{self.comment_id}"
+        )
+        return f"{self.reporter.email} reported {target} ({self.status})"

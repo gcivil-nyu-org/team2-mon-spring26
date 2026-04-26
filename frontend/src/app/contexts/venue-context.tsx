@@ -66,6 +66,53 @@ export interface StudentDiscount {
   updatedAt: string;
 }
 
+export interface ReviewAuthor {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+}
+
+export interface ReviewComment {
+  id: number;
+  content: string;
+  isManagerResponse: boolean;
+  isFlagged: boolean;
+  isVisible: boolean;
+  createdAt: string;
+  updatedAt: string;
+  author: ReviewAuthor;
+}
+
+export interface VenueReview {
+  id: number;
+  venueId: number;
+  rating: number;
+  title: string;
+  content: string;
+  visitDate: string;
+  additionalPhotos: string[];
+  isFlagged: boolean;
+  isVisible: boolean;
+  createdAt: string;
+  updatedAt: string;
+  author: ReviewAuthor;
+  comments: ReviewComment[];
+}
+
+export interface VenueReviewsPayload {
+  venue: {
+    id: number;
+    name: string;
+    streetAddress: string;
+    borough: string;
+    priceRange: string;
+    cuisineType: string;
+  };
+  canReply: boolean;
+  reviews: VenueReview[];
+}
+
 export interface ManagedVenue {
   id: number;
   name: string;
@@ -145,6 +192,8 @@ interface VenueContextType {
   claimVenue: (venueId: number, note?: string) => Promise<void>;
   fetchVenueDetail: (venueId: number) => Promise<ManagedVenue>;
   fetchDiscounts: (venueId: number) => Promise<StudentDiscount[]>;
+  fetchVenueReviews: (venueId: number) => Promise<VenueReviewsPayload>;
+  replyToReview: (venueId: number, reviewId: number, content: string) => Promise<ReviewComment>;
   createDiscount: (venueId: number, data: DiscountFormData) => Promise<StudentDiscount>;
   updateDiscount: (venueId: number, discountId: number, data: Partial<DiscountFormData>) => Promise<StudentDiscount>;
   deleteDiscount: (venueId: number, discountId: number) => Promise<void>;
@@ -295,6 +344,32 @@ export function VenueProvider({ children }: { children: ReactNode }) {
     return data.discounts ?? [];
   };
 
+  const fetchVenueReviews = async (venueId: number): Promise<VenueReviewsPayload> => {
+    const response = await fetch(apiUrl(`/api/venues/${venueId}/reviews/`), {
+      credentials: 'include',
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Failed to fetch reviews');
+    }
+    return data as VenueReviewsPayload;
+  };
+
+  const replyToReview = async (venueId: number, reviewId: number, content: string): Promise<ReviewComment> => {
+    const csrftoken = getCsrf();
+    const response = await fetch(apiUrl(`/api/venues/${venueId}/reviews/${reviewId}/comments/`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+      body: JSON.stringify({ content }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Failed to post reply');
+    }
+    return data.comment as ReviewComment;
+  };
+
   const createDiscount = async (venueId: number, formData: DiscountFormData): Promise<StudentDiscount> => {
     const csrftoken = getCsrf();
     const response = await fetch(apiUrl(`/api/venues/${venueId}/discounts/`), {
@@ -352,6 +427,8 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       claimVenue,
       fetchVenueDetail,
       fetchDiscounts,
+      fetchVenueReviews,
+      replyToReview,
       createDiscount,
       updateDiscount,
       deleteDiscount,

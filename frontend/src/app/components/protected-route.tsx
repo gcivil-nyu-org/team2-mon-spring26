@@ -11,6 +11,12 @@ export function ProtectedRoute() {
   if (!currentUser) {
     return <Navigate to="/" state={{ from: location }} replace />;
   }
+  if (currentUser.role === 'admin') {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+  if (currentUser.role === 'venue_manager') {
+    return <Navigate to="/venue/dashboard" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 flex flex-col">

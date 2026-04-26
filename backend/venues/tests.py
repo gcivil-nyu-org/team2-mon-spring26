@@ -9,8 +9,9 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import IntegrityError
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, Client
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import (
     CuisineType,
@@ -28,6 +29,7 @@ from venues.management.commands.ingest_csv import (
     map_price_range,
 )
 from venues.models import (
+    ContentReport,
     Inspection,
     Review,
     ReviewComment,
@@ -1515,6 +1517,649 @@ class ReviewCommentTests(TestCase):
         comments = list(self.review.comments.all())
         self.assertEqual(comments[0].content, "First")
         self.assertEqual(comments[1].content, "Second")
+
+
+class ModerationWorkflowTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email="admin@nyu.edu",
+            password="pass",
+            role="admin",
+            is_staff=True,
+        )
+        self.reporter = User.objects.create_user(
+            email="reporter@nyu.edu", password="pass"
+        )
+        self.author = User.objects.create_user(email="author@nyu.edu", password="pass")
+        self.venue = Venue.objects.create(name="Queue Venue")
+        self.review = Review.objects.create(
+            venue=self.venue,
+            user=self.author,
+            rating=2,
+            title="Bad",
+            content="Offensive text",
+            visit_date=datetime.date(2025, 1, 1),
+        )
+
+    def test_report_review_creates_pending_report(self):
+        self.client.force_login(self.reporter)
+        res = self.client.post(
+            reverse("report_review", args=[self.review.id]),
+            data=json.dumps({"reason": "Harassment"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.review.refresh_from_db()
+        self.assertTrue(self.review.is_flagged)
+        report = ContentReport.objects.get(review=self.review)
+        self.assertEqual(report.status, ContentReport.Status.PENDING)
+        self.assertEqual(report.reporter_id, self.reporter.id)
+
+    def test_admin_confirm_hides_content_and_records_audit(self):
+        report = ContentReport.objects.create(
+            review=self.review,
+            reporter=self.reporter,
+            reason="Abusive language",
+        )
+        self.client.force_login(self.admin)
+        with patch("venues.views.send_mail") as send_mail_mock:
+            res = self.client.post(
+                reverse("admin_moderation_action", args=[report.id]),
+                data=json.dumps({"action": "confirm"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+        report.refresh_from_db()
+        self.review.refresh_from_db()
+        self.assertEqual(report.status, ContentReport.Status.CONFIRMED)
+        self.assertEqual(report.reviewed_by_id, self.admin.id)
+        self.assertIsNotNone(report.reviewed_at)
+        self.assertFalse(self.review.is_visible)
+        send_mail_mock.assert_called_once()
+
+    def test_admin_queue_includes_report_reason_and_reporter(self):
+        ContentReport.objects.create(
+            review=self.review,
+            reporter=self.reporter,
+            reason="Spam",
+        )
+        self.client.force_login(self.admin)
+        res = self.client.get(reverse("admin_moderation_queue"))
+        self.assertEqual(res.status_code, 200)
+        payload = res.json()
+        self.assertEqual(payload["totalCount"], 1)
+        first = payload["reports"][0]
+        self.assertEqual(first["reason"], "Spam")
+        self.assertEqual(first["reporter"]["email"], "reporter@nyu.edu")
+
+
+class VenueReviewApiTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.venue = Venue.objects.create(name="Review Venue")
+        self.student = User.objects.create_user(
+            email="student@nyu.edu", password="pass"
+        )
+        self.other_student = User.objects.create_user(
+            email="other@nyu.edu", password="pass"
+        )
+        self.manager_user = User.objects.create_user(
+            email="manager@nyu.edu", password="pass", role="venue_manager"
+        )
+        self.manager_profile = VenueManagerProfile.objects.create(
+            user=self.manager_user,
+            business_name="Review Venue LLC",
+            business_email="manager@nyu.edu",
+        )
+        self.venue.managed_by = self.manager_profile
+        self.venue.save(update_fields=["managed_by", "updated_at"])
+
+        self.visible_review = Review.objects.create(
+            venue=self.venue,
+            user=self.student,
+            rating=5,
+            title="Great",
+            content="Really solid food.",
+            visit_date=datetime.date(2025, 1, 12),
+            additional_photos=["https://example.com/review-photo.jpg"],
+        )
+        self.hidden_review = Review.objects.create(
+            venue=self.venue,
+            user=self.other_student,
+            rating=2,
+            title="Hidden",
+            content="This should not show publicly.",
+            visit_date=datetime.date(2025, 1, 13),
+            is_visible=False,
+            is_flagged=True,
+        )
+        self.owner_comment = ReviewComment.objects.create(
+            review=self.visible_review,
+            user=self.manager_user,
+            content="Thanks for coming in!",
+            is_manager_response=True,
+        )
+
+    def test_public_review_list_excludes_hidden_reviews(self):
+        res = self.client.get(reverse("venue_reviews", args=[self.venue.id]))
+        self.assertEqual(res.status_code, 200)
+        payload = res.json()
+        self.assertTrue(payload["success"])
+        self.assertFalse(payload["canReply"])
+        self.assertEqual(payload["venue"]["name"], "Review Venue")
+        self.assertEqual(len(payload["reviews"]), 1)
+        review = payload["reviews"][0]
+        self.assertEqual(review["title"], "Great")
+        self.assertEqual(
+            review["additionalPhotos"], ["https://example.com/review-photo.jpg"]
+        )
+        self.assertEqual(len(review["comments"]), 1)
+        self.assertTrue(review["comments"][0]["isManagerResponse"])
+
+    def test_manager_can_view_hidden_reviews_for_owned_venue(self):
+        self.client.force_login(self.manager_user)
+        res = self.client.get(reverse("venue_reviews", args=[self.venue.id]))
+        self.assertEqual(res.status_code, 200)
+        payload = res.json()
+        self.assertTrue(payload["canReply"])
+        self.assertEqual(len(payload["reviews"]), 2)
+        hidden = next(
+            review for review in payload["reviews"] if review["title"] == "Hidden"
+        )
+        self.assertFalse(hidden["isVisible"])
+
+    def test_student_can_create_review_with_photos(self):
+        self.client.force_login(self.student)
+        res = self.client.post(
+            reverse("venue_reviews", args=[self.venue.id]),
+            data=json.dumps(
+                {
+                    "rating": 4,
+                    "title": "Good meal",
+                    "content": "Would come back.",
+                    "visitDate": "2025-02-14",
+                    "additionalPhotos": [
+                        "https://example.com/a.jpg",
+                        "https://example.com/b.jpg",
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        review = Review.objects.get(title="Good meal")
+        self.assertEqual(review.user, self.student)
+        self.assertEqual(
+            review.additional_photos,
+            ["https://example.com/a.jpg", "https://example.com/b.jpg"],
+        )
+        self.assertTrue(review.is_visible)
+
+    def test_manager_can_reply_to_review_as_owner_response(self):
+        self.client.force_login(self.manager_user)
+        res = self.client.post(
+            reverse(
+                "venue_review_comment", args=[self.venue.id, self.visible_review.id]
+            ),
+            data=json.dumps({"content": "We appreciate the feedback."}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        comment = ReviewComment.objects.get(content="We appreciate the feedback.")
+        self.assertTrue(comment.is_manager_response)
+        self.assertEqual(comment.user, self.manager_user)
+
+    def test_non_manager_cannot_reply_to_review(self):
+        self.client.force_login(self.student)
+        res = self.client.post(
+            reverse(
+                "venue_review_comment", args=[self.venue.id, self.visible_review.id]
+            ),
+            data=json.dumps({"content": "Not allowed"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+
+class VenueReviewApiValidationTests(TestCase):
+    """Covers POST /api/venues/<id>/reviews/ input validation branches."""
+
+    def setUp(self):
+        self.client = Client()
+        self.venue = Venue.objects.create(name="Validation Venue")
+        self.student = User.objects.create_user(
+            email="student-v@nyu.edu", password="pass"
+        )
+        self.manager_user = User.objects.create_user(
+            email="manager-v@nyu.edu", password="pass", role="venue_manager"
+        )
+
+    def _post(self, payload):
+        return self.client.post(
+            reverse("venue_reviews", args=[self.venue.id]),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    def test_anonymous_cannot_create_review(self):
+        res = self._post(
+            {"rating": 5, "visitDate": "2025-02-01", "title": "x", "content": "y"}
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_manager_cannot_create_review(self):
+        self.client.force_login(self.manager_user)
+        res = self._post(
+            {"rating": 5, "visitDate": "2025-02-01", "title": "x", "content": "y"}
+        )
+        self.assertEqual(res.status_code, 403)
+
+    def test_missing_rating_returns_400(self):
+        self.client.force_login(self.student)
+        res = self._post({"visitDate": "2025-02-01"})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Rating", res.json()["error"])
+
+    def test_rating_out_of_range_returns_400(self):
+        self.client.force_login(self.student)
+        res = self._post({"rating": 7, "visitDate": "2025-02-01"})
+        self.assertEqual(res.status_code, 400)
+        res = self._post({"rating": 0, "visitDate": "2025-02-01"})
+        self.assertEqual(res.status_code, 400)
+
+    def test_invalid_visit_date_returns_400(self):
+        self.client.force_login(self.student)
+        res = self._post({"rating": 4, "visitDate": "not-a-date"})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("visitDate", res.json()["error"])
+
+    def test_invalid_json_returns_400(self):
+        self.client.force_login(self.student)
+        res = self.client.post(
+            reverse("venue_reviews", args=[self.venue.id]),
+            data="{not-json",
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_non_list_photos_returns_400(self):
+        self.client.force_login(self.student)
+        res = self._post(
+            {
+                "rating": 4,
+                "visitDate": "2025-02-01",
+                "additionalPhotos": "https://example.com/a.jpg",
+            }
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("list", res.json()["error"])
+
+    def test_too_many_photos_returns_400(self):
+        self.client.force_login(self.student)
+        res = self._post(
+            {
+                "rating": 4,
+                "visitDate": "2025-02-01",
+                "additionalPhotos": [f"https://example.com/{i}.jpg" for i in range(6)],
+            }
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_blank_and_non_string_photos_are_filtered(self):
+        self.client.force_login(self.student)
+        res = self._post(
+            {
+                "rating": 4,
+                "visitDate": "2025-02-01",
+                "additionalPhotos": [
+                    "  https://example.com/a.jpg  ",
+                    "",
+                    None,
+                    42,
+                    "https://example.com/b.jpg",
+                ],
+            }
+        )
+        self.assertEqual(res.status_code, 201)
+        review = Review.objects.get(venue=self.venue, user=self.student)
+        self.assertEqual(
+            review.additional_photos,
+            ["https://example.com/a.jpg", "https://example.com/b.jpg"],
+        )
+
+    def test_inactive_venue_returns_404(self):
+        self.venue.is_active = False
+        self.venue.save(update_fields=["is_active", "updated_at"])
+        self.client.force_login(self.student)
+        res = self._post({"rating": 4, "visitDate": "2025-02-01"})
+        self.assertEqual(res.status_code, 404)
+
+    def test_method_not_allowed(self):
+        self.client.force_login(self.student)
+        res = self.client.delete(reverse("venue_reviews", args=[self.venue.id]))
+        self.assertEqual(res.status_code, 405)
+
+
+class ContentReportApiTests(TestCase):
+    """Covers user-facing report endpoints for reviews and comments."""
+
+    def setUp(self):
+        self.client = Client()
+        self.venue = Venue.objects.create(name="Report Venue")
+        self.author = User.objects.create_user(
+            email="author-r@nyu.edu", password="pass"
+        )
+        self.reporter = User.objects.create_user(
+            email="reporter-r@nyu.edu", password="pass"
+        )
+        self.review = Review.objects.create(
+            venue=self.venue,
+            user=self.author,
+            rating=3,
+            title="Hmm",
+            content="Body",
+            visit_date=datetime.date(2025, 1, 5),
+        )
+        self.comment = ReviewComment.objects.create(
+            review=self.review,
+            user=self.author,
+            content="Some comment",
+        )
+
+    def test_anonymous_cannot_report_review(self):
+        res = self.client.post(
+            reverse("report_review", args=[self.review.id]),
+            data=json.dumps({"reason": "spam"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_report_review_requires_reason(self):
+        self.client.force_login(self.reporter)
+        res = self.client.post(
+            reverse("report_review", args=[self.review.id]),
+            data=json.dumps({"reason": "  "}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(ContentReport.objects.count(), 0)
+
+    def test_report_review_invalid_json_returns_400(self):
+        self.client.force_login(self.reporter)
+        res = self.client.post(
+            reverse("report_review", args=[self.review.id]),
+            data="not-json",
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_report_review_missing_target_returns_404(self):
+        self.client.force_login(self.reporter)
+        res = self.client.post(
+            reverse("report_review", args=[99999]),
+            data=json.dumps({"reason": "spam"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 404)
+
+    def test_report_review_method_not_allowed(self):
+        self.client.force_login(self.reporter)
+        res = self.client.get(reverse("report_review", args=[self.review.id]))
+        self.assertEqual(res.status_code, 405)
+
+    def test_report_comment_creates_pending_report_and_flags(self):
+        self.client.force_login(self.reporter)
+        res = self.client.post(
+            reverse("report_review_comment", args=[self.comment.id]),
+            data=json.dumps({"reason": "Personal attack"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.comment.refresh_from_db()
+        self.assertTrue(self.comment.is_flagged)
+        report = ContentReport.objects.get(comment=self.comment)
+        self.assertEqual(report.status, ContentReport.Status.PENDING)
+        self.assertIsNone(report.review_id)
+
+    def test_report_comment_anonymous(self):
+        res = self.client.post(
+            reverse("report_review_comment", args=[self.comment.id]),
+            data=json.dumps({"reason": "spam"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_report_comment_missing_reason(self):
+        self.client.force_login(self.reporter)
+        res = self.client.post(
+            reverse("report_review_comment", args=[self.comment.id]),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_report_comment_missing_target_returns_404(self):
+        self.client.force_login(self.reporter)
+        res = self.client.post(
+            reverse("report_review_comment", args=[99999]),
+            data=json.dumps({"reason": "spam"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 404)
+
+
+class AdminModerationActionExtraTests(TestCase):
+    """Covers branches in api_admin_moderation_action / queue beyond the smoke test."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email="admin2@nyu.edu", password="pass", role="admin", is_staff=True
+        )
+        self.reporter = User.objects.create_user(
+            email="reporter2@nyu.edu", password="pass"
+        )
+        self.author = User.objects.create_user(email="author2@nyu.edu", password="pass")
+        self.venue = Venue.objects.create(name="Action Venue")
+        self.review = Review.objects.create(
+            venue=self.venue,
+            user=self.author,
+            rating=2,
+            title="X",
+            content="Y",
+            visit_date=datetime.date(2025, 3, 1),
+        )
+        self.comment = ReviewComment.objects.create(
+            review=self.review,
+            user=self.author,
+            content="A comment",
+        )
+        self.review_report = ContentReport.objects.create(
+            review=self.review, reporter=self.reporter, reason="bad review"
+        )
+        self.comment_report = ContentReport.objects.create(
+            comment=self.comment, reporter=self.reporter, reason="bad comment"
+        )
+
+    def test_queue_requires_admin(self):
+        res = self.client.get(reverse("admin_moderation_queue"))
+        self.assertEqual(res.status_code, 401)
+        self.client.force_login(self.reporter)
+        res = self.client.get(reverse("admin_moderation_queue"))
+        self.assertEqual(res.status_code, 403)
+
+    def test_queue_method_not_allowed(self):
+        self.client.force_login(self.admin)
+        res = self.client.post(reverse("admin_moderation_queue"))
+        self.assertEqual(res.status_code, 405)
+
+    def test_queue_filters_by_status(self):
+        self.review_report.status = ContentReport.Status.CONFIRMED
+        self.review_report.save(update_fields=["status", "updated_at"])
+        self.client.force_login(self.admin)
+        res = self.client.get(reverse("admin_moderation_queue") + "?status=confirmed")
+        payload = res.json()
+        self.assertEqual(payload["totalCount"], 1)
+        self.assertEqual(payload["reports"][0]["status"], "confirmed")
+
+    def test_queue_unknown_status_returns_all(self):
+        self.client.force_login(self.admin)
+        res = self.client.get(reverse("admin_moderation_queue") + "?status=bogus")
+        self.assertEqual(res.json()["totalCount"], 2)
+
+    def test_queue_pagination_clamps_page(self):
+        self.client.force_login(self.admin)
+        res = self.client.get(reverse("admin_moderation_queue") + "?page=99")
+        payload = res.json()
+        self.assertEqual(payload["page"], payload["totalPages"])
+
+    def test_action_requires_admin(self):
+        res = self.client.post(
+            reverse("admin_moderation_action", args=[self.review_report.id]),
+            data=json.dumps({"action": "confirm"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_action_invalid_action_returns_400(self):
+        self.client.force_login(self.admin)
+        res = self.client.post(
+            reverse("admin_moderation_action", args=[self.review_report.id]),
+            data=json.dumps({"action": "maybe"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_action_invalid_json_returns_400(self):
+        self.client.force_login(self.admin)
+        res = self.client.post(
+            reverse("admin_moderation_action", args=[self.review_report.id]),
+            data="not-json",
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_action_unknown_report_returns_404(self):
+        self.client.force_login(self.admin)
+        res = self.client.post(
+            reverse("admin_moderation_action", args=[99999]),
+            data=json.dumps({"action": "confirm"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 404)
+
+    def test_action_method_not_allowed(self):
+        self.client.force_login(self.admin)
+        res = self.client.get(
+            reverse("admin_moderation_action", args=[self.review_report.id])
+        )
+        self.assertEqual(res.status_code, 405)
+
+    def test_confirm_comment_hides_comment_and_emails_author(self):
+        self.client.force_login(self.admin)
+        with patch("venues.views.send_mail") as send_mail_mock:
+            res = self.client.post(
+                reverse("admin_moderation_action", args=[self.comment_report.id]),
+                data=json.dumps({"action": "confirm"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+        self.comment_report.refresh_from_db()
+        self.comment.refresh_from_db()
+        self.assertEqual(self.comment_report.status, ContentReport.Status.CONFIRMED)
+        self.assertFalse(self.comment.is_visible)
+        self.assertTrue(self.comment.is_flagged)
+        send_mail_mock.assert_called_once()
+
+    def test_reject_review_report_unflags_and_restores_visibility(self):
+        self.review.is_flagged = True
+        self.review.save(update_fields=["is_flagged", "updated_at"])
+        self.client.force_login(self.admin)
+        with patch("venues.views.send_mail") as send_mail_mock:
+            res = self.client.post(
+                reverse("admin_moderation_action", args=[self.review_report.id]),
+                data=json.dumps({"action": "reject"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+        self.review_report.refresh_from_db()
+        self.review.refresh_from_db()
+        self.assertEqual(self.review_report.status, ContentReport.Status.REJECTED)
+        self.assertTrue(self.review.is_visible)
+        self.assertFalse(self.review.is_flagged)
+        # No email sent on reject
+        send_mail_mock.assert_not_called()
+
+    def test_reject_comment_report_restores_comment(self):
+        self.comment.is_flagged = True
+        self.comment.save(update_fields=["is_flagged", "updated_at"])
+        self.client.force_login(self.admin)
+        res = self.client.post(
+            reverse("admin_moderation_action", args=[self.comment_report.id]),
+            data=json.dumps({"action": "reject"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.comment.refresh_from_db()
+        self.assertTrue(self.comment.is_visible)
+        self.assertFalse(self.comment.is_flagged)
+
+    def test_reject_does_not_unhide_when_another_confirmed_report_exists(self):
+        """Regression: rejecting a pending report must not resurrect content
+        that was already hidden by a separately confirmed report."""
+        # First report is confirmed → review hidden
+        confirmed_report = ContentReport.objects.create(
+            review=self.review,
+            reporter=self.reporter,
+            reason="really bad",
+            status=ContentReport.Status.CONFIRMED,
+            reviewed_by=self.admin,
+            reviewed_at=timezone.now(),
+        )
+        self.review.is_visible = False
+        self.review.is_flagged = True
+        self.review.save(update_fields=["is_visible", "is_flagged", "updated_at"])
+
+        # Second pending report on the same review gets rejected
+        self.client.force_login(self.admin)
+        res = self.client.post(
+            reverse("admin_moderation_action", args=[self.review_report.id]),
+            data=json.dumps({"action": "reject"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.review.refresh_from_db()
+        # Confirmed sibling still wants the content hidden
+        self.assertFalse(self.review.is_visible)
+        self.assertTrue(self.review.is_flagged)
+        # Sanity-check the rejected report did update its own status
+        self.review_report.refresh_from_db()
+        self.assertEqual(self.review_report.status, ContentReport.Status.REJECTED)
+        # Confirmed report unchanged
+        confirmed_report.refresh_from_db()
+        self.assertEqual(confirmed_report.status, ContentReport.Status.CONFIRMED)
+
+    def test_reject_keeps_flag_when_other_pending_report_exists(self):
+        ContentReport.objects.create(
+            review=self.review,
+            reporter=self.reporter,
+            reason="another open complaint",
+        )
+        self.review.is_flagged = True
+        self.review.save(update_fields=["is_flagged", "updated_at"])
+
+        self.client.force_login(self.admin)
+        res = self.client.post(
+            reverse("admin_moderation_action", args=[self.review_report.id]),
+            data=json.dumps({"action": "reject"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.review.refresh_from_db()
+        self.assertTrue(self.review.is_visible)
+        # Other pending report still implies the content is flagged for review
+        self.assertTrue(self.review.is_flagged)
 
 
 class StrictPreferenceFilterTest(TestCase):

@@ -216,18 +216,25 @@ export function VenueDashboardPage() {
                             Last inspection: {new Date(venue.lastInspectionDate).toLocaleDateString()}
                           </p>
                         )}
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/venue/venue/${venue.id}/discounts`)}
+                          >
+                            Manage Discounts
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/venue/venue/${venue.id}/reviews`)}
+                          >
+                            View Reviews
+                          </Button>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t flex items-center justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/venue/venue/${venue.id}/discounts`)}
-                      >
-                        Manage Discounts
-                      </Button>
-                    </div>
                   </CardContent>
                 </Card>
               );

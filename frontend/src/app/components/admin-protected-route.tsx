@@ -1,9 +1,11 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { useAdmin } from '@/app/contexts/admin-context';
+import { useApp } from '@/app/contexts/app-context';
 import { AdminTopNav } from '@/app/components/admin-top-nav';
 
 export function AdminProtectedRoute() {
   const { currentAdmin, authLoading } = useAdmin();
+  const { currentUser } = useApp();
   const location = useLocation();
 
   if (authLoading) {
@@ -15,6 +17,12 @@ export function AdminProtectedRoute() {
   }
 
   if (!currentAdmin) {
+    if (currentUser?.role === 'student') {
+      return <Navigate to="/home" state={{ from: location }} replace />;
+    }
+    if (currentUser?.role === 'venue_manager') {
+      return <Navigate to="/venue/dashboard" state={{ from: location }} replace />;
+    }
     return <Navigate to="/admin/login" state={{ from: location }} replace />;
   }
 
