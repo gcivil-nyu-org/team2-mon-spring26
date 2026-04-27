@@ -1336,6 +1336,26 @@ class GroupManagementAPITests(TestCase):
             GroupMembership.objects.filter(user=self.member, group=self.group).exists()
         )
 
+    def test_remove_member_completes_swipe_session(self):
+        from groups.models import Swipe
+        from venues.models import Venue
+
+        event = SwipeEvent.objects.create(group=self.group, status="active")
+        venue = Venue.objects.create(name="Match Venue", is_active=True)
+        Swipe.objects.create(
+            event=event, user=self.leader, venue=venue, direction=Swipe.Direction.RIGHT
+        )
+        event.completed_by.add(self.leader)
+
+        self.client.login(email="leader@example.com", password="pass123")
+        response = self.client.delete(
+            f"/api/groups/{self.group.id}/members/{self.member.id}/"
+        )
+        self.assertEqual(response.status_code, 200)
+        event.refresh_from_db()
+        self.assertEqual(event.status, SwipeEvent.Status.COMPLETED)
+        self.assertEqual(event.matched_venue, venue)
+
     def test_remove_self_fails(self):
         self.client.login(email="leader@example.com", password="pass123")
         response = self.client.delete(
@@ -1440,6 +1460,27 @@ class GroupManagementAPITests(TestCase):
         self.assertFalse(
             GroupMembership.objects.filter(user=self.member, group=self.group).exists()
         )
+
+    def test_leave_group_completes_swipe_session(self):
+        event = SwipeEvent.objects.create(group=self.group, status="active")
+        event.completed_by.add(self.leader)
+        self.client.login(email="member@example.com", password="pass123")
+        response = self.client.post(f"/api/groups/{self.group.id}/leave/")
+        self.assertEqual(response.status_code, 200)
+        event.refresh_from_db()
+        self.assertEqual(event.status, SwipeEvent.Status.COMPLETED)
+
+    def test_helper_zero_participants_completes_session(self):
+        from groups.views import check_and_complete_active_swipe_events
+
+        # Clear memberships to make total_participants = 0
+        GroupMembership.objects.filter(group=self.group).delete()
+        event = SwipeEvent.objects.create(group=self.group, status="active")
+
+        check_and_complete_active_swipe_events(self.group)
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, SwipeEvent.Status.COMPLETED)
 
     def test_leave_group_as_leader_with_another_leader(self):
         """Leader can leave if another leader exists."""
