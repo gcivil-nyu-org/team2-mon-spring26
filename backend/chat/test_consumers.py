@@ -58,6 +58,14 @@ class ConsumerCoverageTests(TransactionTestCase):
             text_data=json.dumps({"type": "notification_update"})
         )
 
+    async def test_swipe_session_update(self):
+        consumer = UserNotificationConsumer()
+        consumer.send = AsyncMock()
+        await consumer.swipe_session_update({"group_id": "123"})
+        consumer.send.assert_called_once_with(
+            text_data=json.dumps({"type": "swipe_session_update", "group_id": "123"})
+        )
+
     def test_routing(self):
         # Just to ensure routing.py is imported and the patterns are valid
         self.assertTrue(len(websocket_urlpatterns) > 0)

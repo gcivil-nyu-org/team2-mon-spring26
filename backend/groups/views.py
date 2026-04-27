@@ -545,6 +545,64 @@ def api_invitation_action(request, invitation_id, action):
         return JsonResponse({"error": "An expected error occurred"}, status=500)
 
 
+def check_and_complete_active_swipe_events(group):
+    """
+    Checks all active swipe events for the group. If the number of members who have
+    completed swiping is >= the new total_participants, computes the match and
+    marks the event as completed, then triggers a websocket update.
+    """
+    from .models import SwipeEvent, Swipe
+    from venues.models import Venue
+    import math
+    from django.db.models import Count
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+
+    active_events = group.swipe_events.filter(status=SwipeEvent.Status.ACTIVE)
+    total_participants = group.memberships.count()
+
+    # If total_participants drops to 0, we could cancel the events, but 0 threshold handles it somewhat.
+    if total_participants == 0:
+        for event in active_events:
+            event.status = SwipeEvent.Status.COMPLETED
+            event.save(update_fields=["status", "updated_at"])
+        return
+
+    for event in active_events:
+        completed_count = event.completed_by.count()
+        if completed_count >= total_participants:
+            all_swipes = event.swipes.all()
+            threshold = math.ceil(total_participants * 2 / 3)
+            venue_likes = (
+                all_swipes.filter(direction=Swipe.Direction.RIGHT)
+                .values("venue_id")
+                .annotate(like_count=Count("user_id", distinct=True))
+                .order_by("-like_count")
+            )
+
+            matched_venue = None
+            for entry in venue_likes:
+                if entry["like_count"] >= threshold:
+                    matched_venue = Venue.objects.get(id=entry["venue_id"])
+                    break
+
+            if matched_venue:
+                event.matched_venue = matched_venue
+            event.status = SwipeEvent.Status.COMPLETED
+            event.save(update_fields=["matched_venue", "status", "updated_at"])
+
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                for member in group.memberships.all():
+                    async_to_sync(channel_layer.group_send)(
+                        f"user_notifications_{member.user.id}",
+                        {
+                            "type": "swipe_session_update",
+                            "group_id": str(group.id),
+                        },
+                    )
+
+
 def api_remove_from_group(request, group_id, user_id):
     """
     DELETE /api/groups/<id>/members/<user_id>/
@@ -598,6 +656,11 @@ def api_remove_from_group(request, group_id, user_id):
                 message_type=Message.MessageType.SYSTEM,
                 body=f"{username_display} was removed from the group",
             )
+            from chat.views import notify_chat_users
+
+            notify_chat_users(group.chat)
+
+        check_and_complete_active_swipe_events(group)
 
         return JsonResponse({"success": True, "group": _group_to_json(group)})
 
@@ -718,6 +781,11 @@ def api_leave_group(request, group_id):
                     message_type=Message.MessageType.SYSTEM,
                     body=f"{username_display} left the group",
                 )
+                from chat.views import notify_chat_users
+
+                notify_chat_users(group.chat)
+
+            check_and_complete_active_swipe_events(group)
 
         return JsonResponse({"success": True, "message": "You have left the group"})
 
@@ -1445,6 +1513,9 @@ def api_finish_swiping(request, group_id, event_id):
                     message_type=Message.MessageType.SYSTEM,
                     body=f"{username_display} finished swiping",
                 )
+                from chat.views import notify_chat_users
+
+                notify_chat_users(group.chat)
 
         # Auto-complete the event if all members have finished swiping
         completed_count = event.completed_by.count()
@@ -1475,6 +1546,20 @@ def api_finish_swiping(request, group_id, event_id):
                 event.matched_venue = matched_venue
             event.status = SwipeEvent.Status.COMPLETED
             event.save(update_fields=["matched_venue", "status", "updated_at"])
+
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            for member in group.memberships.all():
+                async_to_sync(channel_layer.group_send)(
+                    f"user_notifications_{member.user.id}",
+                    {
+                        "type": "swipe_session_update",
+                        "group_id": str(group.id),
+                    },
+                )
 
         return JsonResponse(
             {
@@ -1545,6 +1630,20 @@ def api_reswipe(request, group_id, event_id):
         # Clear exact user swipes and revert completion flag
         Swipe.objects.filter(event=event, user=request.user).delete()
         event.completed_by.remove(request.user)
+
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            for member in group.memberships.all():
+                async_to_sync(channel_layer.group_send)(
+                    f"user_notifications_{member.user.id}",
+                    {
+                        "type": "swipe_session_update",
+                        "group_id": str(group.id),
+                    },
+                )
 
         return JsonResponse({"success": True})
     except (Group.DoesNotExist, SwipeEvent.DoesNotExist):

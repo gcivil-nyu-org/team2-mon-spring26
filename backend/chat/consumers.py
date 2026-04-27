@@ -38,3 +38,16 @@ class UserNotificationConsumer(AsyncWebsocketConsumer):
         Handler for the 'notification_update' event to reload invites/activity.
         """
         await self.send(text_data=json.dumps({"type": "notification_update"}))
+
+    async def swipe_session_update(self, event):
+        """
+        Handler for the 'swipe_session_update' event to reload swipe session data.
+        """
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "swipe_session_update",
+                    "group_id": event.get("group_id"),
+                }
+            )
+        )
