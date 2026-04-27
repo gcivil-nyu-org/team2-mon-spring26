@@ -289,6 +289,7 @@ function AppInner({ children }: { children: ReactNode }) {
         credentials: 'include',
         signal,
       });
+      if (!res.ok) return;
       const data = await res.json();
       if (data.success) {
         setSwipeEvents(
