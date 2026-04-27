@@ -1464,7 +1464,9 @@ class GroupManagementAPITests(TestCase):
         )
 
     def test_leave_group_completes_swipe_session(self):
-        event = SwipeEvent.objects.create(group=self.group, status="active")
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Test Swipe Event", status="active"
+        )
         event.completed_by.add(self.leader)
         self.client.login(email="member@example.com", password="pass123")
         response = self.client.post(f"/api/groups/{self.group.id}/leave/")
@@ -1477,7 +1479,9 @@ class GroupManagementAPITests(TestCase):
 
         # Clear memberships to make total_participants = 0
         GroupMembership.objects.filter(group=self.group).delete()
-        event = SwipeEvent.objects.create(group=self.group, status="active")
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Test Swipe Event", status="active"
+        )
 
         check_and_complete_active_swipe_events(self.group)
 
