@@ -161,6 +161,8 @@ export function FloatingChat() {
   }, []);
 
   // Derive DM contacts from group members — no separate API call needed.
+  // Only include members from groups the current user belongs to, so users
+  // can only DM people they already share a group with.
   const potentialDMContacts = useMemo(() => {
     if (!currentUser) return [];
     const seen = new Set<string>();

@@ -17,6 +17,9 @@ _PLACES_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/media?maxWidt
 # Google CDN URLs (lh3.googleusercontent.com) have an undocumented TTL that can
 # be as short as a few hours. Re-fetch after this threshold to stay fresh.
 _PHOTO_TTL = timedelta(hours=6)
+# On refresh failure, throttle retries by advancing fetched_at so the next
+# staleness check won't trigger for another FAILURE_BACKOFF period.
+_FAILURE_BACKOFF = timedelta(minutes=30)
 
 
 def fetch_and_cache_primary_photo(venue):
@@ -100,10 +103,19 @@ def fetch_and_cache_primary_photo(venue):
         return photo.image_url
 
     except Exception:
-        logger.exception("Failed to fetch Google Places photo for venue %s", venue.id)
-        # Return the stale cached URL rather than None so thumbnails don't
-        # disappear during transient API failures or quota errors.
+        logger.exception("Failed to refresh Google Places photo for venue %s", venue.id)
         if cached:
+            logger.warning(
+                "Serving stale cached photo for venue %s (fetched_at=%s); "
+                "check Google Places API quota/availability",
+                venue.id,
+                cached.fetched_at,
+            )
+            # Advance fetched_at so staleness checks don't re-trigger on every
+            # request during an outage — retry after FAILURE_BACKOFF, not immediately.
+            VenuePhoto.objects.filter(pk=cached.pk).update(
+                fetched_at=timezone.now() - _PHOTO_TTL + _FAILURE_BACKOFF
+            )
             return cached.image_url
         return None
 

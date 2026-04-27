@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("venues", "0005_alter_venuephoto_image_url"),
+        ("venues", "0007_review_additional_photos"),
     ]
 
     operations = [
