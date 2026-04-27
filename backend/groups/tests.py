@@ -1340,7 +1340,9 @@ class GroupManagementAPITests(TestCase):
         from groups.models import Swipe
         from venues.models import Venue
 
-        event = SwipeEvent.objects.create(group=self.group, status="active")
+        event = SwipeEvent.objects.create(
+            group=self.group, name="Test Swipe Event", status="active"
+        )
         venue = Venue.objects.create(name="Match Venue", is_active=True)
         Swipe.objects.create(
             event=event, user=self.leader, venue=venue, direction=Swipe.Direction.RIGHT
