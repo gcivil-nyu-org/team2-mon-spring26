@@ -20,7 +20,31 @@ urlpatterns = [
         views.api_venue_discount_detail,
         name="venue_discount_detail",
     ),
+    path("<int:venue_id>/reviews/", views.api_venue_reviews, name="venue_reviews"),
+    path(
+        "<int:venue_id>/reviews/<int:review_id>/comments/",
+        views.api_venue_review_comment,
+        name="venue_review_comment",
+    ),
+    path(
+        "reviews/<int:review_id>/report/", views.api_report_review, name="report_review"
+    ),
+    path(
+        "review-comments/<int:comment_id>/report/",
+        views.api_report_review_comment,
+        name="report_review_comment",
+    ),
     # Admin venue verification
+    path(
+        "admin/moderation/",
+        views.api_admin_moderation_queue,
+        name="admin_moderation_queue",
+    ),
+    path(
+        "admin/moderation/<int:report_id>/",
+        views.api_admin_moderation_action,
+        name="admin_moderation_action",
+    ),
     path("admin/claims/", views.api_admin_venue_claims, name="admin_venue_claims"),
     path(
         "admin/claims/<int:claim_id>/",

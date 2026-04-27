@@ -71,6 +71,7 @@ export interface SwipeEvent {
   name: string;
   status: 'pending' | 'active' | 'completed';
   createdAt: string;
+  scheduledFor?: string;
   matchedRestaurantId?: string;
   borough?: string;
   neighborhood?: string;
@@ -194,7 +195,14 @@ export interface AppContextType extends AuthContextType {
   currentGroup: Group | null;
   setCurrentGroup: (group: Group | null) => void;
   swipeEvents: SwipeEvent[];
-  createSwipeEvent: (groupId: string, name: string, borough?: string, neighborhood?: string, venueLimit?: number) => Promise<SwipeEvent>;
+  createSwipeEvent: (
+    groupId: string,
+    name: string,
+    borough?: string,
+    neighborhood?: string,
+    venueLimit?: number,
+    scheduledFor?: string
+  ) => Promise<SwipeEvent>;
   fetchSwipeEvents: (groupId: string, signal?: AbortSignal) => Promise<void>;
   currentSwipeEvent: SwipeEvent | null;
   setCurrentSwipeEvent: (event: SwipeEvent | null) => void;
@@ -763,13 +771,20 @@ function AppInner({ children }: { children: ReactNode }) {
     name: string,
     borough?: string,
     neighborhood?: string,
-    venueLimit?: number
+    venueLimit?: number,
+    scheduledFor?: string
   ): Promise<SwipeEvent> => {
     const res = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-      body: JSON.stringify({ name, borough, neighborhood, venue_limit: venueLimit || 10 }),
+      body: JSON.stringify({
+        name,
+        borough,
+        neighborhood,
+        venue_limit: venueLimit || 10,
+        scheduled_for: scheduledFor,
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to create event');
@@ -779,6 +794,7 @@ function AppInner({ children }: { children: ReactNode }) {
       name: data.event.name,
       status: data.event.status,
       createdAt: data.event.created_at,
+      scheduledFor: data.event.scheduled_for || undefined,
       matchedRestaurantId: data.event.matched_venue_id ? String(data.event.matched_venue_id) : undefined,
       borough: data.event.borough || '',
       neighborhood: data.event.neighborhood || '',
@@ -800,15 +816,19 @@ function AppInner({ children }: { children: ReactNode }) {
         setSwipeEvents(
           data.events.map((e: {
             id: number; group_id: number; name: string; status: string;
-            created_at: string; matched_venue_id: number | null;
+            created_at: string; scheduled_for: string | null; matched_venue_id: number | null;
             total_participants: number; completed_participants_count: number;
+            borough?: string; neighborhood?: string;
           }) => ({
             id: String(e.id),
             groupId: String(e.group_id),
             name: e.name,
             status: e.status as SwipeEvent['status'],
             createdAt: e.created_at,
+            scheduledFor: e.scheduled_for || undefined,
             matchedRestaurantId: e.matched_venue_id ? String(e.matched_venue_id) : undefined,
+            borough: e.borough || '',
+            neighborhood: e.neighborhood || '',
             totalParticipants: e.total_participants,
             completedParticipantsCount: e.completed_participants_count,
           }))

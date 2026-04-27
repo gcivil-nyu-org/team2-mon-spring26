@@ -9,9 +9,11 @@ import { GroupDetailPage } from '@/app/pages/group-detail-page';
 import { PlanEventPage } from '@/app/pages/plan-event-page';
 import { SwipePage } from '@/app/pages/swipe-page';
 import { MatchPage } from '@/app/pages/match-page';
+import { ReviewVenuePage } from '@/app/pages/review-venue-page';
 import { VenueDashboardPage } from '@/app/pages/venue-dashboard-page';
 import { ClaimVenuePage } from '@/app/pages/claim-venue-page';
 import { VenueDiscountPage } from '@/app/pages/venue-discount-page';
+import { VenueReviewsPage } from '@/app/pages/venue-reviews-page';
 import { VenueLoginPage } from '@/app/pages/venue-login-page';
 import { VenueRegisterPage } from '@/app/pages/venue-register-page';
 import { AdminLoginPage } from '@/app/pages/admin-login-page';
@@ -23,6 +25,7 @@ import { AdminVenuesPage } from '@/app/pages/admin-venues-page';
 import { AdminVenueEditPage } from '@/app/pages/admin-venue-edit-page';
 import { AdminUsersPage } from '@/app/pages/admin-users-page';
 import { AdminUserEditPage } from '@/app/pages/admin-user-edit-page';
+import { AdminModerationPage } from '@/app/pages/admin-moderation-page';
 import { ResetPasswordPage } from '@/app/pages/reset-password-page';
 import { ProfileEditPage } from '@/app/pages/profile-edit-page';
 import { ProtectedRoute } from '@/app/components/protected-route';
@@ -87,6 +90,10 @@ export const router = createBrowserRouter([
             path: 'admin/users/:userId',
             Component: AdminUserEditPage,
           },
+          {
+            path: 'admin/moderation',
+            Component: AdminModerationPage,
+          },
         ],
       },
       // ── Venue public routes ──────────────────────────────────────────
@@ -113,6 +120,10 @@ export const router = createBrowserRouter([
           {
             path: 'venue/venue/:venueId/discounts',
             Component: VenueDiscountPage,
+          },
+          {
+            path: 'venue/venue/:venueId/reviews',
+            Component: VenueReviewsPage,
           },
         ],
       },
@@ -151,6 +162,10 @@ export const router = createBrowserRouter([
           {
             path: 'match/:eventId',
             Component: MatchPage,
+          },
+          {
+            path: 'venues/:venueId/review',
+            Component: ReviewVenuePage,
           },
         ],
       },

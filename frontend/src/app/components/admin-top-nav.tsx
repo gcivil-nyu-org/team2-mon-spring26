@@ -47,6 +47,10 @@ export function AdminTopNav() {
     backLink = '/admin/users';
     contextTitle = 'Edit User';
     contextSubtitle = 'Update user profile';
+  } else if (path === '/admin/moderation') {
+    isDynamic = true;
+    contextTitle = 'Moderation Queue';
+    contextSubtitle = 'Review flagged reviews and comments';
   }
 
   return (

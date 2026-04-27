@@ -833,6 +833,7 @@ def _require_admin(request):
 def _admin_user_row(user):
     return {
         "id": user.id,
+        "username": user.username,
         "email": user.email,
         "firstName": user.first_name,
         "lastName": user.last_name,
@@ -920,9 +921,10 @@ def api_admin_users_list(request):
 
     qs = User.objects.all().order_by("-created_at")
 
-    if q:
+    if len(q) > 3:
         qs = qs.filter(
             Q(email__icontains=q)
+            | Q(username__icontains=q)
             | Q(first_name__icontains=q)
             | Q(last_name__icontains=q)
         )
