@@ -136,6 +136,7 @@ export function FloatingChat() {
   useEffect(() => {
     const handleOpenDM = (e: CustomEvent<string>) => {
       setIsOpen(true);
+      window.dispatchEvent(new CustomEvent('floating-chat-open'));
       handleStartDM(e.detail);
     };
     window.addEventListener('open-chat-dm', handleOpenDM as EventListener);
@@ -145,7 +146,11 @@ export function FloatingChat() {
   }, [handleStartDM]);
 
   useEffect(() => {
-    const handleSidebarOpen = () => setIsSidebarOpen(true);
+    const handleSidebarOpen = () => {
+      setIsSidebarOpen(true);
+      setIsOpen(false);
+      setIsExpanded(false);
+    };
     const handleSidebarClose = () => setIsSidebarOpen(false);
     window.addEventListener('chat-sidebar-open', handleSidebarOpen);
     window.addEventListener('chat-sidebar-close', handleSidebarClose);
@@ -155,30 +160,24 @@ export function FloatingChat() {
     };
   }, []);
 
-  // Get all users from groups (potential DM contacts)
+  // Derive DM contacts from group members — no separate API call needed.
+  // Only include members from groups the current user belongs to, so users
+  // can only DM people they already share a group with.
   const potentialDMContacts = useMemo(() => {
     if (!currentUser) return [];
-    
-    const contactMap = new Map<string, { id: string, name: string, photoUrl?: string, email: string }>();
-    
-    // Only show users who are in at least one group with the current user
-    groups.forEach(group => {
-      const isCurrentUserInGroup = group.members.some(m => String(m.userId) === String(currentUser.id));
-      if (!isCurrentUserInGroup) return;
-      
-      group.members.forEach(member => {
-        if (String(member.userId) !== String(currentUser.id)) {
-          contactMap.set(String(member.userId), {
-            id: String(member.userId),
-            name: member.userName,
-            photoUrl: member.userPhotoUrl,
-            email: '' // Fallback since UI uses name for avatar
-          });
-        }
-      });
-    });
-    
-    return Array.from(contactMap.values());
+    const seen = new Set<string>();
+    const contacts: { id: string; name: string; photoUrl?: string }[] = [];
+    for (const group of groups) {
+      const currentUserInGroup = group.members.some(m => String(m.userId) === String(currentUser.id));
+      if (!currentUserInGroup) continue;
+      for (const member of group.members) {
+        if (String(member.userId) === String(currentUser.id)) continue;
+        if (seen.has(String(member.userId))) continue;
+        seen.add(String(member.userId));
+        contacts.push({ id: String(member.userId), name: member.userName, photoUrl: member.userPhotoUrl });
+      }
+    }
+    return contacts;
   }, [groups, currentUser]);
 
   // Don't render if no current user (not logged in) or no conversations
@@ -191,7 +190,7 @@ export function FloatingChat() {
       {/* Floating Chat Button */}
       {!isOpen && !isSidebarOpen && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => { setIsOpen(true); window.dispatchEvent(new CustomEvent('floating-chat-open')); }}
           className="fixed bottom-6 right-6 w-14 h-14 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 z-50"
           aria-label="Open chat"
         >
@@ -239,13 +238,9 @@ export function FloatingChat() {
                             <UserAvatar
                               photoUrl={user.photoUrl}
                               name={user.name}
-                              email={user.email}
                               size={40}
                             />
-                            <div>
-                              <p className="font-medium">{user.name}</p>
-                              <p className="text-xs text-muted-foreground">{user.email}</p>
-                            </div>
+                            <p className="font-medium">{user.name}</p>
                           </button>
                         ))
                       )}

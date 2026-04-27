@@ -15,13 +15,20 @@ export function ChatSidebar({ groupId, onClose }: ChatSidebarProps) {
   const [message, setMessage] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const messages = useMemo(() => chatMessages[groupId] || [], [chatMessages, groupId]);
+  // Keep a stable ref to onClose so the effect below never needs to re-run
+  // even if the parent passes an inline arrow function (which changes every render).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('chat-sidebar-open'));
+    const handleFloatingChatOpen = () => onCloseRef.current();
+    window.addEventListener('floating-chat-open', handleFloatingChatOpen);
     return () => {
       window.dispatchEvent(new CustomEvent('chat-sidebar-close'));
+      window.removeEventListener('floating-chat-open', handleFloatingChatOpen);
     };
-  }, []);
+  }, []); // empty deps — stable for the lifetime of the sidebar
 
   useEffect(() => {
     if (scrollRef.current) {

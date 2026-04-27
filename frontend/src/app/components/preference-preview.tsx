@@ -163,6 +163,11 @@ export function PreferencePreviewSheet({
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const detailedVenuesRef = useRef<Map<string, Restaurant>>(new Map());
+  // Incremented each time a fresh list is fetched, so the thumbnail prefetch
+  // effect re-runs for the new set of venues without depending on `venues` directly
+  // (which would re-trigger as thumbnails fill in).
+  const listVersionRef = useRef(0);
+  const [listVersion, setListVersion] = useState(0);
 
   const key = filtersKey(filters);
 
@@ -192,6 +197,9 @@ export function PreferencePreviewSheet({
         // aren't in the new result set.
         detailedVenuesRef.current = new Map();
         setSelected(result.venues[0] ?? null);
+        // Signal the thumbnail prefetch effect to run for this new list.
+        listVersionRef.current += 1;
+        setListVersion(listVersionRef.current);
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') return;
         setError((err as Error).message ?? 'Failed to load preview');
@@ -207,7 +215,62 @@ export function PreferencePreviewSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, key, mode, groupId]);
 
-  // Lazy-load full detail (with fetched photo) for the selected venue.
+  // Prefetch full details for all venues in the list so thumbnails appear without
+  // waiting for the user to click. Concurrency is capped at 5 to avoid spiking
+  // backend load. An AbortController cancels in-flight requests when the sheet
+  // closes or filters change.
+  useEffect(() => {
+    if (!open || listVersion === 0 || venues.length === 0) return;
+    const controller = new AbortController();
+
+    const needsFetch = venues.filter((v) => {
+      if (v.images && v.images.length > 0) return false;
+      if (detailedVenuesRef.current.has(v.id)) {
+        // Already cached — patch immediately without a network call.
+        const cached = detailedVenuesRef.current.get(v.id)!;
+        setVenues((prev) => prev.map((p) => (p.id === cached.id ? cached : p)));
+        setSelected((prev) =>
+          prev?.id === cached.id && (!prev.images || prev.images.length === 0) ? cached : prev
+        );
+        return false;
+      }
+      return true;
+    });
+
+    // Run up to CONCURRENCY fetches at once, starting the next when one finishes.
+    const CONCURRENCY = 5;
+    let idx = 0;
+    const runNext = () => {
+      if (controller.signal.aborted || idx >= needsFetch.length) return;
+      const venue = needsFetch[idx++];
+      fetchVenuePreviewDetail(venue.id, controller.signal)
+        .then((detailed) => {
+          if (controller.signal.aborted) return;
+          detailedVenuesRef.current.set(detailed.id, detailed);
+          setVenues((prev) => prev.map((v) => (v.id === detailed.id ? detailed : v)));
+          setSelected((prev) =>
+            prev?.id === detailed.id && (!prev.images || prev.images.length === 0)
+              ? detailed
+              : prev
+          );
+        })
+        .catch(() => {
+          // Non-fatal — thumbnail stays empty for this venue.
+        })
+        .finally(runNext);
+    };
+
+    for (let i = 0; i < Math.min(CONCURRENCY, needsFetch.length); i++) {
+      runNext();
+    }
+
+    return () => controller.abort();
+    // open: abort immediately when sheet closes. listVersion: re-run for each new list.
+    // fetchVenuePreviewDetail is stable (useCallback with empty deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, listVersion]);
+
+  // Lazy-load full detail for the selected venue if it wasn't already prefetched.
   useEffect(() => {
     if (!selected) return;
     if (selected.images && selected.images.length > 0) return;
@@ -218,11 +281,12 @@ export function PreferencePreviewSheet({
     }
     const controller = new AbortController();
     setDetailLoading(true);
-    fetchVenuePreviewDetail(selected.id)
+    fetchVenuePreviewDetail(selected.id, controller.signal)
       .then((venue) => {
         if (controller.signal.aborted) return;
         detailedVenuesRef.current.set(venue.id, venue);
         setSelected(venue);
+        setVenues((prev) => prev.map((v) => (v.id === venue.id ? venue : v)));
       })
       .catch(() => {
         // Non-fatal — fall back to whatever data we already have.
@@ -294,7 +358,9 @@ export function PreferencePreviewSheet({
                                 alt={venue.name}
                                 className="h-full w-full object-cover"
                               />
-                            ) : null}
+                            ) : (
+                              <Skeleton className="h-full w-full" />
+                            )}
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-medium text-sm text-zinc-900">

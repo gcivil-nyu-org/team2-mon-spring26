@@ -184,6 +184,7 @@ class VenuePhoto(models.Model):
         blank=True,
         related_name="uploaded_photos",
     )
+    fetched_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -196,6 +196,7 @@ class GooglePlacesPhotoTest(TestCase):
             image_url=cdn_url,
             source="google_places",
             is_primary=True,
+            fetched_at=timezone.now(),
         )
 
         from venues.google_places import fetch_and_cache_primary_photo
@@ -215,6 +216,54 @@ class GooglePlacesPhotoTest(TestCase):
 
         self.assertIsNone(result)
         self.assertFalse(VenuePhoto.objects.filter(venue=self.venue).exists())
+
+    @patch("venues.google_places.requests.get")
+    def test_stale_cache_triggers_refetch_and_updates_fetched_at(self, mock_get):
+        stale_url = "https://lh3.googleusercontent.com/places/stale"
+        fresh_url = "https://lh3.googleusercontent.com/places/fresh"
+        photo = VenuePhoto.objects.create(
+            venue=self.venue,
+            image_url=stale_url,
+            source="google_places",
+            is_primary=True,
+            fetched_at=timezone.now() - datetime.timedelta(hours=24),
+        )
+        mock_get.side_effect = [
+            self._make_detail_response(),
+            self._make_media_response(fresh_url),
+        ]
+
+        from venues.google_places import fetch_and_cache_primary_photo
+
+        result = fetch_and_cache_primary_photo(self.venue)
+
+        self.assertEqual(result, fresh_url)
+        self.assertEqual(mock_get.call_count, 2)
+        photo.refresh_from_db()
+        self.assertEqual(photo.image_url, fresh_url)
+        self.assertLess((timezone.now() - photo.fetched_at).total_seconds(), 10)
+
+    @patch("venues.google_places.requests.get")
+    def test_stale_cache_api_failure_falls_back_to_cached_url(self, mock_get):
+        """If refresh fails, the stale cached URL is returned and fetched_at is advanced (backoff)."""
+        stale_url = "https://lh3.googleusercontent.com/places/stale"
+        photo = VenuePhoto.objects.create(
+            venue=self.venue,
+            image_url=stale_url,
+            source="google_places",
+            is_primary=True,
+            fetched_at=timezone.now() - datetime.timedelta(hours=24),
+        )
+        original_fetched_at = photo.fetched_at
+        mock_get.side_effect = Exception("network error")
+
+        from venues.google_places import fetch_and_cache_primary_photo
+
+        result = fetch_and_cache_primary_photo(self.venue)
+
+        self.assertEqual(result, stale_url)
+        photo.refresh_from_db()
+        self.assertGreater(photo.fetched_at, original_fetched_at)
 
     @patch("venues.google_places.requests.get")
     def test_non_redirect_response_does_not_store_api_key_url(self, mock_get):
