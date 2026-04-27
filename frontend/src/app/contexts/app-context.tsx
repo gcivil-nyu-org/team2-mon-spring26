@@ -283,6 +283,41 @@ function AppInner({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const fetchSwipeEvents = useCallback(async (groupId: string, signal?: AbortSignal) => {
+    try {
+      const res = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
+        credentials: 'include',
+        signal,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSwipeEvents(
+          data.events.map((e: {
+            id: number; group_id: number; name: string; status: string;
+            created_at: string; scheduled_for: string | null; matched_venue_id: number | null;
+            total_participants: number; completed_participants_count: number;
+            borough?: string; neighborhood?: string;
+          }) => ({
+            id: String(e.id),
+            groupId: String(e.group_id),
+            name: e.name,
+            status: e.status as SwipeEvent['status'],
+            createdAt: e.created_at,
+            scheduledFor: e.scheduled_for || undefined,
+            matchedRestaurantId: e.matched_venue_id ? String(e.matched_venue_id) : undefined,
+            borough: e.borough || '',
+            neighborhood: e.neighborhood || '',
+            totalParticipants: e.total_participants,
+            completedParticipantsCount: e.completed_participants_count,
+          }))
+        );
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      console.error('Failed to fetch swipe events:', error);
+    }
+  }, []);
+
   const fetchUserChats = useCallback(async () => {
     try {
       const res = await fetch(apiUrl('/api/chat/'), { credentials: 'include' });
@@ -372,6 +407,10 @@ function AppInner({ children }: { children: ReactNode }) {
              fetchUserChats();
           } else if (data.type === 'notification_update') {
              fetchInvitations();
+          } else if (data.type === 'swipe_session_update') {
+             if (data.group_id) {
+               fetchSwipeEvents(String(data.group_id));
+             }
           }
         } catch (e) {
           console.error("Failed to parse websocket message", e);
@@ -397,7 +436,7 @@ function AppInner({ children }: { children: ReactNode }) {
         ws.close();
       }
     };
-  }, [currentUser, fetchUserChats, fetchInvitations]);
+  }, [currentUser, fetchUserChats, fetchInvitations, fetchSwipeEvents]);
 
   // ---------------------------------------------------------------------------
   // Invitations
@@ -804,41 +843,6 @@ function AppInner({ children }: { children: ReactNode }) {
     setSwipeEvents((prev) => [...prev, newEvent]);
     return newEvent;
   };
-
-  const fetchSwipeEvents = useCallback(async (groupId: string, signal?: AbortSignal) => {
-    try {
-      const res = await fetch(apiUrl(`/api/groups/${groupId}/events/`), {
-        credentials: 'include',
-        signal,
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSwipeEvents(
-          data.events.map((e: {
-            id: number; group_id: number; name: string; status: string;
-            created_at: string; scheduled_for: string | null; matched_venue_id: number | null;
-            total_participants: number; completed_participants_count: number;
-            borough?: string; neighborhood?: string;
-          }) => ({
-            id: String(e.id),
-            groupId: String(e.group_id),
-            name: e.name,
-            status: e.status as SwipeEvent['status'],
-            createdAt: e.created_at,
-            scheduledFor: e.scheduled_for || undefined,
-            matchedRestaurantId: e.matched_venue_id ? String(e.matched_venue_id) : undefined,
-            borough: e.borough || '',
-            neighborhood: e.neighborhood || '',
-            totalParticipants: e.total_participants,
-            completedParticipantsCount: e.completed_participants_count,
-          }))
-        );
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      console.error('Failed to fetch swipe events:', error);
-    }
-  }, []);
 
   const addSwipe = async (
     eventId: string,

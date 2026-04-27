@@ -6,7 +6,7 @@ import { RestaurantCard } from "@/app/components/restaurant-card";
 import { ChatSidebar } from "@/app/components/chat-sidebar";
 import { Button } from "@/app/components/ui/button";
 import { Progress } from "@/app/components/ui/progress";
-import { MessageCircle, Users, RotateCcw, Info, Star, Home } from "lucide-react";
+import { MessageCircle, Users, RotateCcw, Info, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/app/components/ui/table";
 import { RestaurantInfoDialog } from "@/app/components/restaurant-info-dialog";
@@ -215,9 +215,9 @@ export function SwipePage() {
               <RotateCcw className="w-4 h-4 mr-2" />
               Reswipe Session
             </Button>
-            <Button onClick={() => navigate("/home")} className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold flex items-center">
-              <Home className="w-4 h-4 mr-2" />
-              Back to Home
+            <Button onClick={() => navigate(`/group/${group.id}`)} className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold flex items-center">
+              <Users className="w-4 h-4 mr-2" />
+              Back to Group
             </Button>
           </div>
         </div>
