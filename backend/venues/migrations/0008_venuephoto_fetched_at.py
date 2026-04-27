@@ -28,9 +28,7 @@ def _remove_fetched_at(apps, schema_editor):
             "ALTER TABLE venues_venuephoto DROP COLUMN IF EXISTS fetched_at"
         )
     else:
-        schema_editor.execute(
-            "ALTER TABLE venues_venuephoto DROP COLUMN fetched_at"
-        )
+        schema_editor.execute("ALTER TABLE venues_venuephoto DROP COLUMN fetched_at")
 
 
 class Migration(migrations.Migration):
