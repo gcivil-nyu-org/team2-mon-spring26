@@ -393,6 +393,23 @@ def api_venue_detail(request, venue_id):
         return JsonResponse({"venue": _venue_to_json(venue)})
 
     if request.method == "PATCH":
+        def _manager_has_approved_claim():
+            for claim in venue.claims.all():
+                if getattr(claim, "status", None) != "approved":
+                    continue
+                if getattr(claim, "manager_id", None) == manager.id:
+                    return True
+                if getattr(claim, "claimed_by_id", None) == manager.id:
+                    return True
+                if getattr(claim, "user_id", None) == manager.id:
+                    return True
+            return False
+
+        if not venue.is_verified and not _manager_has_approved_claim():
+            return JsonResponse(
+                {"error": "You are not authorized to update this venue until the claim is approved."},
+                status=403,
+            )
         try:
             data = json.loads(request.body)
         except (json.JSONDecodeError, TypeError):
