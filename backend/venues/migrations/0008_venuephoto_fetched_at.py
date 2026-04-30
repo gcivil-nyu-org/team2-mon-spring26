@@ -19,16 +19,6 @@ def _add_fetched_at(apps, schema_editor):
             )
 
 
-def _remove_fetched_at(apps, schema_editor):
-    connection = schema_editor.connection
-    if connection.vendor == "postgresql":
-        schema_editor.execute(
-            "ALTER TABLE venues_venuephoto DROP COLUMN IF EXISTS fetched_at"
-        )
-    else:
-        schema_editor.execute("ALTER TABLE venues_venuephoto DROP COLUMN fetched_at")
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -45,7 +35,10 @@ class Migration(migrations.Migration):
                 ),
             ],
             database_operations=[
-                migrations.RunPython(_add_fetched_at, _remove_fetched_at),
+                # Reverse is a no-op: the column may have pre-existed on production
+                # (added by the legacy 0006 migration). Dropping it on rollback
+                # would cause data loss for databases we didn't create it on.
+                migrations.RunPython(_add_fetched_at, migrations.RunPython.noop),
             ],
         ),
     ]
