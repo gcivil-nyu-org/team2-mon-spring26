@@ -178,7 +178,7 @@ export interface VenueUpdateData {
   cuisineType?: string;
   priceRange?: string;
   seatingCapacity?: number | null;
-  hours?: string;
+  hours?: Record<string, string>;
   dietaryTags?: string[];
   streetAddress?: string;
   borough?: string;
