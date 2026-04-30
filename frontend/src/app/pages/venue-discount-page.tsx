@@ -733,14 +733,22 @@ export function VenueDiscountPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => openEditDiscount(discount)}
+                      disabled={!canEditDiscounts}
+                      onClick={() => {
+                        if (!canEditDiscounts) return;
+                        openEditDiscount(discount);
+                      }}
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => handleDeleteDiscount(discount.id)}
+                      disabled={!canEditDiscounts}
+                      onClick={() => {
+                        if (!canEditDiscounts) return;
+                        handleDeleteDiscount(discount.id);
+                      }}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
