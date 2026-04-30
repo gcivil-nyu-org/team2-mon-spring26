@@ -105,6 +105,7 @@ def _venue_to_json(venue):
         "isVerified": venue.is_verified,
         "isActive": venue.is_active,
         "dietaryTags": list(venue.dietary_tags.values_list("name", flat=True)),
+        "foodTypeTags": list(venue.food_type_tags.values_list("name", flat=True)),
         "lastInspectionDate": (
             latest_inspection.inspection_date.isoformat()
             if latest_inspection and latest_inspection.inspection_date
@@ -370,12 +371,9 @@ def api_my_venues(request):
 
 def api_venue_detail(request, venue_id):
     """
-    GET /api/venues/<id>/
-    Full read-only venue detail for the claiming manager.
+    GET   /api/venues/<id>/  — venue detail
+    PATCH /api/venues/<id>/  — update venue (venue manager only)
     """
-    if request.method != "GET":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-
     manager, err = _require_venue_manager(request)
     if err:
         return err
@@ -383,13 +381,107 @@ def api_venue_detail(request, venue_id):
     try:
         venue = (
             Venue.objects.select_related("cuisine_type", "managed_by")
-            .prefetch_related("inspections", "discounts", "dietary_tags", "claims")
+            .prefetch_related(
+                "inspections", "discounts", "dietary_tags", "food_type_tags", "claims"
+            )
             .get(pk=venue_id, managed_by=manager, is_active=True)
         )
     except Venue.DoesNotExist:
         return JsonResponse({"error": "Venue not found"}, status=404)
 
-    return JsonResponse({"venue": _venue_to_json(venue)})
+    if request.method == "GET":
+        return JsonResponse({"venue": _venue_to_json(venue)})
+
+    if request.method == "PATCH":
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        fields_updated = []
+
+        # Text fields (managers cannot change name)
+        field_map = {
+            "streetAddress": "street_address",
+            "borough": "borough",
+            "neighborhood": "neighborhood",
+            "zipcode": "zipcode",
+            "phone": "phone",
+            "email": "email",
+            "website": "website",
+            "priceRange": "price_range",
+            "hours": "hours",
+        }
+        for js_key, db_key in field_map.items():
+            if js_key in data:
+                setattr(venue, db_key, (data[js_key] or "").strip())
+                fields_updated.append(db_key)
+
+        # Integer fields
+        if "seatingCapacity" in data:
+            val = data["seatingCapacity"]
+            venue.seating_capacity = int(val) if val else None
+            fields_updated.append("seating_capacity")
+
+        # Boolean fields
+        bool_map = {
+            "hasGroupSeating": "has_group_seating",
+            "hasTakeout": "has_takeout",
+            "hasDelivery": "has_delivery",
+            "hasDineIn": "has_dine_in",
+            "isReservable": "is_reservable",
+            "isActive": "is_active",
+        }
+        for js_key, db_key in bool_map.items():
+            if js_key in data:
+                val = data[js_key]
+                if not isinstance(val, bool):
+                    return JsonResponse(
+                        {"error": f"'{js_key}' must be a boolean"}, status=400
+                    )
+                setattr(venue, db_key, val)
+                fields_updated.append(db_key)
+
+        # Cuisine type
+        if "cuisineType" in data:
+            ct_name = (data["cuisineType"] or "").strip()
+            if ct_name:
+                ct, _ = CuisineType.objects.get_or_create(name=ct_name)
+                venue.cuisine_type = ct
+            else:
+                venue.cuisine_type = None
+            fields_updated.append("cuisine_type_id")
+
+        if fields_updated:
+            fields_updated.append("updated_at")
+            venue.save(update_fields=fields_updated)
+
+        # M2M: dietary tags
+        if "dietaryTags" in data:
+            tag_names = data["dietaryTags"] or []
+            tags = []
+            for name in tag_names:
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                tag, _ = DietaryTag.objects.get_or_create(name=name.strip())
+                tags.append(tag)
+            venue.dietary_tags.set(tags)
+
+        # M2M: food type tags
+        if "foodTypeTags" in data:
+            tag_names = data["foodTypeTags"] or []
+            tags = []
+            for name in tag_names:
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                tag, _ = FoodTypeTag.objects.get_or_create(name=name.strip())
+                tags.append(tag)
+            venue.food_type_tags.set(tags)
+
+        venue.refresh_from_db()
+        return JsonResponse({"venue": _venue_to_json(venue)})
+
+    return JsonResponse({"error": "Method not allowed"}, status=405)
 
 
 def api_venue_discounts(request, venue_id):

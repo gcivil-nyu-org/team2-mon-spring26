@@ -171,6 +171,28 @@ export interface DiscountFormData {
   validUntil: string;
 }
 
+export interface VenueUpdateData {
+  phone?: string;
+  email?: string;
+  website?: string;
+  cuisineType?: string;
+  priceRange?: string;
+  seatingCapacity?: number | null;
+  hours?: string;
+  dietaryTags?: string[];
+  streetAddress?: string;
+  borough?: string;
+  neighborhood?: string;
+  zipcode?: string;
+  hasGroupSeating?: boolean;
+  hasTakeout?: boolean;
+  hasDelivery?: boolean;
+  hasDineIn?: boolean;
+  isReservable?: boolean;
+  isActive?: boolean;
+  foodTypeTags?: string[];
+}
+
 interface VenueContextType {
   currentManager: VenueManager | null;
   myVenues: ManagedVenue[];
@@ -193,10 +215,19 @@ interface VenueContextType {
   fetchVenueDetail: (venueId: number) => Promise<ManagedVenue>;
   fetchDiscounts: (venueId: number) => Promise<StudentDiscount[]>;
   fetchVenueReviews: (venueId: number) => Promise<VenueReviewsPayload>;
-  replyToReview: (venueId: number, reviewId: number, content: string) => Promise<ReviewComment>;
+  replyToReview: (
+    venueId: number,
+    reviewId: number,
+    content: string
+  ) => Promise<ReviewComment>;
   createDiscount: (venueId: number, data: DiscountFormData) => Promise<StudentDiscount>;
-  updateDiscount: (venueId: number, discountId: number, data: Partial<DiscountFormData>) => Promise<StudentDiscount>;
+  updateDiscount: (
+    venueId: number,
+    discountId: number,
+    data: Partial<DiscountFormData>
+  ) => Promise<StudentDiscount>;
   deleteDiscount: (venueId: number, discountId: number) => Promise<void>;
+  updateVenue: (venueId: number, data: VenueUpdateData) => Promise<ManagedVenue>;
 
   // Legacy fields to fix typescript errors in unmigrated pages
   myClaims: VenueClaim[];
@@ -222,7 +253,9 @@ export function VenueProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const response = await fetch(apiUrl('/api/auth/me/'), { credentials: 'include' });
+        const response = await fetch(apiUrl('/api/auth/me/'), {
+          credentials: 'include',
+        });
         if (response.ok) {
           const data = await response.json();
           if (data.authenticated && data.user?.role === 'venue_manager') {
@@ -293,7 +326,9 @@ export function VenueProvider({ children }: { children: ReactNode }) {
   const fetchMyVenues = useCallback(async () => {
     setVenuesLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/venues/my-venues/'), { credentials: 'include' });
+      const response = await fetch(apiUrl('/api/venues/my-venues/'), {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setMyVenues(data.venues ?? []);
@@ -304,7 +339,10 @@ export function VenueProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const searchVenues = async (q: string, borough?: string): Promise<VenueSearchResult[]> => {
+  const searchVenues = async (
+    q: string,
+    borough?: string
+  ): Promise<VenueSearchResult[]> => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (borough) params.set('borough', borough);
@@ -331,14 +369,18 @@ export function VenueProvider({ children }: { children: ReactNode }) {
   };
 
   const fetchVenueDetail = async (venueId: number): Promise<ManagedVenue> => {
-    const response = await fetch(apiUrl(`/api/venues/${venueId}/`), { credentials: 'include' });
+    const response = await fetch(apiUrl(`/api/venues/${venueId}/`), {
+      credentials: 'include',
+    });
     if (!response.ok) throw new Error('Venue not found');
     const data = await response.json();
     return data.venue;
   };
 
   const fetchDiscounts = async (venueId: number): Promise<StudentDiscount[]> => {
-    const response = await fetch(apiUrl(`/api/venues/${venueId}/discounts/`), { credentials: 'include' });
+    const response = await fetch(apiUrl(`/api/venues/${venueId}/discounts/`), {
+      credentials: 'include',
+    });
     if (!response.ok) throw new Error('Failed to fetch discounts');
     const data = await response.json();
     return data.discounts ?? [];
@@ -355,14 +397,21 @@ export function VenueProvider({ children }: { children: ReactNode }) {
     return data as VenueReviewsPayload;
   };
 
-  const replyToReview = async (venueId: number, reviewId: number, content: string): Promise<ReviewComment> => {
+  const replyToReview = async (
+    venueId: number,
+    reviewId: number,
+    content: string
+  ): Promise<ReviewComment> => {
     const csrftoken = getCsrf();
-    const response = await fetch(apiUrl(`/api/venues/${venueId}/reviews/${reviewId}/comments/`), {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-      body: JSON.stringify({ content }),
-    });
+    const response = await fetch(
+      apiUrl(`/api/venues/${venueId}/reviews/${reviewId}/comments/`),
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ content }),
+      }
+    );
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) {
       throw new Error(data.error || 'Failed to post reply');
@@ -370,7 +419,10 @@ export function VenueProvider({ children }: { children: ReactNode }) {
     return data.comment as ReviewComment;
   };
 
-  const createDiscount = async (venueId: number, formData: DiscountFormData): Promise<StudentDiscount> => {
+  const createDiscount = async (
+    venueId: number,
+    formData: DiscountFormData
+  ): Promise<StudentDiscount> => {
     const csrftoken = getCsrf();
     const response = await fetch(apiUrl(`/api/venues/${venueId}/discounts/`), {
       method: 'POST',
@@ -379,7 +431,8 @@ export function VenueProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(formData),
     });
     const data = await _parseJsonOrThrow(response, 'Failed to create discount');
-    if (!response.ok) throw new Error(String(data.error) || 'Failed to create discount');
+    if (!response.ok)
+      throw new Error(String(data.error) || 'Failed to create discount');
     return data.discount as StudentDiscount;
   };
 
@@ -389,54 +442,89 @@ export function VenueProvider({ children }: { children: ReactNode }) {
     formData: Partial<DiscountFormData>
   ): Promise<StudentDiscount> => {
     const csrftoken = getCsrf();
-    const response = await fetch(apiUrl(`/api/venues/${venueId}/discounts/${discountId}/`), {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-      body: JSON.stringify(formData),
-    });
+    const response = await fetch(
+      apiUrl(`/api/venues/${venueId}/discounts/${discountId}/`),
+      {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify(formData),
+      }
+    );
     const data = await _parseJsonOrThrow(response, 'Failed to update discount');
-    if (!response.ok) throw new Error(String(data.error) || 'Failed to update discount');
+    if (!response.ok)
+      throw new Error(String(data.error) || 'Failed to update discount');
     return data.discount as StudentDiscount;
   };
 
   const deleteDiscount = async (venueId: number, discountId: number) => {
     const csrftoken = getCsrf();
-    const response = await fetch(apiUrl(`/api/venues/${venueId}/discounts/${discountId}/`), {
-      method: 'DELETE',
-      credentials: 'include',
-      headers: { 'X-CSRFToken': csrftoken },
-    });
+    const response = await fetch(
+      apiUrl(`/api/venues/${venueId}/discounts/${discountId}/`),
+      {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'X-CSRFToken': csrftoken },
+      }
+    );
     if (!response.ok) {
       const data = await _parseJsonOrThrow(response, 'Failed to delete discount');
-      throw new Error((data as { error?: string }).error || 'Failed to delete discount');
+      throw new Error(
+        (data as { error?: string }).error || 'Failed to delete discount'
+      );
     }
   };
 
+  const updateVenue = async (
+    venueId: number,
+    formData: VenueUpdateData
+  ): Promise<ManagedVenue> => {
+    const csrftoken = getCsrf();
+    const response = await fetch(apiUrl(`/api/venues/${venueId}/`), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+      body: JSON.stringify(formData),
+    });
+
+    const json = await _parseJsonOrThrow(response, 'Failed to update venue');
+    if (!response.ok)
+      throw new Error((json.error as string) || 'Failed to update venue');
+
+    const updatedVenue = json.venue as ManagedVenue;
+    setMyVenues((venues) =>
+      venues.map((venue) => (venue.id === updatedVenue.id ? updatedVenue : venue))
+    );
+    return updatedVenue;
+  };
+
   return (
-    <VenueContext.Provider value={{
-      currentManager,
-      myVenues,
-      authLoading,
-      venuesLoading,
-      loginVenueManager,
-      registerVenueManager,
-      logoutVenueManager,
-      fetchMyVenues,
-      searchVenues,
-      claimVenue,
-      fetchVenueDetail,
-      fetchDiscounts,
-      fetchVenueReviews,
-      replyToReview,
-      createDiscount,
-      updateDiscount,
-      deleteDiscount,
-      myClaims,
-      restaurants: [],
-      addRestaurant: () => {},
-      updateRestaurant: () => {},
-    }}>
+    <VenueContext.Provider
+      value={{
+        currentManager,
+        myVenues,
+        authLoading,
+        venuesLoading,
+        loginVenueManager,
+        registerVenueManager,
+        logoutVenueManager,
+        fetchMyVenues,
+        searchVenues,
+        claimVenue,
+        fetchVenueDetail,
+        fetchDiscounts,
+        fetchVenueReviews,
+        replyToReview,
+        createDiscount,
+        updateDiscount,
+        deleteDiscount,
+        updateVenue,
+        myClaims,
+        restaurants: [],
+        addRestaurant: () => {},
+        updateRestaurant: () => {},
+      }}
+    >
       {children}
     </VenueContext.Provider>
   );
@@ -455,12 +543,17 @@ export function useVenue() {
 
 /** Parse a fetch Response as JSON. If the body is not JSON (e.g. Django HTML 500),
  *  throws an Error with a human-readable message instead of a raw JSON parse error. */
-async function _parseJsonOrThrow(response: Response, fallback: string): Promise<Record<string, unknown>> {
+async function _parseJsonOrThrow(
+  response: Response,
+  fallback: string
+): Promise<Record<string, unknown>> {
   const contentType = response.headers.get('content-type') ?? '';
   if (!contentType.includes('application/json')) {
     // Non-JSON body — read as text so we can log it, then throw a clean message
     const text = await response.text().catch(() => '');
-    console.error(`[venue-api] Expected JSON but got ${response.status} — body starts with: ${text.slice(0, 200)}`);
+    console.error(
+      `[venue-api] Expected JSON but got ${response.status} — body starts with: ${text.slice(0, 200)}`
+    );
     throw new Error(`Server error (${response.status}): ${fallback}`);
   }
   return response.json();
