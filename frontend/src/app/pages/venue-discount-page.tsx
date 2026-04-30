@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { toast } from 'sonner'; // ← Add this import
+import { toast } from 'sonner';
 import { useVenue } from '@/app/contexts/venue-context';
 import type {
   ManagedVenue,
