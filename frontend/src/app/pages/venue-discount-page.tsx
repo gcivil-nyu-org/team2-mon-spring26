@@ -278,13 +278,7 @@ export function VenueDiscountPage() {
       await deleteDiscount(Number(venueId), discountId);
       setDiscounts((prev) => prev.filter((item) => item.id !== discountId));
     } catch (err: unknown) {
-      setDiscountError(
-        err instanceof Error
-          ? err instanceof Error
-            ? err.message
-            : 'Failed to delete discount.'
-          : 'Failed to delete discount.'
-      );
+      setDiscountError(err instanceof Error ? err.message : 'Failed to delete discount.');
     }
   };
 
