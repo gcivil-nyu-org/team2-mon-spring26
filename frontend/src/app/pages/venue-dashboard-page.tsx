@@ -19,17 +19,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/app/components/ui/dialog';
-import {
-  UtensilsCrossed,
-  Plus,
-  MapPin,
-  Phone,
-  Mail,
-  Users,
-  CheckCircle,
-  Clock,
-  Tag,
-} from 'lucide-react';
+import { UtensilsCrossed, Plus, MapPin, Phone, Mail, Tag } from 'lucide-react';
 
 const GRADE_COLORS: Record<string, string> = {
   A: 'bg-green-100 text-green-800 border-green-300',

@@ -41,7 +41,6 @@ import preferenceOptions from '@/app/data/preference-options.json';
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'];
 const PRICE_RANGES = ['$', '$$', '$$$', '$$$$'];
 const SANITATION_GRADES = ['A', 'B', 'C', 'N', 'Z', 'P'];
-const DIETARY_OPTIONS = ['Vegan', 'Vegetarian', 'Kosher'] as const;
 
 const EMPTY_DISCOUNT_FORM: DiscountFormData = {
   discountType: '',
