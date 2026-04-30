@@ -420,7 +420,45 @@ def api_venue_detail(request, venue_id):
         # Integer fields
         if "seatingCapacity" in data:
             val = data["seatingCapacity"]
-            venue.seating_capacity = int(val) if val else None
+            if val is None or (isinstance(val, str) and not val.strip()):
+                venue.seating_capacity = None
+            else:
+                if isinstance(val, bool):
+                    return JsonResponse(
+                        {
+                            "error": "'seatingCapacity' must be an integer greater than or equal to 0"
+                        },
+                        status=400,
+                    )
+                if isinstance(val, int):
+                    parsed_capacity = val
+                elif isinstance(val, str):
+                    try:
+                        parsed_capacity = int(val.strip())
+                    except ValueError:
+                        return JsonResponse(
+                            {
+                                "error": "'seatingCapacity' must be an integer greater than or equal to 0"
+                            },
+                            status=400,
+                        )
+                else:
+                    return JsonResponse(
+                        {
+                            "error": "'seatingCapacity' must be an integer greater than or equal to 0"
+                        },
+                        status=400,
+                    )
+
+                if parsed_capacity < 0:
+                    return JsonResponse(
+                        {
+                            "error": "'seatingCapacity' must be an integer greater than or equal to 0"
+                        },
+                        status=400,
+                    )
+
+                venue.seating_capacity = parsed_capacity
             fields_updated.append("seating_capacity")
 
         # Boolean fields
