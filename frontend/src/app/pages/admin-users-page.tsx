@@ -217,6 +217,7 @@ export function AdminUsersPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                         <UserAvatar
+                          photoUrl={u.photoUrl}
                           name={u.name}
                           email={u.email}
                           role={u.role}

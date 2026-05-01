@@ -153,10 +153,6 @@ if _redis_url:
             "BACKEND": "channels_valkey.core.ValkeyChannelLayer",
             "CONFIG": {
                 "hosts": [_redis_url],
-                # No socket read timeout — consumers subscribe and wait indefinitely
-                # for messages. A short timeout (valkey default: 5s) causes the
-                # connection to crash while idle, producing a reconnect storm.
-                "socket_timeout": None,
             },
         },
     }

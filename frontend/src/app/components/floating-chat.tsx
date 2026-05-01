@@ -22,6 +22,7 @@ interface Conversation {
   chatId: string;  // raw backend ID for message/API calls
   type: ConversationType;
   name: string;
+  photoUrl?: string;
   lastMessage?: string;
   lastMessageTime?: string;
   isGroup: boolean;
@@ -38,8 +39,14 @@ export function FloatingChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
 
+  const memberByUserId = useMemo(
+    () => new Map(groups.flatMap(g => g.members).map(m => [m.userId, m])),
+    [groups]
+  );
+
   // Build and sort conversation list
   const conversations = useMemo((): Conversation[] => {
+    const currentUserId = String(currentUser?.id);
     const list: Conversation[] = [
       ...groups.map(g => ({
         id: `group-${g.id}`,
@@ -51,12 +58,16 @@ export function FloatingChat() {
         lastMessageTime: chatMessages[g.id]?.slice(-1)[0]?.timestamp
       })),
       ...dmConversations.map(dm => {
-        const otherParticipantName = dm.participantNames.find(name => name !== currentUser?.name) || 'Unknown';
+        const otherIdx = dm.participants.findIndex(id => id !== currentUserId);
+        const otherParticipantId = otherIdx !== -1 ? dm.participants[otherIdx] : undefined;
+        const otherParticipantName = (otherIdx !== -1 ? dm.participantNames[otherIdx] : undefined) || 'Unknown';
+        const otherMember = otherParticipantId ? memberByUserId.get(otherParticipantId) : undefined;
         return {
           id: `dm-${dm.id}`,
           chatId: `dm-${dm.id}`,
           type: 'dm' as ConversationType,
           name: otherParticipantName,
+          photoUrl: otherMember?.userPhotoUrl,
           isGroup: false,
           lastMessage: chatMessages[`dm-${dm.id}`]?.slice(-1)[0]?.message,
           lastMessageTime: dm.lastMessageTime
@@ -65,7 +76,7 @@ export function FloatingChat() {
     ];
     list.sort((a, b) => (b.lastMessageTime || '0').localeCompare(a.lastMessageTime || '0'));
     return list;
-  }, [groups, dmConversations, chatMessages, currentUser?.name]);
+  }, [groups, dmConversations, chatMessages, currentUser?.id, memberByUserId]);
 
   // Derive the active conversation ID: use explicit selection if valid, else fall back to first
   const activeConversationId = useMemo(
@@ -264,17 +275,13 @@ export function FloatingChat() {
                       }`}
                     >
                       <div className="flex items-start gap-2">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          conversation.isGroup 
-                            ? 'bg-gradient-to-br from-purple-500 to-pink-500' 
-                            : 'bg-gradient-to-br from-purple-400 to-pink-400'
-                        } text-white font-medium`}>
-                          {conversation.isGroup ? (
+                        {conversation.isGroup ? (
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-purple-500 to-pink-500 text-white">
                             <Users className="w-5 h-5" />
-                          ) : (
-                            conversation.name.charAt(0)
-                          )}
-                        </div>
+                          </div>
+                        ) : (
+                          <UserAvatar photoUrl={conversation.photoUrl} name={conversation.name} size={40} className="flex-shrink-0" />
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between">
                             <p className={`text-sm truncate ${isSelected ? 'font-semibold' : 'font-medium'}`}>
@@ -300,17 +307,13 @@ export function FloatingChat() {
             {/* Header */}
             <div className="px-4 py-3 border-b bg-background flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  selectedConversation?.isGroup 
-                    ? 'bg-gradient-to-br from-purple-500 to-pink-500' 
-                    : 'bg-gradient-to-br from-purple-400 to-pink-400'
-                } text-white text-sm font-medium`}>
-                  {selectedConversation?.isGroup ? (
+                {selectedConversation?.isGroup ? (
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-purple-500 to-pink-500 text-white text-sm">
                     <Users className="w-4 h-4" />
-                  ) : (
-                    selectedConversation?.name.charAt(0)
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <UserAvatar photoUrl={selectedConversation?.photoUrl} name={selectedConversation?.name} size={32} className="flex-shrink-0" />
+                )}
                 <h3 className="font-semibold truncate">{selectedConversation?.name}</h3>
               </div>
               <div className="flex items-center">
