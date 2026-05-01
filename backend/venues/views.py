@@ -298,7 +298,6 @@ def api_venue_claim(request, venue_id):
         return JsonResponse(
             {"error": "You have already claimed this venue"}, status=409
         )
-
     try:
         data = json.loads(request.body) if request.body else {}
     except (json.JSONDecodeError, TypeError):
