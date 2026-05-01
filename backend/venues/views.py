@@ -394,11 +394,11 @@ def api_venue_detail(request, venue_id):
 
     if request.method == "PATCH":
         def _manager_has_approved_claim():
-    return venue.claims.filter(
-        status=VenueClaim.Status.APPROVED,
-        manager=manager
-    ).exists()
-    
+            return venue.claims.filter(
+                status=VenueClaim.Status.APPROVED,
+                manager=manager
+            ).exists()
+
         if not venue.is_verified and not _manager_has_approved_claim():
             return JsonResponse(
                 {"error": "You are not authorized to update this venue until the claim is approved."},
