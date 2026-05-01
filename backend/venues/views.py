@@ -392,13 +392,14 @@ def api_venue_detail(request, venue_id):
         return JsonResponse({"venue": _venue_to_json(venue)})
 
     if request.method == "PATCH":
+
         def _manager_has_approved_claim():
             return venue.claims.filter(
                 status=VenueClaim.Status.APPROVED,
-                manager=manager
+                manager=manager,
             ).exists()
 
-    if not venue.is_verified and not _manager_has_approved_claim():
+        if not venue.is_verified and not _manager_has_approved_claim():
             return JsonResponse(
                 {
                     "error": "You are not authorized to update this venue"
@@ -406,10 +407,12 @@ def api_venue_detail(request, venue_id):
                 },
                 status=403,
             )
+
         try:
             data = json.loads(request.body)
         except (json.JSONDecodeError, TypeError):
             return JsonResponse({"error": "Invalid JSON"}, status=400)
+
         fields_updated = []
 
         # Text fields (managers cannot change name)
