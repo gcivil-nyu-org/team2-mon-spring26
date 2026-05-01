@@ -39,8 +39,14 @@ export function FloatingChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
 
+  const memberByUserId = useMemo(
+    () => new Map(groups.flatMap(g => g.members).map(m => [m.userId, m])),
+    [groups]
+  );
+
   // Build and sort conversation list
   const conversations = useMemo((): Conversation[] => {
+    const currentUserId = String(currentUser?.id);
     const list: Conversation[] = [
       ...groups.map(g => ({
         id: `group-${g.id}`,
@@ -52,9 +58,10 @@ export function FloatingChat() {
         lastMessageTime: chatMessages[g.id]?.slice(-1)[0]?.timestamp
       })),
       ...dmConversations.map(dm => {
-        const otherParticipantId = dm.participants.find(id => id !== String(currentUser?.id));
-        const otherParticipantName = dm.participantNames.find(name => name !== currentUser?.name) || 'Unknown';
-        const otherMember = groups.flatMap(g => g.members).find(m => m.userId === otherParticipantId);
+        const otherIdx = dm.participants.findIndex(id => id !== currentUserId);
+        const otherParticipantId = otherIdx !== -1 ? dm.participants[otherIdx] : undefined;
+        const otherParticipantName = (otherIdx !== -1 ? dm.participantNames[otherIdx] : undefined) || 'Unknown';
+        const otherMember = otherParticipantId ? memberByUserId.get(otherParticipantId) : undefined;
         return {
           id: `dm-${dm.id}`,
           chatId: `dm-${dm.id}`,
@@ -69,7 +76,7 @@ export function FloatingChat() {
     ];
     list.sort((a, b) => (b.lastMessageTime || '0').localeCompare(a.lastMessageTime || '0'));
     return list;
-  }, [groups, dmConversations, chatMessages, currentUser?.id, currentUser?.name]);
+  }, [groups, dmConversations, chatMessages, currentUser?.id, memberByUserId]);
 
   // Derive the active conversation ID: use explicit selection if valid, else fall back to first
   const activeConversationId = useMemo(
