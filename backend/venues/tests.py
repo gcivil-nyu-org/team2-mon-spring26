@@ -490,7 +490,7 @@ class VenueDetailTests(TestCase):
     def setUp(self):
         self.manager = make_manager_profile("m@example.com")
         self.venue = Venue.objects.create(
-            name="Mine", managed_by=self.manager, is_active=True
+            name="Mine", managed_by=self.manager, is_active=True, is_verified=True
         )
         self.other_venue = Venue.objects.create(name="Other", is_active=True)
         self.url = lambda vid: reverse("venue_detail", args=[vid])
