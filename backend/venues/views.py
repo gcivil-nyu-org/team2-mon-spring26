@@ -401,9 +401,10 @@ def api_venue_detail(request, venue_id):
 
         if not venue.is_verified and not _manager_has_approved_claim():
             return JsonResponse(
-                {"error": "You are not authorized to update this venue until the claim is approved."},
-                status=403,
-            )
+                {
+                        "error": "You are not authorized to update this venue"
+                        " until the claim is approved."
+                },
         try:
             data = json.loads(request.body)
         except (json.JSONDecodeError, TypeError):
