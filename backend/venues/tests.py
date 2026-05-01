@@ -612,6 +612,137 @@ class VenueDetailTests(TestCase):
         )
         self.assertEqual(resp.status_code, 404)
 
+    def test_patch_unverified_venue_with_approved_claim_succeeds(self):
+        unverified_venue = Venue.objects.create(
+            name="Unverified", managed_by=self.manager, is_active=True, is_verified=False
+        )
+        VenueClaim.objects.create(
+            venue=unverified_venue,
+            manager=self.manager,
+            status=VenueClaim.Status.APPROVED,
+        )
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(unverified_venue.id),
+            data=json.dumps({"streetAddress": "456 Park Ave"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    def test_patch_unverified_venue_without_claim_returns_403(self):
+        unverified_venue = Venue.objects.create(
+            name="Unverified", managed_by=self.manager, is_active=True, is_verified=False
+        )
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(unverified_venue.id),
+            data=json.dumps({"streetAddress": "abc"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn("not authorized", resp.json()["error"])
+
+    def test_patch_empty_body_returns_200(self):
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(self.venue.id),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    def test_patch_seating_capacity_null_clears_value(self):
+        self.venue.seating_capacity = 50
+        self.venue.save()
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(self.venue.id),
+            data=json.dumps({"seatingCapacity": None}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.venue.refresh_from_db()
+        self.assertIsNone(self.venue.seating_capacity)
+
+    def test_patch_seating_capacity_empty_string_clears_value(self):
+        self.venue.seating_capacity = 50
+        self.venue.save()
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(self.venue.id),
+            data=json.dumps({"seatingCapacity": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.venue.refresh_from_db()
+        self.assertIsNone(self.venue.seating_capacity)
+
+    def test_patch_seating_capacity_valid_string_parsed(self):
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(self.venue.id),
+            data=json.dumps({"seatingCapacity": "30"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.venue.refresh_from_db()
+        self.assertEqual(self.venue.seating_capacity, 30)
+
+    def test_patch_seating_capacity_invalid_string_returns_400(self):
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(self.venue.id),
+            data=json.dumps({"seatingCapacity": "abc"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("seatingCapacity", resp.json()["error"])
+
+    def test_patch_seating_capacity_bool_returns_400(self):
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(self.venue.id),
+            data=json.dumps({"seatingCapacity": True}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("seatingCapacity", resp.json()["error"])
+
+    def test_patch_seating_capacity_negative_returns_400(self):
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(self.venue.id),
+            data=json.dumps({"seatingCapacity": -1}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("seatingCapacity", resp.json()["error"])
+
+    def test_patch_seating_capacity_invalid_type_returns_400(self):
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(self.venue.id),
+            data=json.dumps({"seatingCapacity": {"value": 10}}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("seatingCapacity", resp.json()["error"])
+
+    def test_patch_cuisine_type_cleared(self):
+        from venues.models import CuisineType
+        ct = CuisineType.objects.create(name="Italian")
+        self.venue.cuisine_type = ct
+        self.venue.save()
+        self.client.force_login(self.manager.user)
+        resp = self.client.patch(
+            self.url(self.venue.id),
+            data=json.dumps({"cuisineType": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.venue.refresh_from_db()
+        self.assertIsNone(self.venue.cuisine_type)
+
 
 class VenueDiscountsTests(TestCase):
     def setUp(self):
