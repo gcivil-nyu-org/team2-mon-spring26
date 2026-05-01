@@ -614,7 +614,10 @@ class VenueDetailTests(TestCase):
 
     def test_patch_unverified_venue_with_approved_claim_succeeds(self):
         unverified_venue = Venue.objects.create(
-            name="Unverified", managed_by=self.manager, is_active=True, is_verified=False
+            name="Unverified",
+            managed_by=self.manager,
+            is_active=True,
+            is_verified=False,
         )
         VenueClaim.objects.create(
             venue=unverified_venue,
@@ -631,7 +634,10 @@ class VenueDetailTests(TestCase):
 
     def test_patch_unverified_venue_without_claim_returns_403(self):
         unverified_venue = Venue.objects.create(
-            name="Unverified", managed_by=self.manager, is_active=True, is_verified=False
+            name="Unverified",
+            managed_by=self.manager,
+            is_active=True,
+            is_verified=False,
         )
         self.client.force_login(self.manager.user)
         resp = self.client.patch(
@@ -730,6 +736,7 @@ class VenueDetailTests(TestCase):
 
     def test_patch_cuisine_type_cleared(self):
         from venues.models import CuisineType
+
         ct = CuisineType.objects.create(name="Italian")
         self.venue.cuisine_type = ct
         self.venue.save()
