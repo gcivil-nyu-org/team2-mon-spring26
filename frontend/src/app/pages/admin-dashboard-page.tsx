@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router';
 import { useAdmin } from '@/app/contexts/admin-context';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { Users, ShieldCheck, Store, UserPlus, Flag } from 'lucide-react';
+import { Users, ShieldCheck, Store, UserPlus } from 'lucide-react';
 
 export function AdminDashboardPage() {
   const { currentAdmin } = useAdmin();
@@ -81,20 +81,6 @@ export function AdminDashboardPage() {
           </CardHeader>
         </Card>
 
-        <Card
-          className="cursor-pointer hover:shadow-lg transition-shadow"
-          onClick={() => navigate('/admin/moderation')}
-        >
-          <CardHeader className="pb-6">
-            <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mb-3">
-              <Flag className="w-6 h-6 text-red-600" />
-            </div>
-            <CardTitle className="mb-2">Moderation Queue</CardTitle>
-            <CardDescription>
-              Review flagged reviews and comments
-            </CardDescription>
-          </CardHeader>
-        </Card>
       </div>
     </div>
   );

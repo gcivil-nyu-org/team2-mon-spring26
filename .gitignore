@@ -53,6 +53,11 @@ pnpm-debug.log*
 # Local dev artifacts
 cookies.txt
 
+# QA / Playwright test artifacts
+.qa-screenshots/
+.playwright-mcp/
+/*.png
+
 # Claude Code
 CLAUDE.md
 

@@ -299,7 +299,6 @@ export function VenueDashboardPage() {
                         <th className="px-6 py-3">Location</th>
                         <th className="px-6 py-3">Date Submitted</th>
                         <th className="px-6 py-3">Status</th>
-                        <th className="px-6 py-3">Admin Notes</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -351,12 +350,6 @@ export function VenueDashboardPage() {
                                 Reason: {claim.adminNote}
                               </p>
                             )}
-                          </td>
-                          <td
-                            className="px-6 py-4 text-muted-foreground max-w-xs truncate"
-                            title={claim.adminNote || '-'}
-                          >
-                            {claim.adminNote || '-'}
                           </td>
                         </tr>
                       ))}
